@@ -136,9 +136,9 @@ async function cargarFoto() {
 async function pedirDatosFide(id) {
   let est = null, his = null;
   for (let intento = 0; intento < 2; intento++) {
-    if (!est?.bloques?.length || est.parcial) est = await fuentes.estadisticasFide(id).catch(() => est);   // «parcial»: solo con el Elo (la FIDE no respondió)
+    if (!est?.bloques?.length) est = await fuentes.estadisticasFide(id).catch(() => est);
     if (!(his?.length >= 2)) his = await fuentes.historialElo(id).catch(() => null);
-    if (est?.bloques?.length && !est.parcial && his?.length >= 2) break;
+    if (est?.bloques?.length && his?.length >= 2) break;
     if (intento < 1) await new Promise(r => setTimeout(r, 3000));
   }
   return { estadisticas: est?.bloques?.length ? est : null, historial: his?.length >= 2 ? his : null };

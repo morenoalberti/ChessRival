@@ -22,10 +22,16 @@ const ICONOS = {
 };
 const icono = (nombre, tam) => `<svg viewBox="0 0 24 24" width="${tam}" height="${tam}" aria-hidden="true">${ICONOS[nombre] ?? ICONOS.Total}</svg>`;
 
+/** «2641 en 2024»: la palabra «en» va aparte para que se traduzca («in») al cambiar de idioma. */
+function valorHtml(valor) {
+  const m = /^(\S+) en (.+)$/.exec(valor);
+  return m ? `${esc(m[1])} <span>en</span> ${esc(m[2])}` : esc(valor);
+}
+
 /** Sin los resultados de la FIDE: el máximo, la variación del último año y demás datos del historial del Elo; si tampoco hay historial, un aviso. */
 function extrasHtml(b) {
   if (!b.extras?.length) return '<p class="fide-sin-resultados suave">Resultados no disponibles ahora</p>';
-  return `<div class="fide-extras">${b.extras.map(e => `<div class="fide-extra">${icono(e.icono, 16)}<span class="suave">${esc(e.etiqueta)}</span><b class="${e.tendencia > 0 ? 'sube' : e.tendencia < 0 ? 'baja' : ''}">${esc(e.valor)}</b></div>`).join('')}</div>`;
+  return `<div class="fide-extras">${b.extras.map(e => `<div class="fide-extra">${icono(e.icono, 16)}<span class="suave">${esc(e.etiqueta)}</span><b class="${e.tendencia > 0 ? 'sube' : e.tendencia < 0 ? 'baja' : ''}">${valorHtml(e.valor)}</b></div>`).join('')}</div>`;
 }
 
 /** El HTML de las tarjetas, en el orden preferido (los títulos separados por comas; los que no estén, al final). */

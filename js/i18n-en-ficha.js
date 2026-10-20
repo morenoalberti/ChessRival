@@ -247,6 +247,7 @@ export const exactas = {
   "En la lista desde": "Rated since",
   "Mejor ELO": "Best rating",
   "Ritmo más fuerte": "Strongest format",
+  'en': 'in',
   'Carpeta de destino': 'Destination folder',
   'Elegir carpeta de destino': 'Choose destination folder',
   'Restaurar copia seleccionada': 'Restore selected backup',
