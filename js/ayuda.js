@@ -319,7 +319,7 @@ export function abrirAyuda(inicial = 'inicio') {
 }
 
 export function abrirVideo() {
-  const panel = abrirPanel('Vídeo tutorial', `<p class="suave utilidad-intro">Tutorial original de la versión de escritorio. Algunos controles pueden variar en la web.</p><video class="tutorial-video" controls playsinline preload="metadata" aria-label="Vídeo tutorial de RondaRival"><source src="assets/Video/Tutorial.mp4" type="video/mp4"></video><p class="error" data-error-video hidden>No se ha podido reproducir el vídeo.</p>`, 'panel-video');
+  const panel = abrirPanel('Vídeo tutorial', `<p class="suave utilidad-intro">Las cuatro formas de añadir jugadores (nombre, ID FIDE y URL de Chess-Results o Info64) y un vistazo a la ficha. Los jugadores y datos del vídeo son inventados.</p><video class="tutorial-video" controls playsinline preload="metadata" aria-label="Vídeo tutorial de ChessRival"><source src="assets/Video/Tutorial.mp4" type="video/mp4"></video><p class="error" data-error-video hidden>No se ha podido reproducir el vídeo.</p>`, 'panel-video');
   if (!panel) return;
   panel.velo.querySelector('source').addEventListener('error', () => { panel.velo.querySelector('[data-error-video]').hidden = false; });
   panel.velo.querySelector('video').addEventListener('error', () => { panel.velo.querySelector('[data-error-video]').hidden = false; });
