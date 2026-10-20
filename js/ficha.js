@@ -428,8 +428,12 @@ function pintarAperturas(vis) {
       filas = [...filas.slice(0, max - 1), new Ap.FilaApertura('Otras', resto.reduce((s, f) => s + f.partidas, 0), resto.reduce((s, f) => s + f.puntos, 0))];
     }
     tarjeta.querySelector('[data-vacio]').textContent = filas.length ? '' : `Sin partidas terminadas con ${color === 'B' ? 'blancas' : 'negras'}.`;
-    tarjeta.querySelector('[data-filas]').innerHTML = filas.map(f =>
-      `<div class="aper-fila"><span class="recortar" title="${esc(f.nombre)}">${figurasHtml(f.nombre)}</span><span class="suave">${f.detalle}</span></div>`).join('');
+    // Cada apertura: su nombre, una barra con lo que la juega respecto a la más frecuente, cuántas partidas y su puntuación (color según le va).
+    const masFrecuente = Math.max(1, ...filas.map(f => f.partidas));
+    const nivel = (p) => p >= 65 ? 'alta' : p >= 45 ? 'media' : 'baja';
+    const cabecera = tipo === 'completa' && filas.length ? `<div class="aper-fila aper-cab"><span>Apertura</span><span title="Cuántas partidas ha jugado con cada apertura">Frecuencia</span><span class="aper-n">Partidas</span><span class="aper-punt" title="Porcentaje de los puntos posibles: victoria 1, tablas ½, derrota 0">Puntuación</span></div>` : '';
+    tarjeta.querySelector('[data-filas]').innerHTML = cabecera + filas.map(f =>
+      `<div class="aper-fila"><span class="aper-nombre recortar" title="${esc(f.nombre)}">${figurasHtml(f.nombre)}</span><span class="aper-barra"><i style="width:${Math.max(3, Math.round(f.partidas * 100 / masFrecuente))}%"></i></span><span class="aper-n">${f.partidas}</span><span class="aper-punt ${nivel(f.porcentaje)}">${f.porcentaje} %</span></div>`).join('');
     tarjeta.classList.toggle('con-datos', filas.length > 0);
     tarjeta.querySelector('[data-ayuda]').innerHTML = filas.length ? ayudaAperturas(color, filas) : '';
   }
@@ -455,7 +459,7 @@ function ayudaAperturas(color, filas) {
     <div class="ayuda-titulo">Cómo leer cada línea</div>
     <div class="suave ayuda-p">${figurasHtml(real ? `Partidas de ${yo} con ${conBlancas ? 'blancas' : 'negras'}. Cada línea agrupa las que empezaron igual.` : `Todavía no hay partidas de ${yo} con ${conBlancas ? 'blancas' : 'negras'}; esto es un ejemplo inventado.`)}</div>
     <div class="ayuda-ejemplo"><div><small class="azul">IZQUIERDA · la apertura</small><div class="sub-azul">${figurasHtml(etiqueta)}</div></div>
-      <div class="der"><small class="coral">DERECHA · los resultados</small><div class="sub-coral">${partidasN} · ${porcentaje} %</div></div></div>
+      <div class="der"><small class="coral">DERECHA · los resultados</small><div class="sub-coral">${partidasN} partidas · ${porcentaje} %</div></div></div>
     <div class="ayuda-bloque azul"><b>Izquierda: qué se jugó y quién lo jugó</b>
       <p>${figurasHtml(conBlancas ? `«${jug}» es la primera jugada de la partida. La juega ${yo}, que lleva las blancas.` : `«${jug}» es la primera jugada de la partida. La juega su rival, que lleva las blancas.`)}</p><p>${figurasHtml(nombreTexto)}</p></div>
     <div class="ayuda-bloque coral"><b>Derecha: los resultados</b>

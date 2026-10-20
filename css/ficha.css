@@ -210,3 +210,16 @@
 /* Más relieve en las tarjetas de la ficha: degradado suave, sombra con tinte azul y una barra de color arriba */
 .tarjeta-ficha { background: linear-gradient(180deg, #FFFFFF 0%, #EEF4FF 100%); border-color: #4C86E8; box-shadow: 0 3px 10px rgba(47, 111, 224, .16), 0 1px 2px rgba(31, 42, 68, .10); overflow: hidden; }
 .tarjeta-ficha:not(.fide-tarjeta)::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 4px; background: linear-gradient(90deg, var(--azul), #6FA0F5); }
+
+/* Tarjetas del resumen (Debilidades y Aperturas): cabecera sólida con el color de la tarjeta, como las del ELO y las cifras */
+.tarjeta-degradado { --c: #2F6FE0; padding: 0 0 12px; border: 1.5px solid var(--c); overflow: visible; background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--c) 9%, #fff)); box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 26%, transparent); }
+.tarjeta-degradado::before { display: none; }
+#tarjetaDebilidades { --c: #F26A5B; }
+.tarjeta-degradado > .tarjeta-titulo-fila { margin: 0; padding: 7px 12px; background: var(--c); color: #fff; border-radius: 10px 10px 0 0; font-size: 13px; }
+.tarjeta-degradado > .tarjeta-titulo-fila + * { margin-top: 10px; }
+.tarjeta-degradado > :not(.tarjeta-titulo-fila) { margin-left: 12px; margin-right: 12px; }
+.tarjeta-degradado .insignia { width: 20px; height: 20px; margin-right: 8px; background: transparent; color: #fff !important; }
+.tarjeta-degradado .insignia svg { width: 18px; height: 18px; }
+.tarjeta-degradado .tarjeta-titulo-fila .mini { background: rgba(255, 255, 255, .16); color: #fff; border-color: rgba(255, 255, 255, .65); }
+.tarjeta-degradado .tarjeta-titulo-fila .mini.activa { background: #fff; color: var(--c); border-color: #fff; }
+

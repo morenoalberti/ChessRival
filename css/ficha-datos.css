@@ -45,9 +45,21 @@
 .estudio-ejercicio-acciones .icono { width: 17px; height: 17px; flex: none; }
 .estudio-tablero-columna .tablero-casilla { cursor: pointer; }
 @media (max-width: 700px) { .estudio-columnas { grid-template-columns: 1fr; } .estudio-entrenamiento { flex-direction: column; } .estudio-evidencia { flex-wrap: wrap; } }
-.aper-fila { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; font-size: 13px; }
-.aper-fila .suave { flex: none; }
-.aper-fila > span:first-child { min-width: 0; }
+/* Lista de aperturas: columnas fijas (nombre · barra · partidas · puntuación), filas alternas y color según la puntuación, para seguir la línea con la vista */
+.aper-fila { display: grid; grid-template-columns: minmax(0, 38%) minmax(40px, 1fr) 66px 94px; align-items: center; gap: 12px; padding: 5px 8px; border-radius: 6px; font-size: 13px; transition: background-color .12s; }
+.aper-fila:nth-child(even) { background: rgba(47, 111, 224, .07); }
+.aper-fila:hover { background: rgba(47, 111, 224, .16); }
+.aper-cab { padding-bottom: 6px; margin-bottom: 2px; border-bottom: 1.5px solid #CFE0FF; border-radius: 0; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #34507F; background: none !important; }
+.aper-nombre { min-width: 0; font-weight: 500; }
+.aper-barra { height: 10px; border-radius: 5px; background: #E3EBF8; overflow: hidden; }
+.aper-barra i { display: block; height: 100%; border-radius: 5px; background: linear-gradient(90deg, #2F6FE0, #6FA0F5); }
+.aper-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--texto-suave); }
+.aper-punt { justify-self: end; min-width: 56px; padding: 2px 8px; border-radius: 12px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.aper-punt.alta { background: #DDF3E6; color: #1E8E4F; }
+.aper-punt.media { background: #FFF1D1; color: #B97A0B; }
+.aper-punt.baja { background: #FDE3DF; color: #D8493B; }
+.aper-cab .aper-punt { background: none; padding: 0; border-radius: 0; text-align: right; }
+@media (max-width: 760px) { .aper-fila { grid-template-columns: minmax(0, 1fr) 60px 90px; } .aper-barra { display: none; } .aper-cab > span:nth-child(2) { display: none; } }
 .aper-jugadores { margin: 0 0 10px; font-size: 12px; line-height: 1.4; }
 
 /* Ayuda emergente de las tarjetas (aparece con retardo y solo si hay datos) */
