@@ -249,7 +249,6 @@ function mostrarBienvenida() {
       <button type="button" class="btn btn-secundario" data-bienvenida="video">${contenidoBoton('video', 'Ver el vídeo tutorial')}</button>
       <button type="button" class="btn btn-secundario" data-bienvenida="ayuda">${contenidoBoton('ayuda', 'Abrir la ayuda')}</button>
     </div>
-    <p class="bienvenida-nota">La MegaDatabase y el libro de aperturas son opcionales: conéctalos cuando quieras con los avisos de arriba.</p>
   </div>`;
 }
 el.estado.addEventListener('click', async (e) => {

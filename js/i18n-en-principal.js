@@ -169,7 +169,6 @@ export const exactas = {
   "Probar con un jugador de ejemplo": "Try with an example player",
   "Ver el vídeo tutorial": "Watch the video tutorial",
   "Abrir la ayuda": "Open the help",
-  "La MegaDatabase y el libro de aperturas son opcionales: conéctalos cuando quieras con los avisos de arriba.": "The MegaDatabase and the opening book are optional: connect them whenever you want with the notices above.",
 };
 
 export const plantillas = {

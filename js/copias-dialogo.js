@@ -18,13 +18,15 @@ export async function abrirCopias() {
     <div class="copias-resumen" data-resumen aria-label="Datos actuales">Consultando tus datos…</div>
     <div class="copias-acciones">
       <section class="utilidad-tarjeta"><h2>Crear una copia</h2>
+        <label class="copias-archivo-etiqueta" for="carpetaCopias">Carpeta donde se guardan las copias</label>
+        <div class="copias-archivo-caja"><input id="carpetaCopias" type="text" data-carpeta-nombre readonly title="Elegir carpeta de destino">
+          <button type="button" class="btn btn-secundario btn-chico" data-destino title="Carpeta de destino" aria-label="Elegir carpeta de destino">${svg('carpeta', 17)}</button></div>
         <button type="button" class="btn btn-primario" data-crear title="Guardar copia en un archivo">${contenidoBoton('guardar', 'Crear y descargar')}</button>
-        <p class="suave copias-nota" data-destino-crear>Destino: Descargas del navegador.</p></section>
+        <p class="suave copias-nota" data-destino-crear></p></section>
       <section class="utilidad-tarjeta"><h2>Restaurar una copia</h2>
         <label class="copias-archivo-etiqueta" for="archivoCopia">Archivo de copia</label>
         <div class="copias-archivo-caja"><input id="archivoCopia" type="text" data-nombre-archivo readonly placeholder="Pulsa para elegir una copia" title="Elegir copia guardada">
-          <button type="button" class="btn btn-secundario btn-chico" data-destino title="Carpeta de destino" aria-label="Elegir carpeta de destino">${svg('carpeta', 17)}</button></div>
-        <p class="suave copias-destino" data-destino role="status">Carpeta: Descargas del navegador</p>
+          <button type="button" class="btn btn-secundario btn-chico" data-elegir-copia title="Elegir copia guardada" aria-label="Elegir copia guardada">${svg('carpeta', 17)}</button></div>
         <button type="button" class="btn btn-secundario" data-restaurar title="Restaurar copia seleccionada" disabled>${contenidoBoton('cambiar', 'Restaurar copia')}</button>
         <p class="suave copias-nota">Se guarda una copia de los datos actuales antes de sustituirlos.</p>
         <input type="file" accept=".json,application/json" data-archivo hidden></section>
@@ -42,9 +44,9 @@ export async function abrirCopias() {
   const estado = (texto, error = false) => { $('[data-estado]').textContent = texto; $('[data-estado]').classList.toggle('error', error); };
   function pintarDestino() {
     const nombre = nombreDestinoCopias(carpetaDestino);
-    $('p[data-destino]').textContent = `Carpeta: ${nombre}`;
-    $('p[data-destino]').title = nombre;
-    $('[data-destino-crear]').textContent = `Carpeta: ${nombre}`;
+    $('[data-carpeta-nombre]').value = nombre;
+    $('[data-carpeta-nombre]').title = nombre;
+    $('[data-destino-crear]').textContent = carpetaDestino ? 'Cada copia se guarda como archivo en esa carpeta.' : 'Sin carpeta elegida: la copia se descarga con el navegador.';
     $('[data-crear]').innerHTML = contenidoBoton('guardar', carpetaDestino ? 'Crear y guardar' : 'Crear y descargar');
   }
   async function cargar() {
@@ -127,12 +129,15 @@ export async function abrirCopias() {
     await cargar(); estado(carpetaDestino ? `Copia creada y guardada en «${nombreDestinoCopias(carpetaDestino)}».` : 'Copia creada y enviada a las descargas del navegador.');
   }));
   $('[data-actualizar]').addEventListener('click', () => ejecutar(cargar));
-  $('button[data-destino]').addEventListener('click', () => ejecutar(async () => {
+  const cambiarCarpeta = () => ejecutar(async () => {
     const carpeta = await elegirDestinoCopias(globalThis, carpetaDestino);
     if (!carpeta) return;
     carpetaDestino = carpeta; pintarDestino();
     estado('Carpeta de destino guardada.');
-  }));
+  });
+  $('button[data-destino]').addEventListener('click', cambiarCarpeta);
+  $('[data-carpeta-nombre]').addEventListener('click', cambiarCarpeta);
+  $('[data-elegir-copia]').addEventListener('click', () => elegirArchivo());
   const elegirArchivo = () => { if (ocupado) return; $('[data-archivo]').value = ''; $('[data-archivo]').click(); };
   $('[data-nombre-archivo]').addEventListener('click', elegirArchivo);
   $('[data-nombre-archivo]').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegirArchivo(); } });
