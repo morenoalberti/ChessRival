@@ -20,7 +20,7 @@ export const exactas = {
   'apartados encontrados': 'sections found',
   'apartados': 'sections',
   'Vídeo tutorial': 'Video tutorial',
-  'Las cuatro formas de añadir jugadores (nombre, ID FIDE y URL de Chess-Results o Info64) y un vistazo a la ficha. Los jugadores y datos del vídeo son inventados.': 'The four ways to add players (name, FIDE ID, and a Chess-Results or Info64 URL) and a look at the player profile. The players and data in the video are made up.',
+  'Cómo añadir jugadores (nombre, ID FIDE y URL de Chess-Results o Info64), cargar y analizar sus partidas y entender cada apartado del estudio. Los jugadores y datos del vídeo son inventados.': 'How to add players (name, FIDE ID, and a Chess-Results or Info64 URL), load and analyse their games and understand each part of the study. The players and data in the video are made up.',
   'No se ha podido reproducir el vídeo.': 'The video could not be played.',
 
   // Manual

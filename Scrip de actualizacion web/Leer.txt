@@ -1,0 +1,5 @@
+en un CMD y desde el directorio del proyecto lanzar este comando:
+
+git add -A && git commit -m "Nuevo vídeo tutorial con voz, subtítulos y explicación de MegaDatabase y PowerBook" -m "Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>" && git push
+
+Dejar pasar unos minutos a que Render actualice la web
