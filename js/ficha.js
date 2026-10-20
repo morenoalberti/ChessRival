@@ -1,4 +1,5 @@
 // Ficha del jugador (equivale a FichaJugadorWindow.xaml.cs): cabecera, estadísticas de la FIDE, gráfico del ELO y pestañas.
+import { pintarVacios } from './ficha-vacios.js';
 import { LOCALE } from './i18n.js';
 import { mostrarCargando, quitarCargando } from './cargando.js';
 import * as db from './db.js';
@@ -309,6 +310,7 @@ function pintar() {
   arbol.cargar(vis);
   pintarAnalisis(vis);
   pintarPreparacion(vis);
+  pintarVacios({ partidas: partidas.length, analizadas: jugadasAnalizadas.length, importar: () => $('importarBtn').click(), analizar: () => $('analizarBtn').click() });
 }
 
 // ---------- Partidas: tabla ----------

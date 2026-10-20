@@ -378,13 +378,26 @@ button.candidato:hover, button.candidato:focus-visible { background: #EAF1FF; ou
 /* Pantalla de bienvenida (sin torneos ni jugadores todavía) */
 .estado.bienvenida { pointer-events: auto; overflow-y: auto; align-items: flex-start; }
 .estado.oculto { pointer-events: none; }
-.bienvenida-panel { margin: auto; max-width: 640px; padding: 28px 8px; text-align: left; color: var(--texto); animation: ficha-in .5s cubic-bezier(.2, .8, .2, 1) both; }
-.bienvenida-panel h2 { margin: 0 0 4px; font-size: 26px; font-weight: 600; color: var(--azul); text-align: center; }
-.bienvenida-sub { margin: 0 0 20px; text-align: center; color: var(--texto-suave); font-size: 15px; }
-.bienvenida-pasos { list-style: none; margin: 0 0 22px; padding: 0; display: grid; gap: 10px; }
-.bienvenida-pasos li { display: flex; gap: 14px; align-items: flex-start; background: #fff; border: 1.5px solid #CFE0FF; border-radius: 12px; padding: 12px 16px; }
-.bienvenida-pasos b { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--azul); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 14px; }
-.bienvenida-pasos strong { display: block; font-size: 15px; }
-.bienvenida-pasos span { display: block; margin-top: 2px; font-size: 13px; color: var(--texto-suave); line-height: 1.45; }
-.bienvenida-botones { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.bienvenida-panel { margin: auto; width: 100%; max-width: 920px; padding: 18px 12px; text-align: left; color: var(--texto); animation: ficha-in .5s cubic-bezier(.2, .8, .2, 1) both; }
+.bienvenida-hero { display: flex; align-items: center; gap: 30px; margin-bottom: 20px; padding: 0 6px; }
+.bienvenida-tablero { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); width: 156px; height: 156px; border-radius: 14px; overflow: hidden; transform: rotate(-4deg); box-shadow: 0 10px 26px rgba(47, 111, 224, .28), 0 0 0 4px #fff; }
+.bienvenida-tablero i { display: flex; align-items: center; justify-content: center; }
+.bienvenida-tablero i.cla { background: #EAF1FF; }
+.bienvenida-tablero i.osc { background: #6C9BE8; }
+.bienvenida-tablero img { width: 86%; height: 86%; filter: drop-shadow(0 2px 2px rgba(20, 40, 90, .35)); }
+.bienvenida-texto { flex: 1; min-width: 0; }
+.bienvenida-panel h2 { margin: 0 0 6px; font-size: 32px; line-height: 1.15; font-weight: 700; color: var(--azul); }
+.bienvenida-sub { margin: 0 0 18px; color: var(--texto-suave); font-size: 16px; }
+.bienvenida-botones { display: flex; flex-wrap: wrap; gap: 8px; }
+.bienvenida-pasos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.bienvenida-pasos li { display: flex; flex-direction: column; gap: 10px; background: #fff; border: 1.5px solid #CFE0FF; border-radius: 14px; padding: 16px 18px 18px; box-shadow: 0 2px 8px rgba(47, 111, 224, .07); transition: transform .15s, box-shadow .15s; }
+.bienvenida-pasos li:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(47, 111, 224, .15); }
+.bienvenida-pasos b { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--azul); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.bienvenida-pasos strong { display: block; font-size: 15px; margin-bottom: 3px; }
+.bienvenida-pasos span { display: block; font-size: 12.5px; color: var(--texto-suave); line-height: 1.5; }
+@media (max-width: 760px) {
+  .bienvenida-hero { flex-direction: column; text-align: center; gap: 18px; }
+  .bienvenida-botones { justify-content: center; }
+  .bienvenida-pasos { grid-template-columns: 1fr; }
+}
 @media (max-width: 560px) { .bienvenida-botones .btn { flex: 1 1 100%; } }
