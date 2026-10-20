@@ -401,3 +401,8 @@ button.candidato:hover, button.candidato:focus-visible { background: #EAF1FF; ou
   .bienvenida-pasos { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) { .bienvenida-botones .btn { flex: 1 1 100%; } }
+
+/* Como una aplicación de escritorio: no se selecciona el texto de la pantalla (los cuadros de escritura y las respuestas de la IA, sí) */
+body { -webkit-user-select: none; user-select: none; }
+input, textarea, [contenteditable="true"], .ia-conversacion, .ia-conversacion *, .permitir-seleccion, .permitir-seleccion * { -webkit-user-select: text; user-select: text; }
+
