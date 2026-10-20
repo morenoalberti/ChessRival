@@ -3,6 +3,7 @@ import { PROXY_URL } from './config.js';
 import { svg } from './iconos.js';
 import { htmlFichaFide, posicionFichaFide } from './ficha-fide-datos.js';
 import { montarGraficoElo } from './grafico-elo.js';
+import { completarConHistorial } from './fide-historial-datos.js';
 
 /** Una ficha flotante compartida por todas las tarjetas. Las respuestas tardías nunca vuelven a abrirla. */
 export function instalarFichaFide(contenedor, obtenerJugador, { cargar = estadisticasFide, cargarHistorial = historialElo, foto = j => j.fideId && PROXY_URL ? `${PROXY_URL}/api/fide/foto?id=${encodeURIComponent(j.fideId)}` : j.photo || '' } = {}) {
@@ -70,7 +71,9 @@ export function instalarFichaFide(contenedor, obtenerJugador, { cargar = estadis
       evolucion = datos; pintarEvolucion();
     });
     try {
-      const perfil = await entrada.promesa;
+      const datos = await entrada.promesa;
+      const hist = await entrada.historial;        // el historial completa las tarjetas cuando la FIDE no da los resultados
+      const perfil = datos?.bloques ? { ...datos, bloques: completarConHistorial(datos.bloques, hist?.puntos) } : datos;
       if (mi === version && !ficha.hidden && tarjeta?.isConnected) pintar(j, perfil);
     } catch {
       if (cache.get(j.fideId) === entrada) cache.delete(j.fideId);

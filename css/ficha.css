@@ -201,12 +201,6 @@
 .fide-extra b.sube { color: #1E8E4F; }
 .fide-extra b.baja { color: var(--coral); }
 
-/* Más relieve en las tarjetas de la ficha: degradado suave, cabecera con su línea, sombra con tinte azul y una barra de color arriba */
+/* Más relieve en las tarjetas de la ficha: degradado suave, sombra con tinte azul y una barra de color arriba */
 .tarjeta-ficha { background: linear-gradient(180deg, #FFFFFF 0%, #EEF4FF 100%); border-color: #4C86E8; box-shadow: 0 3px 10px rgba(47, 111, 224, .16), 0 1px 2px rgba(31, 42, 68, .10); overflow: hidden; }
-.tarjeta-ficha::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 4px; background: linear-gradient(90deg, var(--azul), #6FA0F5); }
-.fide-tarjeta { padding-top: 12px; }
-.fide-cab { padding-bottom: 5px; margin-bottom: 4px; border-bottom: 1px solid #D4E2FA; }
-.fide-cab .suave { font-weight: 600; color: #34507F; }
-.fide-elo { font-size: 13px; }
-.fide-extra b { font-size: 14px; }
-.fide-tarjeta:hover { box-shadow: 0 10px 24px rgba(47, 111, 224, .26), 0 2px 4px rgba(31, 42, 68, .12); }
+.tarjeta-ficha:not(.fide-tarjeta)::before { content: ''; position: absolute; inset: 0 0 auto 0; height: 4px; background: linear-gradient(90deg, var(--azul), #6FA0F5); }

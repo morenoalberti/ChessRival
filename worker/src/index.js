@@ -352,6 +352,21 @@ function bloquesSoloElo(elos) {
   return [['Standard', elos.standard], ['Rapid', elos.rapid], ['Blitz', elos.blitz]].filter(([, e]) => e).map(([titulo, elo]) => ({ titulo, elo, blancas: null, negras: null }));
 }
 
+/** Foto del jugador en Wikimedia Commons, buscada por su ID FIDE en Wikidata (propiedad P1440): es una coincidencia exacta, no por nombre. */
+async function fotoWikidata(id) {
+  try {
+    const api = 'https://www.wikidata.org/w/api.php';
+    const b = await (await fetch(`${api}?action=query&list=search&srsearch=${encodeURIComponent(`haswbstatement:P1440=${id}`)}&format=json&srlimit=1`, { headers: { 'User-Agent': UA } })).json();
+    const q = b?.query?.search?.[0]?.title;
+    if (!/^Q\d+$/.test(q ?? '')) return null;
+    const c = await (await fetch(`${api}?action=wbgetclaims&entity=${q}&property=P18&format=json`, { headers: { 'User-Agent': UA } })).json();
+    const fichero = c?.claims?.P18?.[0]?.mainsnak?.datavalue?.value;
+    if (!fichero) return null;
+    const r = await fetch(`https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(fichero)}?width=400`, { headers: { 'User-Agent': UA }, redirect: 'follow' });
+    return r.ok ? r : null;
+  } catch { return null; }
+}
+
 async function historialLichess(id) {
   try {
     const r = await fetch(`https://lichess.org/fide/${id}/x`, { headers: { 'User-Agent': UA }, redirect: 'follow' });
@@ -476,9 +491,10 @@ async function fotoFide(id, cors) {
   if (!src) {                                       // sin la FIDE: la foto de Lichess (si la tiene)
     const l = await jugadorLichess(id);
     const url = l?.photo?.medium;
-    const r = url ? await fetch(url, { headers: { 'User-Agent': UA } }).catch(() => null) : null;
+    let r = url ? await fetch(url, { headers: { 'User-Agent': UA } }).catch(() => null) : null;
+    if (!r?.ok) r = await fotoWikidata(id);            // sin foto en Lichess: la de Wikimedia Commons, si el jugador la tiene
     if (!r?.ok) return new Response('Sin foto', { status: 404, headers: cors });
-    return new Response(r.body, { headers: { 'Content-Type': r.headers.get('content-type') ?? 'image/webp', 'Cache-Control': 'public, max-age=86400', ...cors } });
+    return new Response(r.body, { headers: { 'Content-Type': r.headers.get('content-type') ?? 'image/jpeg', 'Cache-Control': 'public, max-age=86400', ...cors } });
   }
 
   if (src.startsWith('data:')) {

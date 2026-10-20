@@ -12,12 +12,12 @@ const H = [
 
 test('El máximo y la variación del último año salen del historial', () => {
   const s = datosDelHistorial('Standard', H);
-  assert.deepEqual(s[0], { etiqueta: 'Máximo', valor: '2500 · 2024' });
-  assert.deepEqual(s[1], { etiqueta: 'Último año', valor: '−10', tendencia: -1 });   // 2490 frente a 2500 de hace 12+ meses (2024-01)
+  assert.deepEqual(s[0], { etiqueta: 'Máximo', icono: 'copa', valor: '2500 · 2024' });
+  assert.deepEqual(s[1], { etiqueta: 'Último año', icono: 'tendencia', valor: '−10', tendencia: -1 });   // 2490 frente a 2500 de hace 12+ meses (2024-01)
   const b = datosDelHistorial('Blitz', H);
   assert.equal(b[1].valor, '0');
   const corto = datosDelHistorial('Rapid', [{ fecha: '2025-01', rapid: 2400 }, { fecha: '2025-06', rapid: 2410 }]);
-  assert.deepEqual(corto, [{ etiqueta: 'Máximo', valor: '2410 · 2025' }]);             // sin 12 meses de historial no hay variación
+  assert.deepEqual(corto, [{ etiqueta: 'Máximo', icono: 'copa', valor: '2410 · 2025' }]);             // sin 12 meses de historial no hay variación
 });
 
 test('Sin historial suficiente no se inventa nada', () => {

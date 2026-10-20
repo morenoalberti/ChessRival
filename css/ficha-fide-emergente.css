@@ -15,9 +15,8 @@
 .fide-emergente dd img { object-fit: contain; flex: none; }
 .fide-emergente-detalle { padding: 0 13px 12px; overflow-y: auto; min-height: 0; flex: 1; scrollbar-width: thin; scrollbar-color: #A9C2EE transparent; }
 .fide-emergente h3 { color: var(--azul); font-size: 13px; font-weight: 600; margin: 13px 0 7px; }
-.fide-emergente .fide-tarjeta { background: #fff; border: 1px solid #C5D6F2; border-radius: 8px; padding: 10px; margin-bottom: 8px; }
-.fide-emergente .fide-cab { display: flex; align-items: baseline; justify-content: space-between; font-size: 12px; }
-.fide-emergente .fide-elo { color: var(--azul); font-weight: 600; }
+.fide-emergente .fide-tarjeta { border-radius: 10px; margin-bottom: 9px; }
+.fide-emergente .fide-cab { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; }
 .fide-emergente .fide-etiqueta { font-size: 11px; margin: 8px 0 3px; }
 .fide-emergente .fide-barra { display: flex; height: 20px; border-radius: 4px; overflow: hidden; background: #E8ECF1; }
 .fide-emergente .fide-trozo { display: flex; align-items: center; justify-content: center; min-width: 0; color: #fff; font-size: 11px; }

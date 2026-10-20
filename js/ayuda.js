@@ -200,6 +200,8 @@ export const SECCIONES = [
     p('ChessRival es de código abierto y usa software de terceros con sus propias licencias.'),
     h('Stockfish'),
     p('El motor es Stockfish 19 (versión «lite» de un solo hilo) compilado a WebAssembly por stockfish.js, bajo licencia GNU GPL versión 3. Su código fuente está en [stockfish.js](https://github.com/nmrugg/stockfish.js) y en [Stockfish](https://github.com/official-stockfish/Stockfish). El texto de la licencia está en [este archivo](https://chessrival.net/assets/motor/LICENCIA-Stockfish-GPL3.txt).'),
+    h('Datos y fotos de los jugadores'),
+    p('Los datos de cada jugador (título, edad, Elo y su evolución) vienen de la FIDE y, cuando la FIDE no responde, de [Lichess](https://lichess.org/fide). Las fotos, de la FIDE, de Lichess o de [Wikimedia Commons](https://commons.wikimedia.org), cada una con la licencia que indique su autor.'),
     h('Código de ChessRival'),
     p('El código de ChessRival está publicado en [GitHub](https://github.com/morenoalberti/ChessRival).'),
     h('Otros componentes'),
