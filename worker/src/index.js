@@ -306,7 +306,11 @@ function abreviarTitulo(t) {
 /** Título(s) y edad del jugador, de su perfil público. */
 async function fichaFide(id) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
-  const html = await descargarHtml(`https://ratings.fide.com/profile/${id}/statistics`);
+  const html = await descargarHtml(`https://ratings.fide.com/profile/${id}/statistics`).catch(() => '');
+  if (html.length < 100) {                          // la FIDE no responde: Lichess
+    const l = await jugadorLichess(id);
+    return l ? { titulo: l.title ?? '', edad: perfilDeLichess(l).edad } : { titulo: '', edad: '' };
+  }
   const titulos = [];
   for (const m of html.matchAll(/<h5>([^<]*title[^<]*)<\/h5>\s*<div class="profile-info-title\s*">.*?<p>([^<]*)<\/p>/gis)) {
     const abreviado = abreviarTitulo(m[2].trim());
@@ -317,6 +321,60 @@ async function fichaFide(id) {
   return { titulo: titulos.join(' · '), edad: anio > 1900 && anio <= actual ? `${actual - anio} años` : '' };
 }
 
+
+
+// ---------- Respaldo: Lichess ----------
+// La FIDE rechaza (o deja en blanco) las peticiones que vienen de servidores como los de Cloudflare. Lichess publica sin límite estos mismos datos
+// (título, año de nacimiento, Elo por ritmo, foto e historial del Elo), así que se usa cuando la FIDE no responde.
+// Lo que Lichess no tiene son los resultados con blancas y negras: esas tarjetas salen solo con el Elo.
+
+async function jugadorLichess(id) {
+  try {
+    const r = await fetch(`https://lichess.org/api/fide/player/${id}`, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+    return r.ok ? await r.json() : null;
+  } catch { return null; }
+}
+
+function perfilDeLichess(l) {
+  const actual = new Date().getFullYear();
+  const ok = l.year > 1900 && l.year <= actual;
+  return {
+    titulo: l.title ?? '', edad: ok ? `${actual - l.year} años` : '', nombre: l.name ?? '', nacimiento: ok ? l.year : null,
+    genero: l.gender === 'F' ? 'Mujer' : l.gender === 'M' ? 'Hombre' : '',
+    federacionNombre: l.federation ?? '', paisCodigo: '',
+    elos: { standard: l.standard ? String(l.standard) : '', rapid: l.rapid ? String(l.rapid) : '', blitz: l.blitz ? String(l.blitz) : '' },
+    clasificaciones: []
+  };
+}
+
+/** Tarjetas solo con el Elo (sin resultados): lo que se puede ofrecer cuando solo hay datos de Lichess. */
+function bloquesSoloElo(elos) {
+  return [['Standard', elos.standard], ['Rapid', elos.rapid], ['Blitz', elos.blitz]].filter(([, e]) => e).map(([titulo, elo]) => ({ titulo, elo, blancas: null, negras: null }));
+}
+
+async function historialLichess(id) {
+  try {
+    const r = await fetch(`https://lichess.org/fide/${id}/x`, { headers: { 'User-Agent': UA }, redirect: 'follow' });
+    if (!r.ok) return [];
+    const m = /fideRatingChart',\{init:(\{.*?\])\}/s.exec(await r.text());
+    if (!m) return [];
+    const d = JSON.parse(m[1] + '}');
+    const porFecha = new Map();
+    for (const [ritmo, lista] of Object.entries(d)) {
+      for (const n of lista) {
+        const fecha = `${String(n).slice(0, 4)}-${String(n).slice(4, 6)}`, rating = n % 10000;
+        if (!porFecha.has(fecha)) porFecha.set(fecha, { fecha, standard: null, rapid: null, blitz: null });
+        porFecha.get(fecha)[ritmo] = rating;
+      }
+    }
+    const puntos = [...porFecha.values()].sort((a, b) => a.fecha.localeCompare(b.fecha));
+    for (const ritmo of ['standard', 'rapid', 'blitz']) {       // cada lista tiene sus propias fechas: se arrastra el último Elo para que las líneas no se corten
+      let ultimo = null;
+      for (const p of puntos) { if (p[ritmo] !== null) ultimo = p[ritmo]; else p[ritmo] = ultimo; }
+    }
+    return puntos;
+  } catch { return []; }
+}
 
 // ---------- Ficha completa de la FIDE: Elo por ritmo, resultados por color e historial ----------
 
@@ -340,11 +398,15 @@ function ratingDePerfil(html, clase) {
 async function estadisticasFide(id) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
   const [html, datos] = await Promise.all([
-    descargarHtml(`https://ratings.fide.com/profile/${id}/statistics`),
-    jsonFide(`https://ratings.fide.com/a_data_stats.php?id1=${id}&id2=0`, CAB_AJAX(id, 'statistics'))
+    descargarHtml(`https://ratings.fide.com/profile/${id}/statistics`).catch(() => ''),
+    jsonFide(`https://ratings.fide.com/a_data_stats.php?id1=${id}&id2=0`, CAB_AJAX(id, 'statistics')).catch(() => null)
   ]);
   const fila = Array.isArray(datos) ? datos[0] : null;
-  if (!fila) return { bloques: [], ...datosDePerfil(html) };
+  if (!fila || html.length < 100) {                 // la FIDE no responde: lo que dé Lichess (sin los resultados con blancas y negras)
+    const l = await jugadorLichess(id);
+    if (l) { const perfil = perfilDeLichess(l); return { bloques: bloquesSoloElo(perfil.elos), parcial: true, ...perfil }; }
+    return { bloques: [], ...(html.length >= 100 ? datosDePerfil(html) : {}) };
+  }
 
   const v = (campo) => entero(String(fila[campo] ?? '0'));
   const elos = { Standard: ratingDePerfil(html, 'profile-standart'), Rapid: ratingDePerfil(html, 'profile-rapid'), Blitz: ratingDePerfil(html, 'profile-blitz') };
@@ -394,8 +456,8 @@ const MESES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'o
 /** La evolución del Elo mes a mes (Standard, Rapid y Blitz; null si ese mes no tenía). */
 async function historialElo(id) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
-  const datos = await jsonFide(`https://ratings.fide.com/a_chart_data.phtml?event=${id}&period=0`, CAB_AJAX(id, 'chart'));
-  if (!Array.isArray(datos)) return [];
+  const datos = await jsonFide(`https://ratings.fide.com/a_chart_data.phtml?event=${id}&period=0`, CAB_AJAX(id, 'chart')).catch(() => null);
+  if (!Array.isArray(datos) || !datos.length) return historialLichess(id);
   const num = (fila, campo) => { const n = entero(String(fila[campo] ?? '')); return n > 0 ? n : null; };
   const puntos = [];
   for (const fila of datos) {
@@ -409,9 +471,15 @@ async function historialElo(id) {
 
 async function fotoFide(id, cors) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
-  const doc = parse(await descargarHtml(`https://ratings.fide.com/profile/${id}`));
-  const src = doc.querySelector('img.profile-top__photo')?.getAttribute('src');
-  if (!src) return new Response('Sin foto', { status: 404, headers: cors });
+  const htmlPerfil = await descargarHtml(`https://ratings.fide.com/profile/${id}`).catch(() => '');
+  const src = htmlPerfil.length < 100 ? null : parse(htmlPerfil).querySelector('img.profile-top__photo')?.getAttribute('src');
+  if (!src) {                                       // sin la FIDE: la foto de Lichess (si la tiene)
+    const l = await jugadorLichess(id);
+    const url = l?.photo?.medium;
+    const r = url ? await fetch(url, { headers: { 'User-Agent': UA } }).catch(() => null) : null;
+    if (!r?.ok) return new Response('Sin foto', { status: 404, headers: cors });
+    return new Response(r.body, { headers: { 'Content-Type': r.headers.get('content-type') ?? 'image/webp', 'Cache-Control': 'public, max-age=86400', ...cors } });
+  }
 
   if (src.startsWith('data:')) {
     const coma = src.indexOf(',');

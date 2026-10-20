@@ -17,8 +17,8 @@ export function htmlTarjetasFide(bloques, orden = '', { arrastrable = true } = {
     <div class="tarjeta-ficha fide-tarjeta" ${arrastrable ? 'draggable="true"' : ''} data-titulo="${esc(b.titulo)}" style="--i:${i}"
          title="${arrastrable ? 'Resultados en partidas con rating FIDE: victorias (azul), tablas (gris) y derrotas (oscuro). Arrástrala para cambiarla de sitio.' : 'Resultados con blancas y negras'}">
       <div class="fide-cab"><span class="suave">${esc(b.titulo)}</span>${b.elo ? `<span class="fide-elo">ELO ${esc(b.elo)}</span>` : ''}</div>
-      <div class="fide-etiqueta">Blancas ${b.blancas.total}</div>${barra(b.blancas)}
-      <div class="fide-etiqueta">Negras ${b.negras.total}</div>${barra(b.negras)}
+      ${b.blancas && b.negras ? `<div class="fide-etiqueta">Blancas ${b.blancas.total}</div>${barra(b.blancas)}
+      <div class="fide-etiqueta">Negras ${b.negras.total}</div>${barra(b.negras)}` : '<p class="fide-sin-resultados suave">Resultados no disponibles ahora</p>'}
     </div>`).join('');
 }
 

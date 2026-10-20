@@ -169,24 +169,6 @@ def validar_y_guardar(ruta):
 # ---------- Servidor ----------
 
 
-def prueba_fide():
-    """Diagnóstico temporal: pide a la FIDE un perfil y una consulta de datos, y cuenta lo que devuelve."""
-    import time
-    import urllib.request
-    resultado = {}
-    for nombre, url, cab in (
-        ("perfil", "https://ratings.fide.com/profile/1503014/statistics?_=%d" % time.time(), {}),
-        ("datos", "https://ratings.fide.com/a_data_stats.php?id1=1503014&id2=0&_=%d" % time.time(), {"X-Requested-With": "XMLHttpRequest"}),
-        ("grafico", "https://ratings.fide.com/a_chart_data.phtml?event=1503014&period=0&_=%d" % time.time(), {"X-Requested-With": "XMLHttpRequest"}),
-    ):
-        try:
-            peticion = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) ChessRival/1.0", **cab})
-            with urllib.request.urlopen(peticion, timeout=20) as r:
-                resultado[nombre] = {"estado": r.status, "bytes": len(r.read())}
-        except Exception as ex:  # noqa: BLE001
-            resultado[nombre] = {"error": str(ex)}
-    return resultado
-
 class SinCache(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=CARPETA, **kwargs)
@@ -234,8 +216,6 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         return self.path.split("?")[0].startswith("/local/")
 
     def do_GET(self):
-        if self.path.split("?")[0] == "/api/fide-prueba":     # PRUEBA TEMPORAL: ¿la FIDE responde a este servidor?
-            return self._json(prueba_fide())
         if not self._es_local():
             return super().do_GET()                      # los archivos de la web no necesitan permiso
         if not self._permitido():

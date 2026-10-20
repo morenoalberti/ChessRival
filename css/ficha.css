@@ -194,3 +194,4 @@
 .vacio-ficha h3 { margin: 0; font-size: 18px; font-weight: 600; color: var(--texto); }
 .vacio-ficha p { margin: 0 0 8px; max-width: 460px; font-size: 13.5px; line-height: 1.5; color: var(--texto-suave); }
 .fide-sin-datos { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: #fff; border: 1.5px solid #CFE0FF; border-radius: 12px; color: var(--texto-suave); font-size: 13px; }
+.fide-sin-resultados { margin: 8px 0 0; font-size: 12px; line-height: 1.4; }
