@@ -8,6 +8,7 @@ import { ChessBaseDatabase, ErrorBase } from './chessbase.js';
 import { claveJugador, guardarPartidas, refrescarTarjetasDe } from './db-partidas.js';
 import { cargarLibroAperturas } from './aperturas.js';
 import { detectarRitmo } from './pgn.js';
+import { elegirConHermanos } from './elegir-archivos.js';
 
 export const MAX_POR_JUGADOR = 300;          // las más recientes
 
@@ -106,34 +107,13 @@ export async function elegir() {
     }
     // el servidor no tiene interfaz gráfica: se usa el selector del navegador
   }
-  if (!('showOpenFilePicker' in window)) return 'Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar la MegaDatabase.';
-  // El navegador no puede encontrar los archivos «hermanos» de un .cbh como hace el programa de escritorio: se eligen a la vez los cuatro
-  // (el cuadro solo enseña los de la base, y con Ctrl+E se marcan todos).
-  let elegidos;
-  try {
-    elegidos = await showOpenFilePicker({
-      id: 'megadatabase', multiple: true, excludeAcceptAllOption: true,
-      types: [{ description: 'Base de ChessBase (.cbh .cbg .cbp .cbt)', accept: { 'application/octet-stream': ['.cbh', '.cbg', '.cbp', '.cbt'] } }]
-    });
-  } catch (ex) {
-    if (ex?.name === 'AbortError') return undefined;
-    return `El navegador no ha podido abrir el cuadro de archivos: ${ex.message}`;
-  }
-
-  const porNombre = new Map(elegidos.map(h => [h.name.toLowerCase(), h]));
-  const cabeceras = elegidos.filter(h => /\.cbh$/i.test(h.name));
-  if (!cabeceras.length) return 'No has elegido el archivo .cbh de la base. En el cuadro, marca el .cbh y los otros tres archivos con su mismo nombre (pulsa Ctrl+E para marcarlos todos).';
-  // Si hay varias bases, la más grande (la MegaDatabase).
-  let cabecera = cabeceras[0];
-  if (cabeceras.length > 1) {
-    const tamaños = await Promise.all(cabeceras.map(async h => (await h.getFile()).size));
-    cabecera = cabeceras[tamaños.indexOf(Math.max(...tamaños))];
-  }
-  const nombreBase = cabecera.name.replace(/\.cbh$/i, '');
-  const faltan = ['cbg', 'cbp', 'cbt'].filter(e => !porNombre.has(`${nombreBase}.${e}`.toLowerCase())).map(e => `${nombreBase}.${e}`);
-  if (faltan.length) return `La base está incompleta. En el cuadro, marca también: ${faltan.join(', ')} (pulsa Ctrl+E para marcar todos los archivos de la base).`;
-  const completos = [cabecera, ...['cbg', 'cbp', 'cbt'].map(e => porNombre.get(`${nombreBase}.${e}`.toLowerCase()))];
-
+  const r = await elegirConHermanos({
+    id: 'megadatabase', principal: 'cbh', hermanos: ['cbg', 'cbp', 'cbt'], descripcion: 'Base de ChessBase (.cbh)',
+    paso2: 'ChessRival también necesita leer los otros archivos de la base, que están en la misma carpeta que «{}.cbh». Se abrirá el cuadro ya dentro de ella: solo tienes que pulsar «Seleccionar carpeta».'
+  });
+  if (!r) return undefined;
+  if (r.error) return r.error;
+  const completos = [r.archivos.cbh, r.archivos.cbg, r.archivos.cbp, r.archivos.cbt];
   await abrir(completos);
   if (!estado.base) return estado.error;
   handles = completos;

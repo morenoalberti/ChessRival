@@ -670,8 +670,8 @@ el.megaBtn.addEventListener('click', async () => {
     if (mega.estado.pendiente) { if (!await mega.pedirPermiso()) await informar('MegaDatabase', 'No se ha dado permiso para leer los archivos de la base.'); }
     else {
       if (!mega.estado.base) {
-        await informar('Elegir la MegaDatabase', 'En el cuadro que se abre verás los archivos de la base: «Mega Database 2025.cbh» y los otros con su mismo nombre (.cbg, .cbp y .cbt). '
-          + 'Márcalos todos (Ctrl+E) y pulsa «Abrir»; el navegador pedirá confirmar el acceso de lectura.', 'Elegir archivos');
+        await informar('Elegir la MegaDatabase', 'En el cuadro que se abre elige el archivo «Mega Database 2025.cbh» y pulsa «Abrir». '
+          + 'Después se te pedirá permiso para leer su carpeta, y el navegador pedirá confirmar el acceso de lectura.', 'Elegir archivo');
       }
       el.megaText.textContent = 'Comprobando la base…';
       const error = await mega.elegir();
@@ -686,8 +686,8 @@ el.libroBtn.addEventListener('click', async () => {
     if (libro.estado.pendiente) { if (!await libro.pedirPermiso()) await informar('Libro de aperturas', 'No se ha dado permiso para leer los archivos del libro.'); }
     else {
       if (!libro.estado.libro && !libro.estado.local) {
-        await informar('Elegir el libro de aperturas', 'En el cuadro que se abre verás los archivos del libro: el .ctg y los otros dos con su mismo nombre (.ctb y .cto). '
-          + 'Márcalos todos (Ctrl+E) y pulsa «Abrir»; el navegador pedirá confirmar el acceso de lectura.', 'Elegir archivos');
+        await informar('Elegir el libro de aperturas', 'En el cuadro que se abre elige el archivo del libro (por ejemplo «PowerBook2025.ctg») y pulsa «Abrir». '
+          + 'Después se te pedirá permiso para leer su carpeta, y el navegador pedirá confirmar el acceso de lectura.', 'Elegir archivo');
       }
       el.libroText.textContent = 'Comprobando el libro…';
       const error = await libro.elegir();

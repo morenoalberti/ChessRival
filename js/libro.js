@@ -4,6 +4,7 @@
 //  · Sin él (la web publicada): el selector de archivos del navegador; los permisos se guardan y el navegador los pide confirmar.
 import { leerAjuste, guardarAjuste } from './db.js';
 import { LibroCtg, ErrorLibro } from './libro-ctg.js';
+import { elegirConHermanos } from './elegir-archivos.js';
 
 const FEN_INICIAL = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -103,34 +104,16 @@ export async function elegir() {
       return estado.libro ? null : estado.error;
     }
   }
-  if (!('showOpenFilePicker' in window)) return 'Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar el libro de aperturas.';
-  // Se eligen a la vez los tres archivos del libro (el cuadro solo enseña los del libro, y con Ctrl+E se marcan todos).
-  let elegidos;
-  try {
-    elegidos = await showOpenFilePicker({
-      id: 'libro-aperturas', multiple: true, excludeAcceptAllOption: true,
-      types: [{ description: 'Libro de aperturas de ChessBase (.ctg .ctb .cto)', accept: { 'application/octet-stream': ['.ctg', '.ctb', '.cto'] } }]
-    });
-  } catch (ex) {
-    if (ex?.name === 'AbortError') return undefined;
-    return `El navegador no ha podido abrir el cuadro de archivos: ${ex.message}`;
-  }
-  const porNombre = new Map(elegidos.map(h => [h.name.toLowerCase(), h]));
-  const libros = elegidos.filter(h => /\.ctg$/i.test(h.name));
-  if (!libros.length) return 'No has elegido el archivo .ctg del libro. En el cuadro, marca el .ctg y los otros dos archivos con su mismo nombre (pulsa Ctrl+E para marcarlos todos).';
-  let elegido = libros[0];
-  if (libros.length > 1) {
-    const tamaños = await Promise.all(libros.map(async h => (await h.getFile()).size));
-    elegido = libros[tamaños.indexOf(Math.max(...tamaños))];
-  }
-  const base = elegido.name.replace(/\.ctg$/i, '');
-  const faltan = ['ctb', 'cto'].filter(e => !porNombre.has(`${base}.${e}`.toLowerCase())).map(e => `${base}.${e}`);
-  if (faltan.length) return `El libro está incompleto. En el cuadro, marca también: ${faltan.join(', ')} (pulsa Ctrl+E para marcar todos los archivos del libro).`;
-  const nuevos = { ctg: elegido, ctb: porNombre.get(`${base}.ctb`.toLowerCase()), cto: porNombre.get(`${base}.cto`.toLowerCase()) };
-  await abrir(nuevos, base);
+  const r = await elegirConHermanos({
+    id: 'libro-aperturas', principal: 'ctg', hermanos: ['ctb', 'cto'], descripcion: 'Libro de aperturas de ChessBase (.ctg)',
+    paso2: 'ChessRival también necesita leer los otros archivos del libro, que están en la misma carpeta que «{}.ctg». Se abrirá el cuadro ya dentro de ella: solo tienes que pulsar «Seleccionar carpeta».'
+  });
+  if (!r) return undefined;
+  if (r.error) return r.error;
+  await abrir(r.archivos, r.base);
   if (!estado.libro) return estado.error;
-  handles = nuevos;
-  await guardarAjuste('libro_handles', nuevos);
+  handles = r.archivos;
+  await guardarAjuste('libro_handles', r.archivos);
   return null;
 }
 

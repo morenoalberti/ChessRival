@@ -149,11 +149,14 @@ export const exactas = {
   "Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar el libro de aperturas.": "Your browser does not allow reading files from disk. Use Chrome or Edge to connect the opening book.",
   "Este libro no tiene la posición inicial: no parece un libro de aperturas.": "This book does not have the starting position: it does not look like an opening book.",
   "El archivo .ctb del libro no es válido.": "The book’s .ctb file is not valid.",
-  "En el cuadro que se abre verás los archivos de la base: «Mega Database 2025.cbh» y los otros con su mismo nombre (.cbg, .cbp y .cbt). Márcalos todos (Ctrl+E) y pulsa «Abrir»; el navegador pedirá confirmar el acceso de lectura.": "In the dialog that opens you will see the files of the database: “Mega Database 2025.cbh” and the others with the same name (.cbg, .cbp and .cbt). Select them all (Ctrl+E) and press “Open”; the browser will ask you to confirm read access.",
-  "En el cuadro que se abre verás los archivos del libro: el .ctg y los otros dos con su mismo nombre (.ctb y .cto). Márcalos todos (Ctrl+E) y pulsa «Abrir»; el navegador pedirá confirmar el acceso de lectura.": "In the dialog that opens you will see the files of the book: the .ctg and the other two with the same name (.ctb and .cto). Select them all (Ctrl+E) and press “Open”; the browser will ask you to confirm read access.",
   "Elegir archivos": "Choose files",
-  "No has elegido el archivo .cbh de la base. En el cuadro, marca el .cbh y los otros tres archivos con su mismo nombre (pulsa Ctrl+E para marcarlos todos).": "You did not choose the .cbh file of the database. In the dialog, select the .cbh and the other three files with the same name (press Ctrl+E to select them all).",
-  "No has elegido el archivo .ctg del libro. En el cuadro, marca el .ctg y los otros dos archivos con su mismo nombre (pulsa Ctrl+E para marcarlos todos).": "You did not choose the .ctg file of the book. In the dialog, select the .ctg and the other two files with the same name (press Ctrl+E to select them all).",
+  "En el cuadro que se abre elige el archivo «Mega Database 2025.cbh» y pulsa «Abrir». Después se te pedirá permiso para leer su carpeta, y el navegador pedirá confirmar el acceso de lectura.": "In the dialog that opens, choose the file “Mega Database 2025.cbh” and press “Open”. You will then be asked for permission to read its folder, and the browser will ask you to confirm read access.",
+  "En el cuadro que se abre elige el archivo del libro (por ejemplo «PowerBook2025.ctg») y pulsa «Abrir». Después se te pedirá permiso para leer su carpeta, y el navegador pedirá confirmar el acceso de lectura.": "In the dialog that opens, choose the book file (for example “PowerBook2025.ctg”) and press “Open”. You will then be asked for permission to read its folder, and the browser will ask you to confirm read access.",
+  "Elegir archivo": "Choose file",
+  "Un paso más": "One more step",
+  "Dar permiso": "Grant permission",
+  "Tu navegador no permite leer archivos del disco. Usa Chrome o Edge.": "Your browser does not allow reading files from disk. Use Chrome or Edge.",
+  "El navegador no permite elegir esa carpeta (por ejemplo, Documentos, Descargas o el escritorio). Mueve la base a otra carpeta e inténtalo de nuevo.": "The browser does not allow choosing that folder (for example Documents, Downloads or the desktop). Move the database to another folder and try again.",
 };
 
 export const plantillas = {
@@ -205,7 +208,9 @@ export const plantillas = {
   "El libro está incompleto. No encuentro el archivo .{}.": "The book is incomplete. I cannot find the .{} file.",
   "El libro está incompleto. No encuentro: {}": "The book is incomplete. I cannot find: {}",
   "No se pudo abrir el libro: {}": "Could not open the book: {}",
-  'La base está incompleta. En el cuadro, marca también: {} (pulsa Ctrl+E para marcar todos los archivos de la base).': 'The database is incomplete. In the dialog, also select: {} (press Ctrl+E to select all the database files).',
-  'El libro está incompleto. En el cuadro, marca también: {} (pulsa Ctrl+E para marcar todos los archivos del libro).': 'The book is incomplete. In the dialog, also select: {} (press Ctrl+E to select all the book files).',
   'El navegador no ha podido abrir el cuadro de archivos: {}': 'The browser could not open the file dialog: {}',
+  "ChessRival también necesita leer los otros archivos de la base, que están en la misma carpeta que «{}.cbh». Se abrirá el cuadro ya dentro de ella: solo tienes que pulsar «Seleccionar carpeta».": "ChessRival also needs to read the other files of the database, which are in the same folder as “{}.cbh”. The dialog will open already inside it: you only have to press “Select folder”.",
+  "ChessRival también necesita leer los otros archivos del libro, que están en la misma carpeta que «{}.ctg». Se abrirá el cuadro ya dentro de ella: solo tienes que pulsar «Seleccionar carpeta».": "ChessRival also needs to read the other files of the book, which are in the same folder as “{}.ctg”. The dialog will open already inside it: you only have to press “Select folder”.",
+  "Esa no es la carpeta de «{}». Elige la carpeta que contiene el archivo.": "That is not the folder of “{}”. Choose the folder that contains the file.",
+  "Faltan archivos al lado de «{}»: {}.": "Files are missing next to “{}”: {}.",
 };
