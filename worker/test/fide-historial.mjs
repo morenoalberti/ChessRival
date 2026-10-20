@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { datosDelHistorial, completarConHistorial } from '../../js/fide-historial-datos.js';
+import { datosDelHistorial, completarConHistorial, tarjetaTrayectoria } from '../../js/fide-historial-datos.js';
 
 const H = [
   { fecha: '2022-01', standard: 2400, rapid: null, blitz: 2300 },
@@ -30,6 +30,15 @@ test('Solo se completan los bloques sin resultados de la FIDE', () => {
   const completo = { titulo: 'Standard', elo: '2490', blancas: { total: 10 }, negras: { total: 12 } };
   const parcial = { titulo: 'Standard', elo: '2490', blancas: null, negras: null };
   const r = completarConHistorial([completo, parcial], H);
-  assert.equal(r[0].extras, undefined);
-  assert.equal(r[1].extras.length, 2);
+  assert.equal(r[0].titulo, 'Trayectoria');                     // la tarjeta de la trayectoria se añade al principio
+  assert.equal(r[1].extras, undefined);
+  assert.equal(r[2].extras.length, 2);
+  assert.equal(completarConHistorial([completo], H).length, 1);   // con resultados completos no hace falta
+});
+
+test('La trayectoria dice desde cuándo tiene Elo, su mejor Elo y su ritmo más fuerte', () => {
+  const bloques = [{ titulo: 'Standard', elo: '2490' }, { titulo: 'Rapid', elo: '2410' }, { titulo: 'Blitz', elo: '2290' }];
+  const t = tarjetaTrayectoria(bloques, H);
+  assert.deepEqual(t.extras.map(e => e.valor), ['2022', '2500 · Standard 2024', 'Standard 2490']);
+  assert.equal(tarjetaTrayectoria(bloques, []), null);
 });

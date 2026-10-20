@@ -23,7 +23,25 @@ export function datosDelHistorial(titulo, historial) {
   return extras;
 }
 
-/** Añade a cada bloque sin resultados («blancas» o «negras» nulos) los datos del historial. */
+/** Una tarjeta más, «Trayectoria», con lo que se sabe de toda su carrera: desde cuándo tiene Elo, su mejor Elo y su ritmo más fuerte. */
+export function tarjetaTrayectoria(bloques, historial) {
+  const puntos = (historial ?? []).filter(p => p && /^\d{4}-\d{2}$/.test(p.fecha));
+  if (puntos.length < 2) return null;
+  const extras = [{ etiqueta: 'En la lista desde', valor: puntos[0].fecha.slice(0, 4) }];
+  let mejor = null;
+  for (const [titulo, ritmo] of Object.entries(RITMOS)) {
+    for (const p of puntos) if (p[ritmo] > (mejor?.elo ?? 0)) mejor = { elo: p[ritmo], titulo, anio: p.fecha.slice(0, 4) };
+  }
+  if (mejor) extras.push({ etiqueta: 'Mejor ELO', valor: `${mejor.elo} · ${mejor.titulo} ${mejor.anio}` });
+  const fuerte = bloques.filter(b => RITMOS[b.titulo] && Number(b.elo) > 0).sort((x, y) => Number(y.elo) - Number(x.elo))[0];
+  if (fuerte) extras.push({ etiqueta: 'Ritmo más fuerte', valor: `${fuerte.titulo} ${fuerte.elo}` });
+  return { titulo: 'Trayectoria', elo: '', blancas: null, negras: null, extras };
+}
+
+/** Añade a cada bloque sin resultados («blancas» o «negras» nulos) los datos del historial, y la tarjeta de la trayectoria al principio. */
 export function completarConHistorial(bloques, historial) {
-  return bloques.map(b => (b.blancas && b.negras) ? b : { ...b, extras: datosDelHistorial(b.titulo, historial) });
+  const completados = bloques.map(b => (b.blancas && b.negras) ? b : { ...b, extras: datosDelHistorial(b.titulo, historial) });
+  if (!bloques.some(b => !(b.blancas && b.negras))) return completados;
+  const trayectoria = tarjetaTrayectoria(bloques, historial);
+  return trayectoria ? [trayectoria, ...completados] : completados;
 }

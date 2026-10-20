@@ -12,8 +12,7 @@ function barra({ total, victorias, tablas, derrotas }) {
 /** Sin los resultados de la FIDE: el máximo y la variación del último año (del historial del Elo); si tampoco hay historial, un aviso. */
 function extrasHtml(b) {
   if (!b.extras?.length) return '<p class="fide-sin-resultados suave">Resultados no disponibles ahora</p>';
-  return `<div class="fide-extras">${b.extras.map(e => `<div class="fide-extra"><span class="suave">${esc(e.etiqueta)}</span><b class="${e.tendencia > 0 ? 'sube' : e.tendencia < 0 ? 'baja' : ''}">${esc(e.valor)}</b></div>`).join('')}</div>
-    <p class="fide-sin-resultados suave">Resultados con blancas y negras: no disponibles ahora</p>`;
+  return `<div class="fide-extras">${b.extras.map(e => `<div class="fide-extra"><span class="suave">${esc(e.etiqueta)}</span><b class="${e.tendencia > 0 ? 'sube' : e.tendencia < 0 ? 'baja' : ''}">${esc(e.valor)}</b></div>`).join('')}</div>`;
 }
 
 /** El HTML de las tarjetas, en el orden preferido (los títulos separados por comas; los que no estén, al final). */
