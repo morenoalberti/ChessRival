@@ -2,7 +2,12 @@ name = "chessrival-api"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
+# El Worker se publica en https://chessrival-api.<tu-subdominio>.workers.dev (el subdominio se registra una vez en el panel de Cloudflare).
+
+workers_dev = true      # https://chessrival-api.chessrival-worker.workers.dev
+preview_urls = false    # sin direcciones de vista previa extra
+
 [vars]
 # Orígenes que pueden usar el servidor, separados por comas. «*» = cualquiera (solo para desarrollo).
-# Al publicar, pon aquí la dirección de tu web de Cloudflare Pages.
+# Al publicar se sustituye con --var (ver «npm run deploy»): solo chessrival.net y www.chessrival.net.
 ORIGENES_PERMITIDOS = "*"
