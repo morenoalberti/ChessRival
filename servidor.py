@@ -5,8 +5,12 @@ que el usuario elija, sin los avisos de permiso del navegador: el servidor abre 
 versión de escritorio), recuerda la ruta y entrega a la página, por trozos, los cuatro archivos de la base (.cbh .cbg .cbp .cbt).
 
 También permite elegir la carpeta de copias con su ruta completa y guardar allí copias JSON sin sobrescribir las existentes.
-Seguridad: solo atiende al propio equipo (127.0.0.1 / ::1) y a páginas de ese mismo origen. La MegaDatabase es de solo lectura;
-las escrituras se limitan a archivos de copia en la carpeta elegida expresamente.
+Seguridad: las funciones del equipo (rutas /local/…) solo atienden al propio equipo (127.0.0.1 / ::1), cuando la página se abre con una
+dirección local (localhost, 127.0.0.1, [::1]) y desde páginas de ese mismo origen. La MegaDatabase es de solo lectura; las escrituras se
+limitan a archivos de copia en la carpeta elegida expresamente.
+
+El mismo servidor sirve también la web publicada (por ejemplo en Render, que indica el puerto en la variable PORT): los archivos de la web
+se entregan a cualquiera, pero las rutas /local/… responden 404 si la petición no es local.
 """
 import http.server
 import json
@@ -15,12 +19,13 @@ import socket
 import threading
 import copias_local
 
-PUERTO = 8765
+PUERTO = int(os.environ.get("PORT") or 8765)
 CARPETA = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(CARPETA, ".mega.json")
 EXTENSIONES = ("cbh", "cbg", "cbp", "cbt")
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 ORIGENES = {f"http://localhost:{PUERTO}", f"http://127.0.0.1:{PUERTO}", f"http://[::1]:{PUERTO}"}
+HOSTS_LOCALES = {"localhost", "127.0.0.1", "[::1]"}
 TROZO = 1 << 20
 _cuadro = threading.Lock()                    # un solo cuadro «Elegir archivo» a la vez
 
@@ -106,15 +111,28 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=CARPETA, **kwargs)
 
+    def _anfitrion_local(self):
+        """True si la página se abrió con una dirección local (no la de una web publicada)."""
+        host = (self.headers.get("Host") or "").strip().lower()
+        if host.startswith("["):
+            host = host.split("]")[0] + "]"
+        else:
+            host = host.split(":")[0]
+        return host in HOSTS_LOCALES
+
     def end_headers(self):
-        self.send_header("Cache-Control", "no-store")
+        # En el equipo se ve siempre la última versión; en la web publicada el navegador revalida (304 si no ha cambiado).
+        self.send_header("Cache-Control", "no-store" if self._anfitrion_local() else "no-cache")
         super().end_headers()
 
     def log_message(self, *args):
         pass
 
-    # Solo el propio equipo y solo páginas de este mismo origen.
+    # Las rutas /local/… solo existen en el propio equipo y solo para páginas de este mismo origen.
     def _permitido(self):
+        if not self._anfitrion_local():
+            self.send_error(404)                         # en la web publicada no hay funciones locales
+            return False
         if self.client_address[0] not in LOOPBACK:
             self.send_error(403, "Solo desde este equipo")
             return False
@@ -132,7 +150,12 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(cuerpo)
 
+    def _es_local(self):
+        return self.path.split("?")[0].startswith("/local/")
+
     def do_GET(self):
+        if not self._es_local():
+            return super().do_GET()                      # los archivos de la web no necesitan permiso
         if not self._permitido():
             return
         if self.path.split("?")[0] == "/local/copias/destino":
@@ -142,6 +165,8 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_HEAD(self):
+        if not self._es_local():
+            return super().do_HEAD()
         if not self._permitido():
             return
         if self.path.split("?")[0].startswith("/local/mega"):
@@ -149,6 +174,8 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def do_POST(self):
+        if not self._es_local():
+            return self.send_error(404)
         if not self._permitido():
             return
         # La cabecera propia obliga a una petición «con permiso previo» que otras webs no pueden hacer.
