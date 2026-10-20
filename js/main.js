@@ -240,7 +240,7 @@ function mostrarBienvenida() {
     <h2>Bienvenido a ChessRival</h2>
     <p class="bienvenida-sub">Prepara tus partidas estudiando a tu rival: cómo abre, dónde falla y qué conviene jugarle.</p>
     <ol class="bienvenida-pasos">
-      <li><b>1</b><div><strong>Busca a tu rival</strong><span>Pega la URL de un torneo (Chess-Results o Info64) o escribe el nombre o el ID FIDE de un jugador en la caja de arriba y pulsa Enter.</span></div></li>
+      <li><b>1</b><div><strong>Busca a tu rival</strong><span>Pega la URL de un torneo (Chess-Results o Info64) para cargar de 1 a 10 jugadores, los que elijas con «Jugadores a cargar», o escribe el nombre o el ID FIDE de un jugador en la caja de arriba y pulsa Enter.</span></div></li>
       <li><b>2</b><div><strong>Importa sus partidas</strong><span>Abre su ficha con doble clic en su tarjeta y pulsa «Importar partidas»: con archivos PGN o desde tu MegaDatabase.</span></div></li>
       <li><b>3</b><div><strong>Analiza y prepara</strong><span>Stockfish revisa sus partidas y te dice cómo juega y qué te conviene jugarle.</span></div></li>
     </ol>

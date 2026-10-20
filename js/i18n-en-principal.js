@@ -161,7 +161,7 @@ export const exactas = {
   "Bienvenido a ChessRival": "Welcome to ChessRival",
   "Prepara tus partidas estudiando a tu rival: cómo abre, dónde falla y qué conviene jugarle.": "Prepare your games by studying your opponent: how they open, where they fail and what to play against them.",
   "Busca a tu rival": "Find your opponent",
-  "Pega la URL de un torneo (Chess-Results o Info64) o escribe el nombre o el ID FIDE de un jugador en la caja de arriba y pulsa Enter.": "Paste a tournament URL (Chess-Results or Info64) or type a player’s name or FIDE ID in the box above and press Enter.",
+  "Pega la URL de un torneo (Chess-Results o Info64) para cargar de 1 a 10 jugadores, los que elijas con «Jugadores a cargar», o escribe el nombre o el ID FIDE de un jugador en la caja de arriba y pulsa Enter.": "Paste a tournament URL (Chess-Results or Info64) to load from 1 to 10 players, as many as you choose with “Players to load”, or type a player’s name or FIDE ID in the box above and press Enter.",
   "Importa sus partidas": "Import their games",
   "Abre su ficha con doble clic en su tarjeta y pulsa «Importar partidas»: con archivos PGN o desde tu MegaDatabase.": "Open their profile by double-clicking their card and press “Import games”: with PGN files or from your MegaDatabase.",
   "Analiza y prepara": "Analyse and prepare",
