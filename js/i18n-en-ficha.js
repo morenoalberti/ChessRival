@@ -238,6 +238,7 @@ export const exactas = {
   "Sin ejercicios todavía": "No exercises yet",
   "Importa y analiza sus partidas: de sus errores graves saldrán ejercicios para entrenar.": "Import and analyse their games: their serious mistakes will become exercises to train with.",
   "Stockfish convierte sus errores graves en ejercicios. Analiza sus partidas para generarlos.": "Stockfish turns their serious mistakes into exercises. Analyse their games to generate them.",
+  'Ahora mismo no se pueden cargar las estadísticas de la FIDE.': 'The FIDE statistics cannot be loaded right now.',
   'Carpeta de destino': 'Destination folder',
   'Elegir carpeta de destino': 'Choose destination folder',
   'Restaurar copia seleccionada': 'Restore selected backup',

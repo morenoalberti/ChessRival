@@ -34,10 +34,16 @@ const json = (datos, cors, { status = 200, ...cabeceras } = {}) =>
   new Response(JSON.stringify(datos), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', ...cors, ...cabeceras } });
 
 /** Descarga una página y la decodifica con la codificación que declara. */
-async function descargarHtml(url, cabeceras = {}) {
+/** La misma dirección con un parámetro nuevo: la FIDE guarda en caché, a veces, una respuesta vacía y la sirve una y otra vez para esa dirección exacta. */
+const REINTENTOS_FIDE = 2;
+const pausa = (ms) => new Promise(r => setTimeout(r, ms));
+const sinCache = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
+
+async function descargarHtml(url, cabeceras = {}, intento = 0) {
   const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'es,en;q=0.8', ...cabeceras }, redirect: 'follow' });
   if (!r.ok) throw new ErrorUsuario(`${new URL(url).hostname} respondió con el error ${r.status}.`, 502);
   const bytes = await r.arrayBuffer();
+  if (bytes.byteLength <= 8 && intento < REINTENTOS_FIDE) { await pausa(700 * (intento + 1)); return descargarHtml(sinCache(url), cabeceras, intento + 1); }   // vacía (solo el BOM): se vuelve a pedir
   const tipo = r.headers.get('content-type') ?? '';
   const charset = /charset=([\w-]+)/i.exec(tipo)?.[1]
     ?? /charset=["']?([\w-]+)/i.exec(new TextDecoder('latin1').decode(bytes.slice(0, 2048)))?.[1] ?? 'utf-8';
@@ -316,10 +322,11 @@ async function fichaFide(id) {
 
 const CAB_AJAX = (id, pagina) => ({ 'Referer': `https://ratings.fide.com/profile/${id}/${pagina}`, 'X-Requested-With': 'XMLHttpRequest' });
 
-async function jsonFide(url, cabeceras) {
+async function jsonFide(url, cabeceras, intento = 0) {
   const r = await fetch(url, { headers: { 'User-Agent': UA, ...cabeceras } });
   if (!r.ok) throw new ErrorUsuario(`La FIDE respondió con el error ${r.status}.`, 502);
   const t = (await r.text()).replace(/^\uFEFF/, '').trim();
+  if (!t && intento < REINTENTOS_FIDE) { await pausa(700 * (intento + 1)); return jsonFide(sinCache(url), cabeceras, intento + 1); }   // vacía: se vuelve a pedir
   return t ? JSON.parse(t) : null;
 }
 

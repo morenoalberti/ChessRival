@@ -131,31 +131,49 @@ async function cargarFoto() {
 
 // ---------- Datos de la FIDE: título, edad, resultados y ELO ----------
 
+/** Pide a la FIDE las estadísticas y el historial; su web a veces devuelve la respuesta vacía, así que se reintenta un par de veces. */
+async function pedirDatosFide(id) {
+  let est = null, his = null;
+  for (let intento = 0; intento < 3; intento++) {
+    if (!est?.bloques?.length) est = await fuentes.estadisticasFide(id).catch(() => null);
+    if (!(his?.length >= 2)) his = await fuentes.historialElo(id).catch(() => null);
+    if (est?.bloques?.length && his?.length >= 2) break;
+    if (intento < 2) await new Promise(r => setTimeout(r, 1500));
+  }
+  return { estadisticas: est?.bloques?.length ? est : null, historial: his?.length >= 2 ? his : null };
+}
+
 async function cargarDatosFide() {
   if (!jugador.fideId) return;
   const panel = $('fidePanel');
   panel.innerHTML = htmlEsqueletoFide();
   panel.hidden = false;
 
-  const [estadisticas, historial] = await Promise.allSettled([fuentes.estadisticasFide(jugador.fideId), fuentes.historialElo(jugador.fideId)]);
+  // Lo último que se pudo leer de la FIDE queda guardado: si su web falla, las estadísticas salen igualmente.
+  const clave = `fide_datos_${jugador.fideId}`;
+  const nuevos = await pedirDatosFide(jugador.fideId);
+  const guardados = await db.leerAjuste(clave, null).catch(() => null);
+  const estadisticas = nuevos.estadisticas ?? guardados?.estadisticas ?? null;
+  const historial = nuevos.historial ?? guardados?.historial ?? null;
+  if (nuevos.estadisticas || nuevos.historial) db.guardarAjuste(clave, { estadisticas, historial, fecha: Date.now() }).catch(() => {});
 
-  if (estadisticas.status === 'fulfilled' && estadisticas.value.bloques.length) {
-    const ficha = estadisticas.value;
-    tituloFide = ficha.titulo ? ficha.titulo.replace(/ · /g, '/') : tituloFide;
+  if (estadisticas) {
+    tituloFide = estadisticas.titulo ? estadisticas.titulo.replace(/ · /g, '/') : tituloFide;
     jugador.fideTitle = tituloFide;
     pintarNombre();
-    pintarDatos(ficha);
+    pintarDatos(estadisticas);
     pintarAperturas(visibles());
-    panel.innerHTML = htmlTarjetasFide(ficha.bloques, await db.leerAjuste('ficha_orden_fide', ''));
-    $('ojoBtn').hidden = false;
+    panel.innerHTML = htmlTarjetasFide(estadisticas.bloques, await db.leerAjuste('ficha_orden_fide', ''));
   } else {
-    panel.hidden = true;
+    // Sin datos de la FIDE ahora ni guardados: el panel y el ojo se quedan, con el aviso y un botón para volver a intentarlo.
+    panel.innerHTML = `<div class="fide-sin-datos"><span>Ahora mismo no se pueden cargar las estadísticas de la FIDE.</span><button type="button" class="btn btn-secundario btn-chico" data-reintentar-fide>${contenidoBoton('cambiar', 'Reintentar')}</button></div>`;
+    panel.querySelector('[data-reintentar-fide]').addEventListener('click', cargarDatosFide);
   }
+  $('ojoBtn').hidden = false;
 
-  if (historial.status === 'fulfilled' && historial.value.length >= 2) {
+  if (historial) {
     $('eloTarjeta').hidden = false;
-    montarGraficoElo($('eloGrafico'), historial.value);
-    $('ojoBtn').hidden = false;
+    montarGraficoElo($('eloGrafico'), historial);
   }
   if (await db.leerAjuste('ficha_elo_arriba', false)) $('estadisticasCuerpo').classList.add('elo-arriba');
 }
