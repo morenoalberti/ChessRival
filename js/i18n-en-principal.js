@@ -159,7 +159,7 @@ export const exactas = {
   "Se abrirá un cuadro para elegir la carpeta donde guardas el libro de aperturas de ChessBase (por ejemplo, «PowerBook 2025»): la que contiene el archivo «.ctg». Entra en esa carpeta y pulsa «Seleccionar carpeta». ChessRival encontrará solo los archivos que necesita.": "A dialog will open to choose the folder where you keep the ChessBase opening book (for example, “PowerBook 2025”): the one containing the “.ctg” file. Go into that folder and press “Select folder”. ChessRival will find the files it needs on its own.",
   "Elegir carpeta": "Choose folder",
   "Bienvenido a ChessRival": "Welcome to ChessRival",
-  "Prepara tus partidas estudiando a tu rival: cómo abre, dónde falla y qué conviene jugarle.": "Prepare your games by studying your opponent: how they open, where they fail and what to play against them.",
+  "Prepárate contra tu rival: sabiendo qué juega y qué debilidades tiene.": "Get ready against your opponent: knowing what they play and what weaknesses they have.",
   "Busca a tu rival": "Find your opponent",
   "Pega la URL de un torneo (Chess-Results o Info64) para cargar de 1 a 10 jugadores, los que elijas con «Jugadores a cargar», o escribe el nombre o el ID FIDE de un jugador en la caja de arriba y pulsa Enter.": "Paste a tournament URL (Chess-Results or Info64) to load from 1 to 10 players, as many as you choose with “Players to load”, or type a player’s name or FIDE ID in the box above and press Enter.",
   "Importa sus partidas": "Import their games",
