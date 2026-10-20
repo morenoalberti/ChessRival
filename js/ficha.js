@@ -1,5 +1,6 @@
 // Ficha del jugador (equivale a FichaJugadorWindow.xaml.cs): cabecera, estadísticas de la FIDE, gráfico del ELO y pestañas.
 import { pintarVacios } from './ficha-vacios.js';
+import { completarConHistorial } from './fide-historial-datos.js';
 import { LOCALE } from './i18n.js';
 import { mostrarCargando, quitarCargando } from './cargando.js';
 import * as db from './db.js';
@@ -165,7 +166,7 @@ async function cargarDatosFide() {
     pintarNombre();
     pintarDatos(estadisticas);
     pintarAperturas(visibles());
-    panel.innerHTML = htmlTarjetasFide(estadisticas.bloques, await db.leerAjuste('ficha_orden_fide', ''));
+    panel.innerHTML = htmlTarjetasFide(completarConHistorial(estadisticas.bloques, historial), await db.leerAjuste('ficha_orden_fide', ''));
   } else {
     // Sin datos de la FIDE ahora ni guardados: el panel y el ojo se quedan, con el aviso y un botón para volver a intentarlo.
     panel.innerHTML = `<div class="fide-sin-datos"><span>Ahora mismo no se pueden cargar las estadísticas de la FIDE.</span><button type="button" class="btn btn-secundario btn-chico" data-reintentar-fide>${contenidoBoton('cambiar', 'Reintentar')}</button></div>`;
