@@ -669,9 +669,9 @@ el.megaBtn.addEventListener('click', async () => {
   try {
     if (mega.estado.pendiente) { if (!await mega.pedirPermiso()) await informar('MegaDatabase', 'No se ha dado permiso para leer los archivos de la base.'); }
     else {
-      if (!mega.estado.base) {
-        await informar('Elegir la MegaDatabase', 'En el cuadro que se abre elige el archivo «Mega Database 2025.cbh» y pulsa «Abrir». '
-          + 'Después se te pedirá permiso para leer su carpeta, y el navegador pedirá confirmar el acceso de lectura.', 'Elegir archivo');
+      if (!mega.estado.base && !mega.estado.local) {
+        await informar('Elegir la MegaDatabase', 'Se abrirá un cuadro para elegir la carpeta donde guardas la MegaDatabase de ChessBase: la que contiene el archivo «Mega Database 2025.cbh». '
+          + 'Entra en esa carpeta y pulsa «Seleccionar carpeta». ChessRival encontrará solo los archivos que necesita.', 'Elegir carpeta');
       }
       el.megaText.textContent = 'Comprobando la base…';
       const error = await mega.elegir();
@@ -686,8 +686,8 @@ el.libroBtn.addEventListener('click', async () => {
     if (libro.estado.pendiente) { if (!await libro.pedirPermiso()) await informar('Libro de aperturas', 'No se ha dado permiso para leer los archivos del libro.'); }
     else {
       if (!libro.estado.libro && !libro.estado.local) {
-        await informar('Elegir el libro de aperturas', 'En el cuadro que se abre elige el archivo del libro (por ejemplo «PowerBook2025.ctg») y pulsa «Abrir». '
-          + 'Después se te pedirá permiso para leer su carpeta, y el navegador pedirá confirmar el acceso de lectura.', 'Elegir archivo');
+        await informar('Elegir el libro de aperturas', 'Se abrirá un cuadro para elegir la carpeta donde guardas el libro de aperturas de ChessBase (por ejemplo, «PowerBook 2025»): la que contiene el archivo «.ctg». '
+          + 'Entra en esa carpeta y pulsa «Seleccionar carpeta». ChessRival encontrará solo los archivos que necesita.', 'Elegir carpeta');
       }
       el.libroText.textContent = 'Comprobando el libro…';
       const error = await libro.elegir();

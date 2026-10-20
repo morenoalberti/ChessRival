@@ -2,13 +2,13 @@
 // de un jugador. Hay dos formas de leerla:
 //  · Con el servidor local (servidor.py, el normal con iniciar.bat): el servidor abre el cuadro «Elegir archivo .cbh» de Windows, recuerda la ruta
 //    y entrega a la página los cuatro archivos de la base por trozos, sin ningún aviso del navegador (igual que la versión de escritorio).
-//  · Sin él (la web publicada): el selector de archivos del navegador; los permisos (FileSystemHandle) se guardan y el navegador los pide confirmar.
+//  · Sin él (la web publicada): el selector de carpetas del navegador; los permisos (FileSystemHandle) se guardan y el navegador los pide confirmar.
 import { leerAjuste, guardarAjuste } from './db.js';
 import { ChessBaseDatabase, ErrorBase } from './chessbase.js';
 import { claveJugador, guardarPartidas, refrescarTarjetasDe } from './db-partidas.js';
 import { cargarLibroAperturas } from './aperturas.js';
 import { detectarRitmo } from './pgn.js';
-import { elegirConHermanos } from './elegir-archivos.js';
+import { elegirCarpetaDe } from './elegir-archivos.js';
 
 export const MAX_POR_JUGADOR = 300;          // las más recientes
 
@@ -18,7 +18,7 @@ export const estado = { base: null, error: null, pendiente: false, nombre: '', l
 let handles = null;
 let cola = Promise.resolve();                  // un solo recorrido de la base a la vez
 
-export const disponible = () => estado.local || 'showOpenFilePicker' in window;
+export const disponible = () => estado.local || 'showDirectoryPicker' in window;
 
 // ---------- Servidor local ----------
 
@@ -107,10 +107,7 @@ export async function elegir() {
     }
     // el servidor no tiene interfaz gráfica: se usa el selector del navegador
   }
-  const r = await elegirConHermanos({
-    id: 'megadatabase', principal: 'cbh', hermanos: ['cbg', 'cbp', 'cbt'], descripcion: 'Base de ChessBase (.cbh)',
-    paso2: 'ChessRival también necesita leer los otros archivos de la base, que están en la misma carpeta que «{}.cbh». Se abrirá el cuadro ya dentro de ella: solo tienes que pulsar «Seleccionar carpeta».'
-  });
+  const r = await elegirCarpetaDe({ id: 'megadatabase', principal: 'cbh', extensiones: ['cbh', 'cbg', 'cbp', 'cbt'], nombre: 'la MegaDatabase' });
   if (!r) return undefined;
   if (r.error) return r.error;
   const completos = [r.archivos.cbh, r.archivos.cbg, r.archivos.cbp, r.archivos.cbt];

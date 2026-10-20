@@ -1,46 +1,50 @@
-// Elegir un archivo y encontrar sus «hermanos» (los que tienen el mismo nombre y otra extensión), como hace el cuadro de Windows del programa de escritorio.
-// El navegador solo deja leer lo que el usuario elige expresamente: por eso primero se elige el archivo principal (el único que se ve en el cuadro) y
-// después se da permiso para su carpeta (el cuadro se abre ya dentro de ella; basta pulsar «Seleccionar carpeta»), de donde salen los demás.
-import { informar } from './dialogos.js';
+// Conectar una base o un libro de ChessBase eligiendo UNA carpeta. Es lo más sencillo que permite el navegador: no deja leer lo que el usuario no ha
+// elegido expresamente ni encontrar los archivos «hermanos» de uno elegido (el .cbg, .cbp y .cbt de un .cbh), pero con una carpeta elegida sí se
+// pueden leer todos sus archivos. El usuario solo tiene que llegar a la carpeta y pulsar «Seleccionar carpeta»: aquí se encuentra el archivo que
+// importa, aunque esté en una subcarpeta, y se cogen los demás por su nombre.
 
-/** @param {{ id, principal, hermanos, descripcion, paso2 }} o
- *  principal: extensión del archivo que se elige («cbh»); hermanos: las otras extensiones obligatorias; paso2: texto que explica el segundo cuadro.
- *  Devuelve { archivos: { cbh: handle, … }, base } o { error } o undefined si el usuario cancela. */
-export async function elegirConHermanos({ id, principal, hermanos, descripcion, paso2 }) {
-  if (!('showOpenFilePicker' in window) || !('showDirectoryPicker' in window)) return { error: 'Tu navegador no permite leer archivos del disco. Usa Chrome o Edge.' };
+const PROFUNDIDAD = 2;     // cuántos niveles de subcarpetas se miran por si el usuario elige una carpeta más arriba
 
-  // 1) El archivo principal: el cuadro solo enseña los de esa extensión.
-  let archivo;
-  try {
-    [archivo] = await showOpenFilePicker({ id, multiple: false, excludeAcceptAllOption: true, types: [{ description: descripcion, accept: { 'application/octet-stream': [`.${principal}`] } }] });
-  } catch (ex) {
-    if (ex?.name === 'AbortError') return undefined;
-    return { error: `El navegador no ha podido abrir el cuadro de archivos: ${ex.message}` };
+async function buscar(carpeta, principal, nivel, hallados) {
+  const subcarpetas = [];
+  for await (const [nombre, h] of carpeta.entries()) {
+    if (h.kind === 'file' && nombre.toLowerCase().endsWith(`.${principal}`)) hallados.push({ carpeta, archivo: h });
+    else if (h.kind === 'directory' && nivel < PROFUNDIDAD) subcarpetas.push(h);
   }
-  const base = archivo.name.replace(new RegExp(`\\.${principal}$`, 'i'), '');
+  if (hallados.length) return;                 // en cuanto una carpeta tiene el archivo, no se baja más
+  for (const sub of subcarpetas) { await buscar(sub, principal, nivel + 1, hallados); if (hallados.length) return; }
+}
 
-  // 2) Permiso para su carpeta: un clic en un aviso (el navegador exige un gesto del usuario para abrir cada cuadro).
-  await informar('Un paso más', paso2.replace('{}', base), 'Dar permiso');
+/** @param {{ id, principal, extensiones, nombre }} o  principal: extensión del archivo que da el nombre («cbh»); extensiones: todas las necesarias;
+ *  nombre: cómo se llama lo que se busca («la base», «el libro»). Devuelve { archivos: { cbh: handle, … }, base } o { error } o undefined si se cancela. */
+export async function elegirCarpetaDe({ id, principal, extensiones, nombre }) {
+  if (!('showDirectoryPicker' in window)) return { error: 'Tu navegador no permite leer archivos del disco. Usa Chrome o Edge.' };
   let carpeta;
-  try { carpeta = await showDirectoryPicker({ id: `${id}-carpeta`, mode: 'read', startIn: archivo }); }
+  try { carpeta = await showDirectoryPicker({ id, mode: 'read' }); }
   catch (ex) {
     if (ex?.name === 'AbortError') return undefined;
-    return { error: 'El navegador no permite elegir esa carpeta (por ejemplo, Documentos, Descargas o el escritorio). Mueve la base a otra carpeta e inténtalo de nuevo.' };
+    return { error: `El navegador no permite elegir esa carpeta (por ejemplo, Documentos, Descargas o el escritorio). Elige la carpeta donde guardas ${nombre}.` };
   }
-  // La carpeta tiene que ser la del archivo elegido.
-  let dentro = null;
-  try { dentro = await carpeta.resolve(archivo); } catch { /* sin resolver */ }
-  if (!dentro) return { error: `Esa no es la carpeta de «${archivo.name}». Elige la carpeta que contiene el archivo.` };
 
-  // 3) Los demás archivos de la base, que están al lado.
-  const todos = new Map();
-  for await (const [nombre, h] of carpeta.entries()) if (h.kind === 'file') todos.set(nombre.toLowerCase(), h);
-  const archivos = { [principal]: archivo };
+  const hallados = [];
+  await buscar(carpeta, principal, 0, hallados);
+  if (!hallados.length) return { error: `En la carpeta «${carpeta.name}» no hay ningún archivo .${principal}. Elige la carpeta donde guardas ${nombre}.` };
+
+  // Si hay varios (varias bases en la misma carpeta), el más grande: la MegaDatabase.
+  let elegido = hallados[0];
+  if (hallados.length > 1) {
+    const tamaños = await Promise.all(hallados.map(async h => (await h.archivo.getFile()).size));
+    elegido = hallados[tamaños.indexOf(Math.max(...tamaños))];
+  }
+  const base = elegido.archivo.name.slice(0, -(principal.length + 1));
+  const vecinos = new Map();
+  for await (const [n, h] of elegido.carpeta.entries()) if (h.kind === 'file') vecinos.set(n.toLowerCase(), h);
+  const archivos = {};
   const faltan = [];
-  for (const ext of hermanos) {
-    const h = todos.get(`${base}.${ext}`.toLowerCase());
+  for (const ext of extensiones) {
+    const h = vecinos.get(`${base}.${ext}`.toLowerCase());
     if (h) archivos[ext] = h; else faltan.push(`${base}.${ext}`);
   }
-  if (faltan.length) return { error: `Faltan archivos al lado de «${archivo.name}»: ${faltan.join(', ')}.` };
+  if (faltan.length) return { error: `Falta algún archivo al lado de «${base}.${principal}»: ${faltan.join(', ')}.` };
   return { archivos, base };
 }

@@ -1,10 +1,10 @@
 // El libro de aperturas del usuario (Services/LibroService.cs): el Power Book de ChessBase o cualquier libro CTG. El programa no lo trae: lo elige el
 // usuario, igual que la MegaDatabase, y hay dos formas de leerlo:
 //  · Con el servidor local (servidor.py): abre el cuadro «Elegir archivo .ctg» de Windows y entrega los tres archivos del libro por trozos.
-//  · Sin él (la web publicada): el selector de archivos del navegador; los permisos se guardan y el navegador los pide confirmar.
+//  · Sin él (la web publicada): el selector de carpetas del navegador; los permisos se guardan y el navegador los pide confirmar.
 import { leerAjuste, guardarAjuste } from './db.js';
 import { LibroCtg, ErrorLibro } from './libro-ctg.js';
-import { elegirConHermanos } from './elegir-archivos.js';
+import { elegirCarpetaDe } from './elegir-archivos.js';
 
 const FEN_INICIAL = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -104,10 +104,7 @@ export async function elegir() {
       return estado.libro ? null : estado.error;
     }
   }
-  const r = await elegirConHermanos({
-    id: 'libro-aperturas', principal: 'ctg', hermanos: ['ctb', 'cto'], descripcion: 'Libro de aperturas de ChessBase (.ctg)',
-    paso2: 'ChessRival también necesita leer los otros archivos del libro, que están en la misma carpeta que «{}.ctg». Se abrirá el cuadro ya dentro de ella: solo tienes que pulsar «Seleccionar carpeta».'
-  });
+  const r = await elegirCarpetaDe({ id: 'libro-aperturas', principal: 'ctg', extensiones: ['ctg', 'ctb', 'cto'], nombre: 'el libro de aperturas' });
   if (!r) return undefined;
   if (r.error) return r.error;
   await abrir(r.archivos, r.base);

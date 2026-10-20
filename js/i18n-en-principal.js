@@ -150,13 +150,14 @@ export const exactas = {
   "Este libro no tiene la posición inicial: no parece un libro de aperturas.": "This book does not have the starting position: it does not look like an opening book.",
   "El archivo .ctb del libro no es válido.": "The book’s .ctb file is not valid.",
   "Elegir archivos": "Choose files",
-  "En el cuadro que se abre elige el archivo «Mega Database 2025.cbh» y pulsa «Abrir». Después se te pedirá permiso para leer su carpeta, y el navegador pedirá confirmar el acceso de lectura.": "In the dialog that opens, choose the file “Mega Database 2025.cbh” and press “Open”. You will then be asked for permission to read its folder, and the browser will ask you to confirm read access.",
-  "En el cuadro que se abre elige el archivo del libro (por ejemplo «PowerBook2025.ctg») y pulsa «Abrir». Después se te pedirá permiso para leer su carpeta, y el navegador pedirá confirmar el acceso de lectura.": "In the dialog that opens, choose the book file (for example “PowerBook2025.ctg”) and press “Open”. You will then be asked for permission to read its folder, and the browser will ask you to confirm read access.",
   "Elegir archivo": "Choose file",
   "Un paso más": "One more step",
   "Dar permiso": "Grant permission",
   "Tu navegador no permite leer archivos del disco. Usa Chrome o Edge.": "Your browser does not allow reading files from disk. Use Chrome or Edge.",
-  "El navegador no permite elegir esa carpeta (por ejemplo, Documentos, Descargas o el escritorio). Mueve la base a otra carpeta e inténtalo de nuevo.": "The browser does not allow choosing that folder (for example Documents, Downloads or the desktop). Move the database to another folder and try again.",
+  "Tu navegador no permite leer archivos del disco. Usa Chrome o Edge.": "Your browser does not allow reading files from disk. Use Chrome or Edge.",
+  "Se abrirá un cuadro para elegir la carpeta donde guardas la MegaDatabase de ChessBase: la que contiene el archivo «Mega Database 2025.cbh». Entra en esa carpeta y pulsa «Seleccionar carpeta». ChessRival encontrará solo los archivos que necesita.": "A dialog will open to choose the folder where you keep the ChessBase MegaDatabase: the one containing the file “Mega Database 2025.cbh”. Go into that folder and press “Select folder”. ChessRival will find the files it needs on its own.",
+  "Se abrirá un cuadro para elegir la carpeta donde guardas el libro de aperturas de ChessBase (por ejemplo, «PowerBook 2025»): la que contiene el archivo «.ctg». Entra en esa carpeta y pulsa «Seleccionar carpeta». ChessRival encontrará solo los archivos que necesita.": "A dialog will open to choose the folder where you keep the ChessBase opening book (for example, “PowerBook 2025”): the one containing the “.ctg” file. Go into that folder and press “Select folder”. ChessRival will find the files it needs on its own.",
+  "Elegir carpeta": "Choose folder",
 };
 
 export const plantillas = {
@@ -209,8 +210,7 @@ export const plantillas = {
   "El libro está incompleto. No encuentro: {}": "The book is incomplete. I cannot find: {}",
   "No se pudo abrir el libro: {}": "Could not open the book: {}",
   'El navegador no ha podido abrir el cuadro de archivos: {}': 'The browser could not open the file dialog: {}',
-  "ChessRival también necesita leer los otros archivos de la base, que están en la misma carpeta que «{}.cbh». Se abrirá el cuadro ya dentro de ella: solo tienes que pulsar «Seleccionar carpeta».": "ChessRival also needs to read the other files of the database, which are in the same folder as “{}.cbh”. The dialog will open already inside it: you only have to press “Select folder”.",
-  "ChessRival también necesita leer los otros archivos del libro, que están en la misma carpeta que «{}.ctg». Se abrirá el cuadro ya dentro de ella: solo tienes que pulsar «Seleccionar carpeta».": "ChessRival also needs to read the other files of the book, which are in the same folder as “{}.ctg”. The dialog will open already inside it: you only have to press “Select folder”.",
-  "Esa no es la carpeta de «{}». Elige la carpeta que contiene el archivo.": "That is not the folder of “{}”. Choose the folder that contains the file.",
-  "Faltan archivos al lado de «{}»: {}.": "Files are missing next to “{}”: {}.",
+  "El navegador no permite elegir esa carpeta (por ejemplo, Documentos, Descargas o el escritorio). Elige la carpeta donde guardas {}.": "The browser does not allow choosing that folder (for example Documents, Downloads or the desktop). Choose the folder where you keep {}.",
+  "En la carpeta «{}» no hay ningún archivo .{}. Elige la carpeta donde guardas {}.": "In the folder “{}” there is no .{} file. Choose the folder where you keep {}.",
+  "Falta algún archivo al lado de «{}.{}»: {}.": "A file is missing next to “{}.{}”: {}.",
 };
