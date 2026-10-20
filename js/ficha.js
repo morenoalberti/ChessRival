@@ -531,7 +531,7 @@ function pintarPreparacion(vis) {
   estudioUi.plan(informeEstudio);
 
   const r = calcularDebilidades(vis, jugadasAnalizadas);
-  $('prepDebilidades').innerHTML = '<h3 class="prep-titulo">Puntos débiles para aprovechar</h3>' + (!r || !r.debilidades.length
+  $('prepDebilidades').innerHTML = '<h3 class="prep-titulo"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 22 20H2L12 3Zm0 6.5V14m0 3h.01"/></svg>Puntos débiles para aprovechar</h3>' + (!r || !r.debilidades.length
     ? `<p class="prep-texto">${!r ? 'Pulsa «Analizar» para que Stockfish revise sus partidas y aquí aparezcan sus puntos débiles.' : 'No se ha detectado ningún punto débil claro con las partidas analizadas.'}</p>`
     : r.debilidades.slice(0, 3).map(d => filaDebilidad(d, true)).join(''));
 }

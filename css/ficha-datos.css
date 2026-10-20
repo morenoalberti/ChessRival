@@ -278,3 +278,40 @@ select:focus-visible, .ia-campos input:focus-visible { outline: none; border-col
 .btn-reiniciar:hover { background: #2559B8; }
 
 .paso.libro { font-style: italic; }
+
+/* Tarjetas de Preparación, Debilidades y Calidad de la muestra: cabecera de color con icono, como las demás de la ficha */
+.tarjeta-blanca:has(> .prep-titulo:first-child), .tarjeta-blanca.amplia:has(> h2:first-child) { --c: var(--azul); padding: 0 0 14px; border: 1.5px solid var(--c); overflow: hidden; background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--c) 7%, #fff)); box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 26%, transparent); }
+.tarjeta-blanca:has(> .prep-titulo:first-child)::before, .tarjeta-blanca.amplia:has(> h2:first-child)::before { display: none; }
+#prepBlancas { --c: #D9A21B; } #prepNegras { --c: #34507F; } #prepDebilidades { --c: #F26A5B; } #prepConclBlancas, #prepConclNegras { --c: #7A5AC8; }
+.tarjeta-blanca.amplia { --c: #F26A5B; }
+.tarjeta-blanca > .prep-titulo:first-child, .tarjeta-blanca.amplia > h2:first-child { display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 16px; background: var(--c); color: #fff; font-size: 14px; font-weight: 700; }
+.tarjeta-blanca .prep-titulo .punto-color { width: 15px; height: 15px; border: 1.8px solid #fff; }
+.tarjeta-blanca .prep-titulo .punto-color.negro { background: #151B27; } .tarjeta-blanca .prep-titulo .punto-color.blanco { background: #fff; }
+.tarjeta-blanca:has(> .prep-titulo:first-child) > :not(.prep-titulo), .tarjeta-blanca.amplia:has(> h2:first-child) > :not(h2) { margin-left: 16px; margin-right: 16px; }
+.tarjeta-blanca > .prep-titulo:first-child + *, .tarjeta-blanca.amplia > h2:first-child + * { margin-top: 12px; }
+#estudioCalidad:has(> .estudio-cab) { --c: #2F6FE0; padding: 0 0 12px; border: 1.5px solid var(--c); overflow: hidden; background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--c) 7%, #fff)); box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 26%, transparent); }
+#estudioCalidad:has(> .estudio-cab)::before { display: none; }
+#estudioCalidad > .estudio-cab { margin: 0 0 8px; padding: 7px 15px; background: var(--c); color: #fff; }
+#estudioCalidad > .estudio-cab .suave, #estudioCalidad > .estudio-cab span { color: rgba(255, 255, 255, .85); }
+#estudioCalidad > .estudio-cab > button { background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .7); color: #fff; }
+#estudioCalidad > .estudio-cab > button:hover { background: rgba(255, 255, 255, .3); }
+#estudioCalidad > p { margin-left: 15px; margin-right: 15px; }
+
+/* Más relieve en el interior de las tarjetas: cada ejemplo o línea es una pequeña tarjeta con su barra de color, y los apartados llevan subrayado */
+.estudio-evidencia { --b: var(--c, var(--azul)); background: #fff; border: 1px solid #D5E2F8; border-left: 4px solid var(--b); border-radius: 9px; padding: 9px 12px; margin: 8px 0; box-shadow: 0 1px 3px rgba(31, 42, 68, .08); transition: transform .15s, box-shadow .15s; }
+.estudio-evidencia:hover { transform: translateY(-1px); box-shadow: 0 5px 14px color-mix(in srgb, var(--b) 24%, transparent); }
+.estudio-evidencia > button { background: color-mix(in srgb, var(--b) 10%, #fff); border-color: var(--b); color: color-mix(in srgb, var(--b) 80%, #1F2A44); font-weight: 600; box-shadow: 0 1px 2px rgba(31, 42, 68, .12); }
+.estudio-evidencia > button:hover { background: var(--b); color: #fff; }
+.tarjeta-blanca h4, .estudio-tarjeta h4 { display: flex; align-items: center; gap: 8px; margin: 16px 0 6px; padding-bottom: 5px; border-bottom: 2px solid color-mix(in srgb, var(--c, var(--azul)) 35%, #fff); color: color-mix(in srgb, var(--c, var(--azul)) 85%, #1F2A44); font-size: 13px; font-weight: 700; letter-spacing: .02em; }
+.tarjeta-blanca h4::before, .estudio-tarjeta h4::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--azul)); flex: none; }
+.estudio-patron > b { display: inline-block; margin-bottom: 4px; padding: 2px 10px; border-radius: 12px; background: color-mix(in srgb, var(--c, var(--azul)) 14%, #fff); color: color-mix(in srgb, var(--c, var(--azul)) 85%, #1F2A44); }
+.deb-fila.completa { background: #fff; border: 1px solid #F3D3CE; border-left: 4px solid var(--c, #F26A5B); border-radius: 9px; padding: 10px 14px 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(31, 42, 68, .08); transition: transform .15s, box-shadow .15s; }
+.deb-fila.completa:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(242, 106, 91, .22); }
+#estudioEntrenamiento:has(> h2) { --c: #7A5AC8; padding: 0 0 14px; border: 1.5px solid var(--c); border-radius: 12px; overflow: hidden; background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--c) 7%, #fff)); box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 26%, transparent); }
+#estudioEntrenamiento > h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 8px 16px; background: var(--c); color: #fff; font-size: 14px; font-weight: 700; }
+#estudioEntrenamiento > :not(h2) { margin-left: 16px; margin-right: 16px; }
+#estudioEntrenamiento .estudio-fila-ejercicio { --b: var(--c); }
+.tarjeta-blanca.amplia > #debCabecera { margin-bottom: 12px; }
+
+#estudioEntrenamiento:has(> h2) .btn-reiniciar { top: 6px; right: 12px; width: 30px; height: 30px; background: rgba(255, 255, 255, .2); border-color: #fff; box-shadow: none; }
+#estudioEntrenamiento:has(> h2) .btn-reiniciar:hover { background: rgba(255, 255, 255, .38); }

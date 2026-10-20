@@ -252,6 +252,8 @@ export const exactas = {
   "Puntuación": "Score",
   "Cuántas partidas ha jugado con cada apertura": "How many games they have played with each opening",
   "Porcentaje de los puntos posibles: victoria 1, tablas ½, derrota 0": "Percentage of the possible points: win 1, draw ½, loss 0",
+  "A tener en cuenta": "Keep in mind",
+  "Cómo leer el plan": "How to read the plan",
   'Carpeta de destino': 'Destination folder',
   'Elegir carpeta de destino': 'Choose destination folder',
   'Restaurar copia seleccionada': 'Restore selected backup',

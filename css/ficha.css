@@ -223,3 +223,16 @@
 .tarjeta-degradado .tarjeta-titulo-fila .mini { background: rgba(255, 255, 255, .16); color: #fff; border-color: rgba(255, 255, 255, .65); }
 .tarjeta-degradado .tarjeta-titulo-fila .mini.activa { background: #fff; color: var(--c); border-color: #fff; }
 
+
+/* Iconos de las pestañas de la ficha, cada uno de su color (en la pestaña activa, en blanco) */
+.pestana-ficha svg { transition: color .15s; }
+.pestana-ficha[data-pestana="resumen"] svg { color: #2F6FE0; }
+.pestana-ficha[data-pestana="partidas"] svg { color: #34507F; }
+.pestana-ficha[data-pestana="aperturas"] svg { color: #D9A21B; }
+.pestana-ficha[data-pestana="arbol"] svg { color: #1E8E4F; }
+.pestana-ficha[data-pestana="debilidades"] svg { color: #F26A5B; }
+.pestana-ficha[data-pestana="preparacion"] svg { color: #12A5A5; }
+.pestana-ficha[data-pestana="informe"] svg { color: #2A8FBD; }
+.pestana-ficha[data-pestana="entrenamiento"] svg { color: #7A5AC8; }
+.pestana-ficha[data-pestana="ia"] svg { color: #E0489A; }
+.pestana-ficha.activa svg, .pestana-ficha[aria-selected="true"] svg { color: #fff !important; }
