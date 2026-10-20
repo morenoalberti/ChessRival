@@ -100,16 +100,22 @@
 
 /* Resumen */
 .resumen-cifras { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
-.cifra { position: relative; display: flex; justify-content: space-between; padding: 9px 12px; border: 1.5px solid var(--azul); border-radius: 12px;
-  background: linear-gradient(135deg, #fff, var(--g)); transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s;
-  animation: entra .5s cubic-bezier(.2, .8, .2, 1) backwards; }
+.cifra { position: relative; overflow: hidden; border: 1.5px solid var(--c); border-radius: 12px; background: #fff; box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 26%, transparent);
+  transition: transform .2s cubic-bezier(.2, .8, .2, 1), box-shadow .2s; animation: entra .5s cubic-bezier(.2, .8, .2, 1) backwards; }
 .cifra:nth-child(2) { animation-delay: .06s; } .cifra:nth-child(3) { animation-delay: .12s; } .cifra:nth-child(4) { animation-delay: .18s; }
-.cifra:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(31, 60, 120, .18); }
-.cifra .etiqueta { font-size: 12px; }
-.cifra-valor { font-size: 24px; font-weight: 600; line-height: 1.2; }
+.cifra:hover { transform: translateY(-2px); box-shadow: 0 10px 24px color-mix(in srgb, var(--c) 36%, transparent); }
+.cifra-cab { display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--c); color: #fff; }
+.cifra .etiqueta { font-size: 13px; font-weight: 700; color: #fff; }
+.cifra-cuerpo { padding: 6px 12px 10px; background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--c) 9%, #fff)); }
+.cifra-valor { font-size: 26px; font-weight: 700; line-height: 1.25; }
 .cifra-icono, .insignia { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; background: var(--c); flex: none; }
+.cifra-cab .cifra-icono { width: 20px; height: 20px; background: transparent; color: #fff; }
+.cifra-cab .punto-color { width: 15px; height: 15px; border: 1.8px solid #fff; }
+.cifra-cab .punto-color.negro { background: #151B27; }
+.cifra-cab .punto-color.blanco { background: #fff; }
 .insignia { width: 24px; height: 24px; margin-right: 9px; }
 .cifra-icono svg { width: 15px; height: 15px; }
+.cifra-cab .cifra-icono svg { width: 18px; height: 18px; }
 .insignia svg { width: 13px; height: 13px; }
 .punto-color { width: 14px; height: 14px; border-radius: 50%; display: block; }
 .punto-color.blanco { background: #fff; border: 1.6px solid #8A6A1F; }
