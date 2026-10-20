@@ -367,14 +367,15 @@ function repintarFoto(j) {
 
 async function cargarTitulos(lista) {
   // Una sola vez por tarjeta: trae todos los títulos del perfil (FIDE y Arena: GM, FM, AIM, AFM, AGM…) y la edad.
-  await Promise.all(lista.filter(j => j.fideId && !j.titulosOk).map(async (j) => {
+  await Promise.all(lista.filter(j => j.fideId && (!j.titulosOk || !j.age)).map(async (j) => {
     try {
       const ficha = await fuentes.fichaFide(j.fideId);
-      const cambios = { titulosOk: true };
+      const cambios = {};
+      if (ficha.titulo || ficha.edad) cambios.titulosOk = true;       // sin datos (la FIDE no respondió): se volverá a intentar
       if (ficha.titulo) cambios.fideTitle = ficha.titulo.replace(/ · /g, '/');
       if (ficha.edad) cambios.age = ficha.edad;
       for (const t of jugadores) if (t.id === j.id) { Object.assign(t, cambios); repintar(t); if (t.photo) repintarFoto(t); }
-      await db.actualizarTarjeta(j.id, cambios);
+      if (Object.keys(cambios).length) await db.actualizarTarjeta(j.id, cambios);
     } catch { /* el título es un complemento: si la FIDE no responde, la tarjeta se queda sin él */ }
   }));
 }

@@ -285,7 +285,7 @@ async function verificarJugador(j) {
     const ficha = await fichaFide(c.fideId);
     if (ficha.titulo) j.fideTitle = ficha.titulo.replace(/ · /g, '/');
     if (ficha.edad) j.age = ficha.edad;
-    j.titulosOk = true;
+    if (ficha.titulo || ficha.edad) j.titulosOk = true;
   } catch { /* se usan los datos de la búsqueda */ }
   if (!j.fideTitle && abreviarTitulo(c.titulo ?? '')) j.fideTitle = abreviarTitulo(c.titulo);
   const nac = entero(c.nacimiento), actual = new Date().getFullYear();
