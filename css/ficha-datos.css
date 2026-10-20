@@ -1,0 +1,260 @@
+/* ChessRival — estilos de lo que se calcula con las partidas: aperturas, debilidades, preparación, árbol, vista previa y diálogos */
+.fig { font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", sans-serif; font-size: 1.2em; line-height: 1; }
+.azul { color: var(--azul); } .coral { color: var(--coral); } .der { text-align: right; }
+.tarjeta-degradado, .tarjeta-ficha { position: relative; }
+
+/* Filas de aperturas */
+.estudio-check { display: inline-flex; align-items: center; gap: 7px; }
+.estudio-entrenamiento input, .estudio-entrenamiento select { font: inherit; color: var(--texto); background: #fff; border: 1px solid #ADC6F2; border-radius: 7px; padding: 6px 9px; max-width: 100%; }
+.estudio-tarjeta { padding: 13px 15px; margin-bottom: 14px; font-size: 13px; }
+.estudio-tarjeta h3 { color: var(--azul); font-size: 15px; margin: 0 0 9px; }
+.estudio-tarjeta p { line-height: 1.5; margin: 7px 0; }
+.estudio-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 15px; margin-bottom: 8px; }
+.estudio-cab h2 { margin: 0; color: var(--azul); font-size: 18px; flex: 1; }
+.estudio-cab > button { margin-left: auto; }
+.estudio-fiabilidad { color: var(--texto-suave); font-size: 12px; }
+.estudio-nota { font-size: 11px; margin-top: 4px; }
+.estudio-columnas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; margin-top: 14px; }
+.estudio-evidencia { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #DBE4F2; padding: 9px 0; font-size: 12px; line-height: 1.5; }
+.estudio-evidencia > span { min-width: 0; overflow-wrap: anywhere; }
+.estudio-evidencia > button { flex: none; }
+.estudio-posicion { display: block; margin: 0 0 7px; padding: 6px 9px; border-left: 2px solid var(--azul); background: var(--panel-interior); border-radius: 0 5px 5px 0; }
+.estudio-apertura { display: block; margin: 0 0 7px; font-size: 13px; color: var(--azul); }
+.estudio-jugadores { display: block; margin: 0 0 7px; font-size: 12px; line-height: 1.5; }
+.estudio-resultados { display: block; margin: 5px 0; }
+.estudio-resultados > b { display: block; font-size: 13px; }
+.estudio-resultados > span { display: block; }
+.estudio-frecuencia { display: block; margin: 5px 0; font-size: 13px; }
+.estudio-patron { margin-bottom: 16px; }
+.utilidad-panel.panel-estudio { width: 960px; }
+.estudio-entrenamiento { display: flex; align-items: stretch; gap: 24px; }
+.estudio-entrenamiento > div:last-child { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.estudio-entrenamiento .estudio-ejercicio-acciones { margin-top: auto; padding-top: 10px; }
+.estudio-jugadas { margin: 6px 0 0; font-size: 14px; line-height: 1.7; }
+.estudio-entrenamiento form { display: grid; gap: 12px; }
+.estudio-entrenamiento label { display: grid; gap: 4px; }
+.estudio-tablero-columna { flex: none; width: var(--ancho-ejercicio, 338px); max-width: 100%; }
+.estudio-jugador { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; font-size: 13px; font-weight: 600; line-height: 1.4; }
+.estudio-jugador:last-child { margin: 8px 0 0; }
+.estudio-jugador > span { min-width: 0; overflow-wrap: anywhere; }
+.estudio-color { width: 13px; height: 13px; flex: none; border: 1px solid #4A5568; border-radius: 3px; }
+.estudio-color.blancas { background: #fff; }
+.estudio-color.negras { background: #2B2B2B; }
+.estudio-ejercicio-acciones { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.estudio-ejercicio-acciones .btn { height: 34px; min-height: 34px; padding: 5px 12px; line-height: 20px; }
+.estudio-ejercicio-acciones .icono { width: 17px; height: 17px; flex: none; }
+.estudio-tablero-columna .tablero-casilla { cursor: pointer; }
+@media (max-width: 700px) { .estudio-columnas { grid-template-columns: 1fr; } .estudio-entrenamiento { flex-direction: column; } .estudio-evidencia { flex-wrap: wrap; } }
+.aper-fila { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 7px; font-size: 13px; }
+.aper-fila .suave { flex: none; }
+.aper-fila > span:first-child { min-width: 0; }
+.aper-jugadores { margin: 0 0 10px; font-size: 12px; line-height: 1.4; }
+
+/* Ayuda emergente de las tarjetas (aparece con retardo y solo si hay datos) */
+.popover-ayuda {
+  display: none; padding: 14px 16px;
+  background: #fff; border: 1.5px solid var(--azul); border-radius: 12px; box-shadow: 0 12px 34px rgba(31, 42, 68, .3);
+  pointer-events: none; font-size: 13px;
+}
+.ayuda-tarjeta-flotante:not([hidden]) { display: block; position: fixed; z-index: 90; width: min(460px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; pointer-events: auto; }
+.ayuda-titulo { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+.ayuda-p { font-size: 12px; margin: 0 0 10px; }
+.ayuda-ejemplo { display: flex; justify-content: space-between; gap: 24px; background: var(--panel-interior); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; }
+.ayuda-ejemplo small { display: block; font-size: 10px; font-weight: 600; margin-bottom: 2px; }
+.sub-azul, .sub-coral { font-size: 14px; font-weight: 600; padding-bottom: 3px; border-bottom: 3px solid var(--azul); }
+.sub-coral { border-color: var(--coral); display: inline-block; }
+.ayuda-bloque { border-left: 3px solid var(--azul); padding-left: 10px; margin-bottom: 12px; }
+.ayuda-bloque.coral { border-color: var(--coral); }
+.ayuda-bloque b { display: block; margin-bottom: 4px; color: var(--azul); }
+.ayuda-bloque.coral b { color: var(--coral); }
+.ayuda-bloque p { margin: 0 0 4px; }
+
+/* Debilidades */
+.deb-fila { margin-bottom: 10px; }
+.deb-jugadores { margin: 4px 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.deb-linea { margin: 4px 0 7px; font-size: 12px; line-height: 1.5; }
+.deb-fila.completa { margin-bottom: 16px; }
+.deb-cab { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.deb-fila.completa .deb-cab { font-size: 14px; }
+.deb-fila.completa .deb-titulo { font-weight: 600; }
+.deb-cab b { font-size: 12px; flex: none; }
+.deb-barra { height: 5px; border-radius: 3px; background: var(--panel-interior); margin-top: 4px; overflow: hidden; }
+.deb-barra i { display: block; height: 100%; border-radius: 3px; transform-origin: left; animation: barra-in .8s cubic-bezier(.2, .8, .2, 1) backwards; }
+.deb-detalle { margin: 5px 0 0; font-size: 13px; color: var(--texto-suave); }
+
+/* Preparación */
+.prep-titulo { margin: 0 0 4px; font-size: 16px; font-weight: 600; color: var(--azul); }
+.prep-texto { margin: 2px 0 0; font-size: 13px; color: var(--texto-suave); }
+.prep-seccion { font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
+.prep-azul { color: var(--azul); } .prep-rojo { color: var(--rojo); } .prep-suave { color: var(--texto-suave); }
+.prep-linea { padding: 3px 0 3px 8px; margin: 1px 0; border-left: 3px solid var(--azul); }
+.prep-borde-azul { border-color: var(--azul); } .prep-borde-rojo { border-color: var(--rojo); } .prep-borde-suave { border-color: #B8C3D6; }
+.prep-linea-fila { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.prep-linea-fila .suave { font-size: 12px; flex: none; align-self: center; }
+.prep-respuestas { font-size: 12px; color: var(--texto-suave); margin-top: 1px; }
+.prep-pie { margin: 12px 0 0; font-size: 12px; color: var(--texto-suave); }
+.prep-conclusion { margin: 6px 0 0; font-size: 13px; }
+.prep-debilidades { margin-top: 14px; }
+
+/* Árbol de aperturas */
+.arbol { background: #fff; border: 1.5px solid var(--azul); border-radius: 12px; padding: 12px 16px; }
+.arbol-cab { display: flex; align-items: center; margin-bottom: 8px; font-size: 14px; }
+.arbol-resumen { font-size: 12px; margin-left: 12px; }
+.arbol-fila-migas { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.migas { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 13px; }
+.miga { color: var(--azul); cursor: pointer; line-height: 22px; transition: color .15s; }
+.miga:hover { text-decoration: underline; }
+.miga.actual { color: var(--texto); font-weight: 600; cursor: default; }
+.miga.actual:hover { text-decoration: none; }
+.arbol-botones, .arbol-linea-botones { display: flex; gap: 8px; flex: none; }
+.arbol-linea { margin-bottom: 8px; padding: 6px 10px; border: 1px solid #F2C879; border-radius: 10px; background: linear-gradient(135deg, #FFFBEF, #FFEFCB); }
+.arbol-linea-cab { display: flex; align-items: center; font-size: 13px; }
+.arbol-linea-cab b { flex: 1; min-width: 0; }
+.arbol-linea-texto { margin-top: 4px; font-size: 12.5px; line-height: 1.6; }
+.arbol-linea-detalle { margin-top: 4px; font-size: 11.5px; }
+.paso.mia { color: var(--azul); } .paso.suya { color: var(--texto-suave); } .paso.motor { text-decoration: underline; } .paso { cursor: pointer; }
+.simbolo { font-family: "Segoe UI Symbol", sans-serif; }
+.arbol-nombre { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.arbol-nombre b { font-size: 14px; color: var(--azul); } .arbol-nombre .suave { font-size: 12px; }
+.arbol-cuerpo { display: grid; grid-template-columns: minmax(0, 1fr) 278px; gap: 18px; align-items: start; }
+.arbol-cabecera-filas, .arbol-fila { display: grid; grid-template-columns: 6px 74px 92px minmax(120px, 1fr) 62px 56px; align-items: center; }
+.arbol-cabecera-filas { padding: 0 8px; margin-bottom: 4px; font-size: 12px; color: var(--texto-suave); }
+.arbol-cabecera-filas > span:nth-child(2) { margin-left: 8px; }
+.arbol-leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 5px 0 0; vertical-align: -1px; }
+.arbol-leyenda i:not(:first-child) { margin-left: 14px; }
+.arbol-fila { padding: 6px 8px; margin-bottom: 4px; border: 1px solid #E1E7F2; border-radius: 8px; background: #F4F7FD; cursor: pointer; transition: background-color .15s, transform .15s, box-shadow .15s; }
+.arbol-fila:hover { background: #E6EFFF; transform: translateX(2px); box-shadow: 0 3px 10px rgba(47, 111, 217, .15); }
+.arbol-fila.en-linea { border: 2px solid var(--naranja); padding: 5px 7px; }
+.arbol-fila .quien { height: calc(100% - 2px); min-height: 18px; border-radius: 3px; margin: 1px 0; }
+.arbol-fila .jug { font-size: 14px; font-weight: 600; margin-left: 10px; }
+.arbol-fila .suave { font-size: 12px; }
+.arbol-fila .barra { display: flex; height: 14px; border-radius: 3px; overflow: hidden; margin-right: 10px; }
+.arbol-fila .tramo { display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; min-width: 0; }
+.arbol-fila .eval { padding-right: 10px; }
+.arbol-fila .pts { font-size: 13px; font-weight: 600; }
+.arbol-pie { display: flex; align-items: center; gap: 5px; margin-top: 8px; font-size: 11px; flex-wrap: wrap; }
+.arbol-pie .cuadro { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.arbol-pie .suave { margin-right: 14px; }
+.arbol-check { color: var(--texto-suave); display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.arbol-vacio { font-size: 13px; margin: 6px 0 0 8px; }
+.arbol-vacio:empty { display: none; }
+.arbol-tablero { justify-self: end; }
+
+/* Tablero */
+.tablero { display: grid; grid-template-columns: repeat(8, var(--casilla)); grid-auto-rows: var(--casilla); border: 1.5px solid #4A5568; width: max-content; user-select: none; }
+.tablero-casilla { position: relative; }
+.tablero-casilla img { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* Lista de partidas de una posición */
+.menu-partidas { position: absolute; z-index: 60; min-width: 400px; max-width: calc(100vw - 16px); padding: 8px; border: 1.5px solid var(--azul); border-radius: 12px;
+  background: linear-gradient(135deg, #fff, #E3EEFF); box-shadow: 0 14px 36px rgba(31, 42, 68, .3); animation: dialogo-in .2s ease both; }
+.menu-cab { display: flex; flex-direction: column; padding: 2px 6px 6px; } .menu-cab b { color: var(--azul); font-size: 14px; } .menu-cab .suave { font-size: 12px; }
+.menu-fila { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto; gap: 8px; width: 100%; padding: 5px 8px; margin: 1px 0; border: 0; border-radius: 6px;
+  background: transparent; font: inherit; font-size: 13px; text-align: left; cursor: pointer; color: var(--texto); }
+.menu-fila.cebra { background: rgba(197, 218, 255, .4); } .menu-fila:hover { background: #CFE0FF; }
+.menu-fila .res { border-radius: 5px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
+.res.gana { background: #DDF2E4; color: #1E8E4F; } .res.pierde { background: #FBE3DF; color: #C0392B; } .res.tablas { background: #E4E8F0; color: #4A5568; }
+.menu-mas { padding: 4px 8px; font-size: 12px; }
+
+/* Vista previa de la partida al pasar el ratón */
+.vp-tarjeta { position: absolute; max-width: calc(100% - 16px); z-index: 80; background: #fff; border: 1.5px solid var(--azul); border-radius: 12px; padding: 14px 16px; box-shadow: 0 12px 34px rgba(31, 42, 68, .3);
+  pointer-events: none; opacity: 0; transform: translateY(6px) scale(.98); transition: opacity .15s, transform .18s; }
+.vp-tarjeta.visible { opacity: 1; transform: none; }
+.vista-previa { min-width: 520px; width: max-content; max-width: calc(100vw - 48px); }
+.vp-titulo { font-size: 15px; font-weight: 600; color: var(--azul); } .vp-subtitulo { font-size: 12px; margin: 2px 0 10px; }
+.vp-cuerpo { display: flex; gap: 16px; } .vp-izq { flex: none; } .vp-pos { font-size: 12px; margin-top: 6px; text-align: center; }
+.vp-jugadas { display: grid; gap: 4px 20px; align-content: start; font-size: 13px; }
+.vp-jugadas span { white-space: nowrap; line-height: 20px; }
+.vp-pie { margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--azul); }
+
+/* Diálogos de importar, analizar y configurar la IA */
+.dialogo-importar { width: 620px; } .dialogo-analizar { width: 560px; }
+.importar-cuerpo { padding: 18px 22px 20px; }
+.importar-intro { margin: 0 0 14px; font-size: 14px; }
+.importar-caja { background: var(--panel-interior); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.importar-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.importar-texto { display: flex; flex-direction: column; font-size: 14px; } .importar-texto .suave { font-size: 12px; margin-top: 2px; }
+.importar-zona { margin-top: 10px; padding: 10px 12px; min-height: 52px; border: 2px dashed #B9CDEE; border-radius: 8px; background: #fff; font-size: 13px; transition: border-color .15s, background-color .15s; }
+.importar-zona.encima { border-color: var(--azul); background: #EAF1FF; }
+.importar-archivo { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; } .importar-archivo.sin-suyas { opacity: .55; }
+.importar-progreso { margin: 10px 0 0; font-size: 13px; font-weight: 600; color: var(--azul); }
+.importar-botones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; } .importar-botones .btn { min-width: 100px; }
+.analizar-seleccion { background: var(--panel-interior); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+.analizar-controles { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 10px; margin-top: 10px; }
+.analizar-controles label { font-size: 14px; font-weight: 600; grid-column: 1; } .analizar-controles select { grid-column: 2; }
+.analizar-tiempo { grid-column: 3; grid-row: 1 / span 2; text-align: center; font-size: 14px; font-weight: 600; color: var(--azul); }
+select, .ia-campos input, .ia-modelo input { font: inherit; font-size: 13px; padding: 5px 8px; border: 1.5px solid #B9CDEE; border-radius: 8px; background: #fff; color: var(--texto); }
+select:focus-visible, .ia-campos input:focus-visible { outline: none; border-color: var(--azul); box-shadow: 0 0 0 3px rgba(47, 111, 217, .18); }
+.analizar-barra { height: 10px; border-radius: 5px; background: var(--panel-interior); margin-top: 16px; overflow: hidden; }
+.analizar-barra i { display: block; height: 100%; width: 0; border-radius: 5px; background: linear-gradient(90deg, #3D82E8, var(--azul)); transition: width .4s ease; }
+.analizar-estado { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--azul); min-height: 1.2em; }
+.ia-campos { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px 12px; } .ia-campos label { font-size: 14px; font-weight: 600; }
+.ia-modelo { display: flex; gap: 8px; } .ia-modelo input { flex: 1; min-width: 0; } .ia-ayuda { margin: 10px 0 0; font-size: 12px; min-height: 1.2em; }
+
+/* Asistente de IA */
+.ia-mensaje.pensando { color: var(--texto-suave); font-style: italic; }
+.ia-mensaje.error { background: #FDECEA; color: var(--rojo); white-space: pre-line; }
+.ia-mensaje.asistente { white-space: pre-wrap; }
+.ia-cobertura { margin-top: 10px; font-size: 12px; font-style: italic; color: var(--texto-suave); }
+
+@media (max-width: 1100px) { .arbol-cuerpo { grid-template-columns: 1fr; } .arbol-tablero { justify-self: start; } }
+
+/* Tablero: coordenadas, casilla elegida, destinos y flecha de la última jugada */
+.tablero { position: relative; }
+.tablero-num, .tablero-letra { position: absolute; font-size: max(9px, calc(var(--casilla) * .17)); font-weight: 600; pointer-events: none; line-height: 1; z-index: 2; }
+.tablero-num { left: 3px; top: 2px; }
+.tablero-letra { right: 3px; bottom: 2px; }
+.tablero-casilla { --resalte: transparent; --sel: transparent; box-shadow: inset 0 0 0 99px var(--sel), inset 0 0 0 99px var(--resalte); }   /* por debajo de las piezas */
+.tablero-casilla.resaltada { --resalte: rgba(246, 224, 90, .6); }
+.tablero-casilla.elegida { --sel: rgba(79, 163, 247, .67); }
+.tablero-casilla img { z-index: 1; }
+.tablero-destino { position: absolute; left: 50%; top: 50%; width: 30%; height: 30%; margin: -15% 0 0 -15%; border-radius: 50%; background: rgba(31, 42, 68, .44); pointer-events: none; z-index: 3; }
+.tablero-destino.captura { width: 90%; height: 90%; margin: -45% 0 0 -45%; background: transparent; box-shadow: inset 0 0 0 calc(var(--casilla) * .08) rgba(31, 42, 68, .44); }
+.tablero-flecha { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
+.tablero-fantasma { position: fixed; z-index: 1000; pointer-events: none; }
+
+.estudio-turno { margin: 0 0 12px; font-size: 18px; font-weight: 600; color: var(--azul); }
+
+/* Explicación de un ejercicio fallado: compacta, para que el cuadro no crezca */
+
+.estudio-entrenamiento p:empty { display: none; }
+.estudio-entrenamiento .estudio-turno { margin-bottom: 4px; }
+.estudio-entrenamiento [data-progreso-ejercicio] { margin: 0 0 6px; }
+
+.utilidad-panel.panel-ejercicio { width: 740px; }
+.panel-ejercicio .utilidad-cuerpo { padding: 14px 18px 16px; }
+
+.estudio-ejercicio-acciones .btn:disabled { opacity: .45; pointer-events: none; }
+
+/* Reloj del ejercicio: debajo de la zona azul, pegado a la derecha */
+.panel-ejercicio .utilidad-cuerpo { position: relative; }
+.estudio-reloj { position: absolute; top: 6px; right: 18px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--texto-suave); }
+
+.estudio-reloj { display: inline-flex; align-items: center; gap: 5px; }
+.estudio-reloj .icono { stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* Valoración final: como el resto de jugadas de la línea */
+.estudio-valoracion-jugada { margin-left: 4px; }
+.estudio-variante-correcta { margin: 16px 0 10px; color: #16803C; font-size: 24px; font-weight: 700; line-height: 1.25; }
+.estudio-variante-correcta[hidden] { display: none; }
+
+/* Lista de ejercicios: filas alternas sombreadas */
+.estudio-fila-ejercicio { border-top: 0; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+.estudio-fila-ejercicio:nth-of-type(odd) { background: rgba(47, 111, 217, .07); }
+.estudio-fila-ejercicio:hover { background: rgba(47, 111, 217, .13); }
+.estudio-fila-ejercicio .ej-jugadores { margin-left: 18px; }
+.estudio-fila-ejercicio > button { min-width: 92px; }
+.estudio-fila-ejercicio > button.resuelto { color: #16803C; border-color: #16803C; background: #E8F6EC; }
+
+/* Reiniciar los ejercicios: flecha circular al final de la línea de texto, sobre los botones «Resuelto» */
+.estudio-intro-ejercicios { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.estudio-intro-ejercicios p { margin: 0; flex: 1; }
+.btn-reiniciar { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; margin-right: 41px; border: 1.5px solid var(--azul); border-radius: 50%; background: #fff; color: var(--azul); cursor: pointer; transition: background-color .15s, transform .35s; }
+.btn-reiniciar:hover { background: #E6EFFF; transform: rotate(-180deg); }
+.btn-reiniciar .icono { stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+
+/* Reiniciar: pegado al borde superior derecho de la tarjeta, en azul */
+#estudioEntrenamiento { position: relative; }
+.btn-reiniciar { position: absolute; top: 4px; right: 4px; margin: 0; background: var(--azul); color: #fff; border-color: var(--azul); box-shadow: 0 2px 6px rgba(47, 111, 217, .35); }
+.btn-reiniciar:hover { background: #2559B8; }

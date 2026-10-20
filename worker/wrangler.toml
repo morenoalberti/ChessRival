@@ -1,0 +1,8 @@
+name = "chessrival-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# Orígenes que pueden usar el servidor, separados por comas. «*» = cualquiera (solo para desarrollo).
+# Al publicar, pon aquí la dirección de tu web de Cloudflare Pages.
+ORIGENES_PERMITIDOS = "*"

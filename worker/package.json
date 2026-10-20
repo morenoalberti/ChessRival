@@ -1,0 +1,17 @@
+{
+  "name": "chessrival-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "deploy": "wrangler deploy",
+    "test": "node --test test/prueba.mjs test/estudio.mjs"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.5",
+    "wrangler": "^4"
+  },
+  "dependencies": {
+    "node-html-parser": "^7"
+  }
+}

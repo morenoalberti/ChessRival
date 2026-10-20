@@ -1,0 +1,8 @@
+.worker.log
+.web.log
+.wrangler.log
+worker/node_modules/
+worker/.wrangler/
+.mega.json
+.copias-destino.json
+__pycache__/

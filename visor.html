@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Partida · ChessRival</title>
+  <link rel="icon" type="image/png" href="assets/icon.png">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/ficha.css">
+  <link rel="stylesheet" href="css/ficha-datos.css">
+  <link rel="stylesheet" href="css/visor.css">
+  <link rel="stylesheet" href="css/utilidades.css">
+</head>
+<body class="pagina-visor">
+  <div id="raiz" class="visor">
+    <div class="visor-cuerpo">
+      <!-- Tablero con la barra de evaluación a su izquierda, y los controles debajo -->
+      <section class="visor-izq" id="columnaIzq">
+        <div class="visor-jugador"><i class="ficha-color" id="fichaArriba"></i><span id="nombreArriba" class="recortar"></span></div>
+        <div class="visor-fila-tablero">
+          <div class="barra-eval" title="Evaluación del motor: la parte blanca crece cuando las blancas están mejor"><i id="barraBlanca"></i></div>
+          <div id="tablero" class="visor-tablero"></div>
+        </div>
+        <div class="visor-jugador"><i class="ficha-color" id="fichaAbajo"></i><span id="nombreAbajo" class="recortar"></span></div>
+
+        <div id="posicionText" class="visor-posicion suave"></div>
+        <div class="visor-controles" role="group" aria-label="Controles de la partida">
+          <button type="button" class="btn btn-secundario" data-accion="inicio" title="Inicio de la partida (tecla Inicio)" aria-label="Inicio de la partida">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h2v14H3z M13 5v14l-8-7z M21 5v14l-8-7z"/></svg>
+          </button>
+          <button type="button" class="btn btn-secundario" data-accion="anterior" title="Jugada anterior (←)" aria-label="Jugada anterior">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h2v14H6z M18 5v14l-9-7z"/></svg>
+          </button>
+          <button type="button" class="btn btn-secundario" data-accion="reproducir" id="reproducirBtn" title="Reproducir partida (Espacio)" aria-label="Reproducir partida" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path class="control-play" d="M10 7.5l7 4.5-7 4.5z" fill="#fff"/><path class="control-pausa" d="M8.5 8h2.5v8H8.5z M13 8h2.5v8H13z" fill="#fff"/></svg>
+          </button>
+          <button type="button" class="btn btn-secundario" data-accion="siguiente" title="Jugada siguiente (→)" aria-label="Jugada siguiente">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5l9 7-9 7z M16 5h2v14h-2z"/></svg>
+          </button>
+          <button type="button" class="btn btn-secundario" data-accion="final" title="Final de la partida (tecla Fin)" aria-label="Final de la partida">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5l8 7-8 7z M11 5l8 7-8 7z M19 5h2v14h-2z"/></svg>
+          </button>
+          <button type="button" class="btn btn-secundario" data-accion="girar" title="Girar tablero (F)" aria-label="Girar tablero">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 4v6h-6 M4 20v-6h6 M5.3 8A7 7 0 0 1 17 5.3L20 10 M4 14l3 4.7A7 7 0 0 0 18.7 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </section>
+
+      <!-- Motor y jugadas -->
+      <section class="visor-der">
+        <div class="visor-botones-der">
+          <span id="guardado" class="visor-guardado suave" aria-live="polite"></span>
+          <button type="button" class="btn btn-secundario" id="conclusionesBtn" title="Ver conclusiones">Conclusiones</button>
+          <button type="button" class="btn btn-coral" id="analizarBtn" title="Analizar partida">Analizar partida</button>
+        </div>
+
+        <div class="tarjeta-ficha analisis-card" id="analisisCard" hidden>
+          <button type="button" class="analisis-quitar" id="quitarAnalisis" title="Quitar la tarjeta de análisis" aria-label="Quitar la tarjeta de análisis">✕</button>
+          <div class="suave analisis-progreso" id="analisisProgreso"></div>
+          <div class="analisis-barra" id="analisisBarra"><i id="analisisRelleno"></i></div>
+          <div class="analisis-resumen" id="analisisResumen" hidden>
+            <div><b id="resumenBlancasTitulo"></b><div class="suave" id="resumenBlancasTexto"></div></div>
+            <div><b id="resumenNegrasTitulo"></b><div class="suave" id="resumenNegrasTexto"></div></div>
+          </div>
+          <div class="suave" id="erroresTitulo" hidden style="font-size:12px;margin:8px 0 2px">Errores (pulsa uno para verlo en el tablero)</div>
+          <div class="errores-lista" id="erroresLista" hidden></div>
+        </div>
+
+        <div class="visor-tarjetas" id="tarjetas">
+          <div class="tarjeta-ficha planilla-card" id="planillaCard" data-tarjeta="planilla" draggable="true">
+            <div class="planilla-jugadores">
+              <i class="ficha-color blanca"></i><b id="planillaBlancas"></b><b class="suave"> - </b><i class="ficha-color negra"></i><b id="planillaNegras"></b>
+            </div>
+            <div class="planilla-lista" id="listaJugadas"></div>
+          </div>
+
+          <div class="tarjeta-ficha motor-card" id="motorCard" data-tarjeta="motor" draggable="true">
+            <div class="motor-cab">
+              <b id="motorNombre">Motor</b>
+              <label class="motor-check"><input type="checkbox" id="motorCheck" checked> Motor activado</label>
+            </div>
+            <div class="motor-eval"><span class="suave" id="profundidadText"></span></div>
+            <div class="motor-lineas" id="lineasMotor"></div>
+            <div class="suave motor-aviso" id="motorAviso"></div>
+          </div>
+        </div>
+
+        <!-- Símbolos para anotar la jugada elegida: calidad de la jugada y valoración de la posición -->
+        <div class="tarjeta-ficha simbolos-card" id="simbolosPanel"></div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="js/i18n.js"></script>
+  <script type="module" src="js/barra-superior.js"></script>
+  <script type="module" src="js/visor.js"></script>
+</body>
+</html>

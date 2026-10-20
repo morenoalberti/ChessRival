@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChessRival 1.0</title>
+  <link rel="icon" type="image/png" href="assets/icon.png">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/utilidades.css">
+  <link rel="stylesheet" href="css/ficha-fide-emergente.css">
+</head>
+<body>
+  <div id="raiz">
+    <main class="principal">
+      <!-- Cabecera: título a la izquierda y la URL con su botón a continuación -->
+      <header class="cabecera">
+        <div class="marca">
+          <div class="placa"><img src="assets/icon.png" alt="" width="46" height="46"></div>
+          <div class="marca-texto">
+            <div class="titulo">ChessRival</div>
+            <div id="subtitulo" class="suave recortar">Pega una URL de Chess-Results o Info64</div>
+          </div>
+        </div>
+        <div class="url-caja">
+          <input id="urlBox" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Pega la URL de un torneo (Chess-Results o Info64) o escribe el nombre o el ID FIDE de un jugador y pulsa Enter">
+          <button id="urlLimpiar" class="url-limpiar" type="button" tabindex="-1" title="Borrar el texto" aria-label="Borrar el texto">✕</button>
+        </div>
+        <button id="cargarBtn" class="btn btn-primario" type="button"></button>
+      </header>
+
+      <!-- MegaDatabase, libro de aperturas y Stockfish -->
+      <section class="banners">
+        <div id="megaBanner" class="banner" title="Con la MegaDatabase de ChessBase conectada (elige su carpeta), las partidas de un jugador se importan al pulsar «Importar partidas» en su ficha.">
+          <img src="assets/Logos/chessbase.png" alt="" width="22" height="22">
+          <span id="megaText" class="banner-texto recortar"></span>
+          <button id="megaBtn" class="btn btn-secundario btn-chico" type="button"></button>
+        </div>
+        <div id="libroBanner" class="banner" title="El libro de aperturas completa la «línea que te conviene jugarle» con teoría cuando las partidas del rival no bastan.">
+          <span class="banner-icono" data-icono="libro"></span>
+          <span id="libroText" class="banner-texto recortar"></span>
+          <button id="libroBtn" class="btn btn-secundario btn-chico" type="button"></button>
+        </div>
+        <div id="cantidadBanner" class="banner banner-cantidad" title="Cuántos jugadores de un torneo se cargan como tarjetas: los primeros de la clasificación (de 1 a 10).">
+          <span class="banner-icono" data-icono="jugadores"></span>
+          <label for="cantidadRango" class="cantidad-etiqueta recortar">Jugadores a cargar</label>
+          <input id="cantidadRango" class="rango" type="range" min="1" max="10" step="1" value="5" aria-label="Jugadores del torneo que se cargan">
+          <output id="cantidadValor" class="cantidad-chip" for="cantidadRango">5</output>
+        </div>
+      </section>
+
+      <!-- Pestañas de torneo -->
+      <nav id="filaPestanas" class="pestanas" aria-label="Torneos"></nav>
+
+      <section class="panel">
+        <div id="estadoText" class="estado">Aquí aparecerán las tarjetas de los primeros de cada torneo.</div>
+        <div id="scrollTarjetas" class="scroll-tarjetas">
+          <div id="tarjetas" class="tarjetas"></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="pie">
+      <span class="red"><span id="redPunto" class="red-punto"></span><span id="redText" class="red-texto">Comprobando red...</span></span>
+      <span id="pieText" class="pie-texto suave"></span>
+      <span class="suave pie-autor">© 2026 Manuel Moreno Alberti</span>
+    </footer>
+  </div>
+
+  <script type="module" src="js/i18n.js"></script>
+  <script type="module" src="js/barra-superior.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
