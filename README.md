@@ -31,7 +31,7 @@ npm run dev
 
 Después visita `http://localhost:8765/index.html`. El parámetro `?demo` crea tarjetas de demostración únicamente cuando no hay tarjetas; los recuentos de esas tarjetas son ilustrativos.
 
-Las consultas a FIDE, Chess-Results e Info64 necesitan el Worker. Stockfish y el libro de clasificación de aperturas están incluidos en `assets/`. La MegaDatabase debe seleccionarse desde la aplicación y se lee sin modificar sus archivos.
+Las consultas a FIDE, Chess-Results e Info64 necesitan el Worker. Stockfish y el libro de clasificación de aperturas están incluidos en `assets/`. La MegaDatabase debe seleccionarse desde la aplicación y se lee sin modificar sus archivos. Lo mismo vale para el libro de aperturas de ChessBase (Power Book): hacen falta sus archivos `.ctg`, `.ctb` y `.cto`, que se leen por trozos (`js/libro-ctg.js`) y completan con teoría la línea recomendada del árbol cuando las partidas del rival se acaban. Con `iniciar.bat` el cuadro de Windows elige el `.ctg`; en la web publicada se elige la carpeta del libro con el selector del navegador.
 
 El visor se abre desde la ficha en una ventana de 1160 × 917 píxeles, centrada horizontalmente y alineada con el borde inferior del área útil del monitor. Se reduce si no cabe en la pantalla y se puede mover o redimensionar después. El navegador debe permitir las ventanas emergentes de ChessRival.
 

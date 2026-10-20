@@ -203,6 +203,20 @@ export const exactas = {
   "Una línea con pocas partidas puede deberse a la casualidad: el propio árbol avisa de cuál es la parte menos fiable.": "A line with few games may be down to chance: the tree itself warns which part is the least reliable.",
   "La pestaña «Debilidades»": "The “Weaknesses” tab",
   "Muestra cada debilidad detectada con una explicación y una barra de gravedad de 0 a 100: cuanto más larga, peor. «Alta» (rojo), «Media» (naranja) o «Baja» (azul) es lo mismo dicho con palabras.": "It shows each weakness found with an explanation and a severity bar from 0 to 100: the longer, the worse. “High” (red), “Medium” (orange) or “Low” (blue) says the same in words.",
+  "Licencias y créditos": "Licences and credits",
+  "ChessRival es de código abierto y usa software de terceros con sus propias licencias.": "ChessRival is open source and uses third-party software under its own licences.",
+  "Stockfish": "Stockfish",
+  "El motor es Stockfish 19 (versión «lite» de un solo hilo) compilado a WebAssembly por stockfish.js, bajo licencia GNU GPL versión 3. Su código fuente está en [stockfish.js](https://github.com/nmrugg/stockfish.js) y en [Stockfish](https://github.com/official-stockfish/Stockfish). El texto de la licencia está en [este archivo](https://chessrival.net/assets/motor/LICENCIA-Stockfish-GPL3.txt).": "The engine is Stockfish 19 (single-thread “lite” version) compiled to WebAssembly by stockfish.js, under the GNU GPL version 3 licence. Its source code is at [stockfish.js](https://github.com/nmrugg/stockfish.js) and [Stockfish](https://github.com/official-stockfish/Stockfish). The licence text is in [this file](https://chessrival.net/assets/motor/LICENCIA-Stockfish-GPL3.txt).",
+  "Código de ChessRival": "ChessRival source code",
+  "El código de ChessRival está publicado en [GitHub](https://github.com/morenoalberti/ChessRival).": "The ChessRival source code is published on [GitHub](https://github.com/morenoalberti/ChessRival).",
+  "Otros componentes": "Other components",
+  "Reglas del ajedrez: [chess.js](https://github.com/jhlywa/chess.js), licencia BSD.": "Chess rules: [chess.js](https://github.com/jhlywa/chess.js), BSD licence.",
+  "Nombres de aperturas: [chess-openings](https://github.com/lichess-org/chess-openings) de Lichess, dominio público (CC0).": "Opening names: [chess-openings](https://github.com/lichess-org/chess-openings) by Lichess, public domain (CC0).",
+  "Banderas de los países: [Flagcdn](https://flagcdn.com).": "Country flags: [Flagcdn](https://flagcdn.com).",
+  "Las imágenes de las piezas llevan su licencia en el archivo LICENSE.txt de la carpeta de piezas.": "The piece images carry their licence in the LICENSE.txt file of the pieces folder.",
+  "MegaDatabase, PowerBook y ChessBase son marcas y productos de ChessBase GmbH. ChessRival solo lee los archivos que tú tienes y no los incluye ni los distribuye.": "MegaDatabase, PowerBook and ChessBase are trademarks and products of ChessBase GmbH. ChessRival only reads the files you own and neither includes nor distributes them.",
+  "Cuando sus partidas se acaban, la línea sigue con la teoría del libro de aperturas que hayas elegido en la pantalla principal (por ejemplo el PowerBook de ChessBase): sus jugadas salen en cursiva. Si el libro no tiene la posición, sigue con Stockfish (subrayado).": "When their games run out, the line continues with the theory of the opening book you chose on the main screen (for example ChessBase’s PowerBook): its moves appear in italics. If the book does not have the position, it continues with Stockfish (underlined).",
+  "Los avisos de la MegaDatabase y del libro de aperturas se conectan con «Elegir»: ChessRival solo lee esos archivos, nunca los modifica. El libro es el Power Book de ChessBase u otro libro .ctg (necesita los tres archivos .ctg, .ctb y .cto).": "The MegaDatabase and opening book notices are connected with “Choose”: ChessRival only reads those files and never modifies them. The book is ChessBase’s Power Book or another .ctg book (it needs the three files .ctg, .ctb and .cto).",
 };
 
 export const plantillas = {};

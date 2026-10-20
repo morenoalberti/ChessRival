@@ -258,3 +258,5 @@ select:focus-visible, .ia-campos input:focus-visible { outline: none; border-col
 #estudioEntrenamiento { position: relative; }
 .btn-reiniciar { position: absolute; top: 4px; right: 4px; margin: 0; background: var(--azul); color: #fff; border-color: var(--azul); box-shadow: 0 2px 6px rgba(47, 111, 217, .35); }
 .btn-reiniciar:hover { background: #2559B8; }
+
+.paso.libro { font-style: italic; }

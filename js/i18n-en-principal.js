@@ -1,6 +1,8 @@
 // Inglés: página principal, cuadros comunes, barra superior, importación y FIDE.
 // «exactas»: frase completa → traducción. «plantillas»: frases con huecos «{}» (se rellenan en el mismo orden).
 export const exactas = {
+  'Licencias y créditos': 'Licences and credits',
+  'Vídeo tutorial': 'Video tutorial',
   'Cambiar': 'Change',
   // Barra superior y marca
   'Opciones de la aplicación': 'Application options',
@@ -71,9 +73,6 @@ export const exactas = {
   'No se ha dado permiso para leer los archivos de la base.': 'Permission to read the database files was not granted.',
   'El navegador pide confirmar el acceso a los archivos de la base cada vez que abres la página.': 'The browser asks you to confirm access to the database files every time you open the page.',
   'Elegir la MegaDatabase': 'Choose the MegaDatabase',
-  'Elige la carpeta donde está la base, la que contiene el archivo «Mega Database 2025.cbh» (por ejemplo «1.Mega Database 2025 (CBV)»).': 'Choose the folder where the database is, the one containing the file “Mega Database 2025.cbh” (for example “1.Mega Database 2025 (CBV)”).',
-  'Entra en ella y pulsa «Seleccionar carpeta»; el navegador pedirá confirmar el acceso de lectura.': 'Go into it and press “Select folder”; the browser will ask you to confirm read access.',
-  'Elegir carpeta': 'Choose folder',
   'Elegir': 'Choose',
   'Comprobando la base…': 'Checking the database…',
   'Libro de aperturas de ChessBase (*.ctg)': 'ChessBase opening book (*.ctg)',
@@ -108,7 +107,6 @@ export const exactas = {
   'No se pudo conectar con el servidor intermedio. Comprueba que está en marcha (iniciar.bat) y tu conexión a internet.': 'Could not connect to the intermediate server. Check that it is running (iniciar.bat) and your internet connection.',
   'Sin servidor intermedio.': 'No intermediate server.',
   'Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar la MegaDatabase.': 'Your browser does not allow reading files from disk. Use Chrome or Edge to connect the MegaDatabase.',
-  'El navegador no permite elegir esa carpeta (por ejemplo, Documentos, Descargas o el escritorio). Elige la carpeta de la base, la que contiene el archivo .cbh.': 'The browser does not allow choosing that folder (for example Documents, Downloads or the desktop). Choose the database folder, the one containing the .cbh file.',
   'Transacción cancelada': 'Transaction cancelled',
   'Se ha restaurado una copia. Recarga esta ventana para continuar.': 'A backup has been restored. Reload this window to continue.',
 
@@ -142,6 +140,20 @@ export const exactas = {
   // Indicador de carga
   'Cargando…': 'Loading…',
   'Preparando…': 'Preparing…',
+  "Libro de aperturas no disponible": "Opening book not available",
+  "Comprobando el libro…": "Checking the book…",
+  "Elegir el libro de aperturas": "Choose the opening book",
+  "El navegador pide confirmar el acceso a los archivos del libro cada vez que abres la página.": "The browser asks you to confirm access to the book files every time you open the page.",
+  "No se ha dado permiso para leer los archivos del libro.": "Permission to read the book files was not granted.",
+  "El servidor local respondió con el error {}.": "The local server responded with error {}.",
+  "Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar el libro de aperturas.": "Your browser does not allow reading files from disk. Use Chrome or Edge to connect the opening book.",
+  "Este libro no tiene la posición inicial: no parece un libro de aperturas.": "This book does not have the starting position: it does not look like an opening book.",
+  "El archivo .ctb del libro no es válido.": "The book’s .ctb file is not valid.",
+  "En el cuadro que se abre verás los archivos de la base: «Mega Database 2025.cbh» y los otros con su mismo nombre (.cbg, .cbp y .cbt). Márcalos todos (Ctrl+E) y pulsa «Abrir»; el navegador pedirá confirmar el acceso de lectura.": "In the dialog that opens you will see the files of the database: “Mega Database 2025.cbh” and the others with the same name (.cbg, .cbp and .cbt). Select them all (Ctrl+E) and press “Open”; the browser will ask you to confirm read access.",
+  "En el cuadro que se abre verás los archivos del libro: el .ctg y los otros dos con su mismo nombre (.ctb y .cto). Márcalos todos (Ctrl+E) y pulsa «Abrir»; el navegador pedirá confirmar el acceso de lectura.": "In the dialog that opens you will see the files of the book: the .ctg and the other two with the same name (.ctb and .cto). Select them all (Ctrl+E) and press “Open”; the browser will ask you to confirm read access.",
+  "Elegir archivos": "Choose files",
+  "No has elegido el archivo .cbh de la base. En el cuadro, marca el .cbh y los otros tres archivos con su mismo nombre (pulsa Ctrl+E para marcarlos todos).": "You did not choose the .cbh file of the database. In the dialog, select the .cbh and the other three files with the same name (press Ctrl+E to select them all).",
+  "No has elegido el archivo .ctg del libro. En el cuadro, marca el .ctg y los otros dos archivos con su mismo nombre (pulsa Ctrl+E para marcarlos todos).": "You did not choose the .ctg file of the book. In the dialog, select the .ctg and the other two files with the same name (press Ctrl+E to select them all).",
 };
 
 export const plantillas = {
@@ -173,7 +185,6 @@ export const plantillas = {
   'El servidor local respondió con el error {}.': 'The local server responded with error {}.',
   'No se pudo leer {}.{} (error {}).': 'Could not read {}.{} (error {}).',
   'No se pudo abrir la base: {}': 'Could not open the database: {}',
-  'En la carpeta «{}» no hay ningún archivo .cbh. Elige la carpeta que contiene la base (por ejemplo «1.Mega Database 2025 (CBV)»).': 'There is no .cbh file in the folder “{}”. Choose the folder containing the database (for example “1.Mega Database 2025 (CBV)”).',
   'Error {} del servidor': 'Server error {}',
   'Error {} al descargar la foto': 'Error {} downloading the photo',
   'ChessRival: hay otra pestaña antigua abierta; ciérrala o recárgala para actualizar los datos.': 'ChessRival: there is another old tab open; close or reload it to update the data.',
@@ -190,4 +201,11 @@ export const plantillas = {
   'Ritmo {}': 'Pace {}',
   '{} años': '{} years',
   '{} partidas': '{} games',
+  "{} · pulsa «Permitir» para abrirlo": "{} · press “Allow” to open it",
+  "El libro está incompleto. No encuentro el archivo .{}.": "The book is incomplete. I cannot find the .{} file.",
+  "El libro está incompleto. No encuentro: {}": "The book is incomplete. I cannot find: {}",
+  "No se pudo abrir el libro: {}": "Could not open the book: {}",
+  'La base está incompleta. En el cuadro, marca también: {} (pulsa Ctrl+E para marcar todos los archivos de la base).': 'The database is incomplete. In the dialog, also select: {} (press Ctrl+E to select all the database files).',
+  'El libro está incompleto. En el cuadro, marca también: {} (pulsa Ctrl+E para marcar todos los archivos del libro).': 'The book is incomplete. In the dialog, also select: {} (press Ctrl+E to select all the book files).',
+  'El navegador no ha podido abrir el cuadro de archivos: {}': 'The browser could not open the file dialog: {}',
 };

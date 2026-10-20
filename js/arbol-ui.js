@@ -2,6 +2,7 @@
 // Se avanza pulsando una jugada y se vuelve con «Atrás» o con las migas de arriba.
 import { ponerCargando } from './cargando.js';
 import { construir, nombreApertura, calcularLinea, PLIES_MAX, Fuente } from './arbol.js';
+import * as libro from './libro.js';
 import { Tablero } from './tablero.js';
 import { EvaluadorArbol, simbolo, textoEval } from './motor.js';
 import { svg, svgTrazo, contenidoBoton } from './iconos.js';
@@ -100,7 +101,7 @@ export class ArbolUI {
     this.el.buscarLinea.addEventListener('click', () => this._buscarLinea());
     this.el.irLinea.addEventListener('click', () => {
       if (!this.linea?.length) return;
-      // Los pasos de Stockfish no están en su árbol: se va hasta la última posición que sí lo está.
+      // Los pasos de teoría y de Stockfish no están en su árbol: se va hasta la última posición que sí lo está.
       const destino = [...this.linea].reverse().find(p => p.fuente === Fuente.Partidas)?.nodo ?? this.linea[0].nodo.padre;
       if (destino) this._ir(destino, true);
     });
@@ -291,7 +292,7 @@ export class ArbolUI {
     this.el.lineaTexto.innerHTML = linea.map((paso, i) => {
       const n = paso.nodo;
       let t = n.ply % 2 === 1 ? `${(n.ply + 1) / 2 | 0}.${n.san}` : (i === 0 ? `${n.ply / 2}…${n.san}` : n.san);
-      return `<span class="paso ${paso.esMia ? 'mia' : 'suya'} ${paso.fuente === Fuente.Motor ? 'motor' : ''}" data-paso="${i}">${figurasHtml(convertirFiguras(t))}</span>`;
+      return `<span class="paso ${paso.esMia ? 'mia' : 'suya'} ${paso.fuente === Fuente.Motor ? 'motor' : paso.fuente === Fuente.Libro ? 'libro' : ''}" data-paso="${i}">${figurasHtml(convertirFiguras(t))}</span>`;
     }).join(' ');
     const final = linea.at(-1);
     if (final.evalBlancas !== null) this.el.lineaTexto.insertAdjacentHTML('beforeend', ` <b class="simbolo" title="Stockfish: ${textoEval(final.evalBlancas)}">${simbolo(final.evalBlancas)}</b>`);
@@ -312,7 +313,9 @@ export class ArbolUI {
       const num = d.ply % 2 === 1 ? `${(d.ply + 1) / 2 | 0}.` : `${d.ply / 2}…`;
       detalle.push(convertirFiguras(`• Fiabilidad: de tus jugadas, la menos vista es ${num}${d.san}: solo se ha jugado contra él en ${d.partidas} partidas, en las que él ha sacado el ${redondeo(d.porcentaje)} % de los puntos (él ganó ${d.victorias}, empató ${d.tablas} y perdió ${d.derrotas}). Es la parte menos fiable de la línea; con tan pocas partidas, ese resultado puede ser casualidad.`));
     }
-    if (linea.some(p => p.fuente === Fuente.Motor)) detalle.push('• Subrayadas, jugadas de Stockfish: sus partidas ya no dan más información.');
+    if (!libro.conectado()) detalle.push('• Elige un libro de aperturas (Power Book) en la ventana principal para completar la línea con teoría.');
+    if (linea.some(p => p.fuente === Fuente.Motor)) detalle.push('• Subrayadas, jugadas de Stockfish: el libro no tiene esa posición.');
+    if (linea.some(p => p.fuente === Fuente.Libro)) detalle.push(`• En cursiva, jugadas de teoría del libro «${libro.estado.nombre}».`);
     if (linea.every(p => p.evalBlancas === null)) detalle.push('• Sin Stockfish: la línea se ha elegido solo por los resultados de él.');
     this.el.lineaDetalle.innerHTML = detalle.map(esc).join('<br>');
     this.el.lineaDetalle.hidden = false;

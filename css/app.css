@@ -371,3 +371,6 @@ button.candidato:hover, button.candidato:focus-visible { background: #EAF1FF; ou
 .ver-fide { position: absolute; top: 8px; right: 10px; color: var(--azul); padding: 3px 6px; opacity: .75; }
 .ver-fide:hover { background: #2F6FD922; opacity: 1; }
 .tarjeta:hover .ver-fide { opacity: 1; }
+
+.pie-enlace { color: inherit; text-decoration: underline dotted; cursor: pointer; }
+.pie-enlace:hover { color: var(--azul); }

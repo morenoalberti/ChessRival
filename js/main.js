@@ -7,6 +7,7 @@ import { preguntar, informar, elegirJugador, iniciales } from './dialogos.js';
 import { urlBandera } from './banderas.js';
 import * as fuentes from './fuentes.js';
 import * as mega from './mega.js';
+import * as libro from './libro.js';
 import { instalarFichaFide } from './ficha-fide-emergente.js';
 import { nombreConTitulo } from './nombre-jugador.js';
 
@@ -627,16 +628,6 @@ window.addEventListener('focus', mirarPortapapeles);
 
 // ---------- MegaDatabase, libro de aperturas y motor ----------
 
-const elegidos = { libro: null };   // el libro de aperturas: de momento solo se recuerda su nombre
-
-function pintarBanner(clave, textoEl, boton, { vacio, nombre }) {
-  const e = elegidos[clave];
-  textoEl.className = 'banner-texto recortar ' + (e ? '' : 'suave');
-  textoEl.textContent = e ? (nombre ?? e.nombre) : vacio;
-  textoEl.title = e ? (nombre ?? e.nombre) : '';
-  boton.innerHTML = e ? contenidoBoton('cambiar', 'Cambiar') : contenidoBoton('carpeta', 'Elegir');
-}
-
 /** MegaDatabase: sin elegir, conectada, con error o a la espera de que el navegador deje volver a abrir sus archivos. */
 function pintarMega() {
   const t = el.megaText, e = mega.estado;
@@ -654,7 +645,24 @@ function pintarMega() {
     el.megaBtn.innerHTML = contenidoBoton('carpeta', 'Elegir');
   }
 }
-const pintarLibro = () => pintarBanner('libro', el.libroText, el.libroBtn, { vacio: 'Libro de aperturas sin elegir', nombre: 'PowerBook 2025' });
+/** Libro de aperturas: sin elegir, abierto, con error o a la espera de que el navegador deje volver a abrir sus archivos. */
+function pintarLibro() {
+  const t = el.libroText, e = libro.estado;
+  if (e.libro) {
+    t.className = 'banner-texto recortar'; t.textContent = e.nombre; t.title = e.nombre;
+    el.libroBtn.innerHTML = contenidoBoton('cambiar', 'Cambiar');
+  } else if (e.pendiente) {
+    t.className = 'banner-texto recortar azul'; t.textContent = `${e.nombre || 'Libro de aperturas'} · pulsa «Permitir» para abrirlo`;
+    t.title = 'El navegador pide confirmar el acceso a los archivos del libro cada vez que abres la página.';
+    el.libroBtn.innerHTML = contenidoBoton('visto', 'Permitir');
+  } else if (e.error) {
+    t.className = 'banner-texto recortar error'; t.textContent = 'Libro de aperturas no disponible'; t.title = e.error;
+    el.libroBtn.innerHTML = contenidoBoton('carpeta', 'Elegir');
+  } else {
+    t.className = 'banner-texto recortar suave'; t.textContent = 'Libro de aperturas sin elegir'; t.title = '';
+    el.libroBtn.innerHTML = contenidoBoton('carpeta', 'Elegir');
+  }
+}
 
 el.megaBtn.addEventListener('click', async () => {
   el.megaBtn.disabled = true;
@@ -662,8 +670,8 @@ el.megaBtn.addEventListener('click', async () => {
     if (mega.estado.pendiente) { if (!await mega.pedirPermiso()) await informar('MegaDatabase', 'No se ha dado permiso para leer los archivos de la base.'); }
     else {
       if (!mega.estado.base) {
-        await informar('Elegir la MegaDatabase', 'Elige la carpeta donde está la base, la que contiene el archivo «Mega Database 2025.cbh» (por ejemplo «1.Mega Database 2025 (CBV)»). '
-          + 'Entra en ella y pulsa «Seleccionar carpeta»; el navegador pedirá confirmar el acceso de lectura.', 'Elegir carpeta');
+        await informar('Elegir la MegaDatabase', 'En el cuadro que se abre verás los archivos de la base: «Mega Database 2025.cbh» y los otros con su mismo nombre (.cbg, .cbp y .cbt). '
+          + 'Márcalos todos (Ctrl+E) y pulsa «Abrir»; el navegador pedirá confirmar el acceso de lectura.', 'Elegir archivos');
       }
       el.megaText.textContent = 'Comprobando la base…';
       const error = await mega.elegir();
@@ -672,24 +680,21 @@ el.megaBtn.addEventListener('click', async () => {
   } finally { el.megaBtn.disabled = false; pintarMega(); }
 });
 
-/** Elige el libro de aperturas (Power Book): de momento solo se guarda su nombre. */
-async function elegirLibro() {
+el.libroBtn.addEventListener('click', async () => {
+  el.libroBtn.disabled = true;
   try {
-    if ('showOpenFilePicker' in window) {
-      const [handle] = await showOpenFilePicker({ types: [{ description: 'Libro de aperturas de ChessBase (*.ctg)', accept: { 'application/octet-stream': ['.ctg'] } }] });
-      elegidos.libro = { nombre: handle.name };
-    } else {
-      const archivo = await new Promise((ok) => {
-        const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.ctg' });
-        input.onchange = () => ok(input.files[0] ?? null); input.oncancel = () => ok(null); input.click();
-      });
-      if (!archivo) return;
-      elegidos.libro = { nombre: archivo.name };
+    if (libro.estado.pendiente) { if (!await libro.pedirPermiso()) await informar('Libro de aperturas', 'No se ha dado permiso para leer los archivos del libro.'); }
+    else {
+      if (!libro.estado.libro && !libro.estado.local) {
+        await informar('Elegir el libro de aperturas', 'En el cuadro que se abre verás los archivos del libro: el .ctg y los otros dos con su mismo nombre (.ctb y .cto). '
+          + 'Márcalos todos (Ctrl+E) y pulsa «Abrir»; el navegador pedirá confirmar el acceso de lectura.', 'Elegir archivos');
+      }
+      el.libroText.textContent = 'Comprobando el libro…';
+      const error = await libro.elegir();
+      if (error) await informar('Libro de aperturas', error);
     }
-    await db.guardarAjuste('archivo_libro', elegidos.libro);
-  } catch (ex) { if (ex?.name !== 'AbortError') await informar('Libro de aperturas', ex.message); }
-}
-el.libroBtn.addEventListener('click', async () => { await elegirLibro(); pintarLibro(); });
+  } finally { el.libroBtn.disabled = false; pintarLibro(); }
+});
 
 // ---------- Jugadores a cargar (de 1 a 10; por defecto 5) ----------
 
@@ -752,8 +757,7 @@ async function iniciar() {
   actualizarBotonCargar();
   actualizarRed();
   try {
-    elegidos.libro = await db.leerAjuste('archivo_libro');
-    await mega.restaurar().catch(() => {});
+    await Promise.all([mega.restaurar().catch(() => {}), libro.restaurar().catch(() => {})]);
     pintarMega(); pintarLibro();
     el.rango.value = String(await db.leerAjuste('jugadores_a_cargar', 5)); pintarCantidad();
 
@@ -768,4 +772,4 @@ async function iniciar() {
 iniciar();
 
 // Al cambiar de idioma se vuelve a pintar lo que lleva números o textos construidos con el idioma.
-window.addEventListener('chessrival-idioma', () => { try { pintarMega(); actualizarRed(); } catch { /* aún no iniciada */ } });
+window.addEventListener('chessrival-idioma', () => { try { pintarMega(); pintarLibro(); actualizarRed(); } catch { /* aún no iniciada */ } });

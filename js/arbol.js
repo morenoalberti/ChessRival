@@ -4,6 +4,7 @@ import { Chess } from './vendor/chess.js';
 import { leerPgn, jugadasDe } from './pgn.js';
 import { buscarApertura, epdDe, nombreCompleto } from './aperturas.js';
 import { convertirFiguras } from './figuritas.js';
+import * as libro from './libro.js';
 
 /** Cuántas medias jugadas (de ambos bandos) de cada partida entran en el árbol: 20 son hasta la jugada 10. */
 export const PLIES_MAX = 20;
@@ -114,27 +115,39 @@ export async function calcularLinea(raiz, suColor, motor, progreso, señal) {
     nodo = elegido;
   }
 
-  if (motor) await completarConMotor(linea, nodo, suColor, motor, progreso, señal);
+  if (motor || libro.conectado()) await completarConTeoria(linea, nodo, suColor, motor, progreso, señal);
   return linea;
 }
 
-/** Cuando sus partidas se acaban, la línea sigue con lo que ve Stockfish. */
-async function completarConMotor(linea, ultimo, suColor, motor, progreso, señal) {
+/** Cuando sus partidas se acaban, la línea sigue con lo que dice el libro de aperturas y, si el libro no tiene la posición, con Stockfish. */
+async function completarConTeoria(linea, ultimo, suColor, motor, progreso, señal) {
   const tablero = new Chess(ultimo.fen);
   let nodo = ultimo;
   while (nodo.ply < PLIES_TOTALES) {
     if (señal?.aborted) throw new DOMException('Cancelado', 'AbortError');
     const mueveEl = (nodo.ply % 2 === 0) === (suColor === 'B');
-    progreso?.(mueveEl ? 'Buscando su respuesta con Stockfish…' : 'Buscando tu jugada con Stockfish…');
+    progreso?.(mueveEl ? 'Buscando su respuesta en la teoría…' : 'Buscando tu jugada en la teoría…');
 
-    const uci = await motor.mejorJugada(nodo.fen, señal);
+    let uci = null, fuente = Fuente.Libro;
+    const entrada = await libro.consultar(nodo.fen, true);
+    const jugadas = entrada?.jugadas.filter(j => !j.anotacion.includes('?'));
+    if (jugadas?.length) {
+      // Él: la que más se juega. Tú: de las más jugadas, la que mejor puntúa para quien la juega.
+      const porPartidas = [...jugadas].sort((a, b) => b.partidas - a.partidas);
+      const elegida = mueveEl ? porPartidas[0] : porPartidas.slice(0, 3).sort((a, b) => (b.puntosQuienJuega ?? 0) - (a.puntosQuienJuega ?? 0))[0];
+      uci = elegida.uci;
+    } else if (motor) {
+      progreso?.(mueveEl ? 'Buscando su respuesta con Stockfish…' : 'Buscando tu jugada con Stockfish…');
+      uci = await motor.mejorJugada(nodo.fen, señal);
+      fuente = Fuente.Motor;
+    }
     if (!uci) break;
     let mov;
     try { mov = tablero.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] }); } catch { break; }
 
     const hijo = new NodoArbol({ san: mov.san, ply: nodo.ply + 1, fen: tablero.fen(), padre: nodo, desde: mov.from, hasta: mov.to });
-    const evaluacion = await motor.evaluar(hijo.fen, señal);
-    linea.push({ nodo: hijo, esMia: !mueveEl, evalBlancas: evaluacion, fuente: Fuente.Motor });
+    const evaluacion = motor ? await motor.evaluar(hijo.fen, señal) : null;
+    linea.push({ nodo: hijo, esMia: !mueveEl, evalBlancas: evaluacion, fuente });
     nodo = hijo;
   }
 }

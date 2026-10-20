@@ -2,7 +2,7 @@
 // de un jugador. Hay dos formas de leerla:
 //  · Con el servidor local (servidor.py, el normal con iniciar.bat): el servidor abre el cuadro «Elegir archivo .cbh» de Windows, recuerda la ruta
 //    y entrega a la página los cuatro archivos de la base por trozos, sin ningún aviso del navegador (igual que la versión de escritorio).
-//  · Sin él (la web publicada): el selector de carpetas del navegador; los permisos (FileSystemHandle) se guardan y el navegador los pide confirmar.
+//  · Sin él (la web publicada): el selector de archivos del navegador; los permisos (FileSystemHandle) se guardan y el navegador los pide confirmar.
 import { leerAjuste, guardarAjuste } from './db.js';
 import { ChessBaseDatabase, ErrorBase } from './chessbase.js';
 import { claveJugador, guardarPartidas, refrescarTarjetasDe } from './db-partidas.js';
@@ -17,7 +17,7 @@ export const estado = { base: null, error: null, pendiente: false, nombre: '', l
 let handles = null;
 let cola = Promise.resolve();                  // un solo recorrido de la base a la vez
 
-export const disponible = () => estado.local || 'showDirectoryPicker' in window;
+export const disponible = () => estado.local || 'showOpenFilePicker' in window;
 
 // ---------- Servidor local ----------
 
@@ -93,7 +93,7 @@ export async function pedirPermiso() {
   return ok;
 }
 
-/** Elige la base con el selector de archivos del navegador (hay que elegir a la vez .cbh, .cbg, .cbp y .cbt). Devuelve un error para el usuario, o null. */
+/** Elige la base con el selector de archivos del navegador (hay que elegir a la vez .cbh, .cbg, .cbp y .cbt). Devuelve un error para el usuario, undefined si se cancela, o null. */
 export async function elegir() {
   if (estado.local) {
     let r;
@@ -106,34 +106,38 @@ export async function elegir() {
     }
     // el servidor no tiene interfaz gráfica: se usa el selector del navegador
   }
-  if (!('showDirectoryPicker' in window)) return 'Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar la MegaDatabase.';
-  // El navegador no puede encontrar los archivos «hermanos» de un .cbh como hace el programa de escritorio: se elige la carpeta de la base
-  // (la que contiene el .cbh) y de ahí se cogen el .cbg, el .cbp y el .cbt.
-  let carpeta;
-  try { carpeta = await showDirectoryPicker({ id: 'megadatabase', mode: 'read' }); }
-  catch (ex) {
+  if (!('showOpenFilePicker' in window)) return 'Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar la MegaDatabase.';
+  // El navegador no puede encontrar los archivos «hermanos» de un .cbh como hace el programa de escritorio: se eligen a la vez los cuatro
+  // (el cuadro solo enseña los de la base, y con Ctrl+E se marcan todos).
+  let elegidos;
+  try {
+    elegidos = await showOpenFilePicker({
+      id: 'megadatabase', multiple: true, excludeAcceptAllOption: true,
+      types: [{ description: 'Base de ChessBase (.cbh .cbg .cbp .cbt)', accept: { 'application/octet-stream': ['.cbh', '.cbg', '.cbp', '.cbt'] } }]
+    });
+  } catch (ex) {
     if (ex?.name === 'AbortError') return undefined;
-    return 'El navegador no permite elegir esa carpeta (por ejemplo, Documentos, Descargas o el escritorio). Elige la carpeta de la base, la que contiene el archivo .cbh.';
+    return `El navegador no ha podido abrir el cuadro de archivos: ${ex.message}`;
   }
 
-  const archivos = new Map();                                  // nombre en minúsculas → handle
-  for await (const [nombre, h] of carpeta.entries()) if (h.kind === 'file') archivos.set(nombre.toLowerCase(), h);
-  const bases = [...archivos.values()].filter(h => /\.cbh$/i.test(h.name));
-  if (!bases.length) return `En la carpeta «${carpeta.name}» no hay ningún archivo .cbh. Elige la carpeta que contiene la base (por ejemplo «1.Mega Database 2025 (CBV)»).`;
-
+  const porNombre = new Map(elegidos.map(h => [h.name.toLowerCase(), h]));
+  const cabeceras = elegidos.filter(h => /\.cbh$/i.test(h.name));
+  if (!cabeceras.length) return 'No has elegido el archivo .cbh de la base. En el cuadro, marca el .cbh y los otros tres archivos con su mismo nombre (pulsa Ctrl+E para marcarlos todos).';
   // Si hay varias bases, la más grande (la MegaDatabase).
-  let elegido = bases[0];
-  if (bases.length > 1) {
-    const tamaños = await Promise.all(bases.map(async h => (await h.getFile()).size));
-    elegido = bases[tamaños.indexOf(Math.max(...tamaños))];
+  let cabecera = cabeceras[0];
+  if (cabeceras.length > 1) {
+    const tamaños = await Promise.all(cabeceras.map(async h => (await h.getFile()).size));
+    cabecera = cabeceras[tamaños.indexOf(Math.max(...tamaños))];
   }
-  const nombreBase = elegido.name.replace(/\.cbh$/i, '');
-  const elegidos = [elegido, ...['cbg', 'cbp', 'cbt'].map(e => archivos.get(`${nombreBase}.${e}`.toLowerCase())).filter(Boolean)];
+  const nombreBase = cabecera.name.replace(/\.cbh$/i, '');
+  const faltan = ['cbg', 'cbp', 'cbt'].filter(e => !porNombre.has(`${nombreBase}.${e}`.toLowerCase())).map(e => `${nombreBase}.${e}`);
+  if (faltan.length) return `La base está incompleta. En el cuadro, marca también: ${faltan.join(', ')} (pulsa Ctrl+E para marcar todos los archivos de la base).`;
+  const completos = [cabecera, ...['cbg', 'cbp', 'cbt'].map(e => porNombre.get(`${nombreBase}.${e}`.toLowerCase()))];
 
-  await abrir(elegidos);
+  await abrir(completos);
   if (!estado.base) return estado.error;
-  handles = elegidos;
-  await guardarAjuste('mega_handles', elegidos);
+  handles = completos;
+  await guardarAjuste('mega_handles', completos);
   return null;
 }
 

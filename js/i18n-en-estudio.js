@@ -198,6 +198,10 @@ export const exactas = {
   'Puntos fuertes y débiles': 'Strengths and weaknesses',
   'Fuertes:': 'Strengths:',
   'Débiles:': 'Weaknesses:',
+  "Buscando su respuesta en la teoría…": "Looking for his reply in the theory…",
+  "Buscando tu jugada en la teoría…": "Looking for your move in the theory…",
+  "• Elige un libro de aperturas (Power Book) en la ventana principal para completar la línea con teoría.": "• Choose an opening book (Power Book) on the main screen to complete the line with theory.",
+  "• Subrayadas, jugadas de Stockfish: el libro no tiene esa posición.": "• Underlined, Stockfish moves: the book does not have that position.",
 };
 
 export const plantillas = {
@@ -294,4 +298,5 @@ export const plantillas = {
   'coincidió con la primera opción de Stockfish en {} de {} jugadas ({} %)': 'matched Stockfish’s first choice in {} of {} moves ({} %)',
   'solo coincidió con la primera opción de Stockfish en {} de {} jugadas ({} %)': 'only matched Stockfish’s first choice in {} of {} moves ({} %)',
   'Basado en el análisis de Stockfish a profundidad {}: son valores orientativos, no una verdad absoluta.': 'Based on Stockfish analysis at depth {}: these are approximate values, not an absolute truth.',
+  "• En cursiva, jugadas de teoría del libro «{}».": "• In italics, theory moves from the book “{}”.",
 };

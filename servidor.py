@@ -23,6 +23,7 @@ PUERTO = int(os.environ.get("PORT") or 8765)
 CARPETA = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(CARPETA, ".mega.json")
 EXTENSIONES = ("cbh", "cbg", "cbp", "cbt")
+EXTENSIONES_LIBRO = ("ctg", "ctb", "cto")
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 ORIGENES = {f"http://localhost:{PUERTO}", f"http://127.0.0.1:{PUERTO}", f"http://[::1]:{PUERTO}"}
 HOSTS_LOCALES = {"localhost", "127.0.0.1", "[::1]"}
@@ -74,6 +75,66 @@ def estado_mega():
     return {"disponible": True, "configurada": True, "nombre": nombre, "ruta": ruta, "tamanos": {e: os.path.getsize(p) for e, p in rutas.items()}}
 
 
+def archivos_libro(ruta_ctg):
+    """{extensión: ruta real} de los tres archivos del libro (.ctg .ctb .cto), y los que faltan."""
+    carpeta, nombre = os.path.split(ruta_ctg)
+    base = os.path.splitext(nombre)[0].lower()
+    try:
+        existentes = {n.lower(): n for n in os.listdir(carpeta)}
+    except OSError:
+        existentes = {}
+    rutas, faltan = {}, []
+    for ext in EXTENSIONES_LIBRO:
+        real = existentes.get(f"{base}.{ext}")
+        if real:
+            rutas[ext] = os.path.join(carpeta, real)
+        else:
+            faltan.append(f"{os.path.splitext(nombre)[0]}.{ext}")
+    return rutas, faltan
+
+
+def estado_libro():
+    ruta = leer_config().get("libro", "")
+    if not ruta:
+        return {"disponible": True, "configurado": False}
+    rutas, faltan = archivos_libro(ruta)
+    nombre = os.path.splitext(os.path.basename(ruta))[0]
+    if faltan:
+        return {"disponible": True, "configurado": True, "nombre": nombre, "error": "El libro está incompleto. No encuentro: " + ", ".join(faltan)}
+    return {"disponible": True, "configurado": True, "nombre": nombre, "tamanos": {e: os.path.getsize(p) for e, p in rutas.items()}}
+
+
+def elegir_libro_con_cuadro():
+    """El cuadro de Windows para elegir el .ctg. Devuelve la ruta, '' si se cancela o None si no hay interfaz gráfica."""
+    try:
+        import tkinter
+        from tkinter import filedialog
+    except ImportError:
+        return None
+    with _cuadro:
+        raiz = tkinter.Tk()
+        raiz.withdraw()
+        raiz.attributes("-topmost", True)
+        try:
+            inicial = os.path.dirname(leer_config().get("libro", "")) or None
+            ruta = filedialog.askopenfilename(
+                parent=raiz, title="Elige el libro de aperturas de ChessBase (archivo .ctg)", initialdir=inicial,
+                filetypes=[("Libro de aperturas (*.ctg)", "*.ctg"), ("Todos los archivos", "*.*")])
+        finally:
+            raiz.destroy()
+    return os.path.normpath(ruta) if ruta else ""
+
+
+def validar_y_guardar_libro(ruta):
+    if not ruta.lower().endswith(".ctg") or not os.path.isfile(ruta):
+        return {"error": "Selecciona el archivo .ctg del libro."}
+    _, faltan = archivos_libro(ruta)
+    if faltan:
+        return {"error": "El libro está incompleto. No encuentro: " + ", ".join(faltan)}
+    guardar_config({**leer_config(), "libro": ruta})
+    return estado_libro()
+
+
 def elegir_con_cuadro():
     """El cuadro de Windows para elegir el .cbh. Devuelve la ruta, '' si se cancela o None si no hay interfaz gráfica."""
     try:
@@ -101,7 +162,7 @@ def validar_y_guardar(ruta):
     _, faltan = archivos_de(ruta)
     if faltan:
         return {"error": "La base está incompleta. No encuentro: " + ", ".join(faltan)}
-    guardar_config({"ruta": ruta})
+    guardar_config({**leer_config(), "ruta": ruta})
     return estado_mega()
 
 
@@ -162,6 +223,8 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
             return self._json(copias_local.leer_destino())
         if self.path.split("?")[0].startswith("/local/mega"):
             return self._mega(enviar_cuerpo=True)
+        if self.path.split("?")[0].startswith("/local/libro"):
+            return self._libro(enviar_cuerpo=True)
         super().do_GET()
 
     def do_HEAD(self):
@@ -171,6 +234,8 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
             return
         if self.path.split("?")[0].startswith("/local/mega"):
             return self._mega(enviar_cuerpo=False)
+        if self.path.split("?")[0].startswith("/local/libro"):
+            return self._libro(enviar_cuerpo=False)
         super().do_HEAD()
 
     def do_POST(self):
@@ -214,8 +279,18 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         if ruta == "/local/mega/ruta":
             return self._json(validar_y_guardar(str(cuerpo.get("ruta", "")).strip().strip('"')))
         if ruta == "/local/mega/olvidar":
-            guardar_config({})
+            guardar_config({k: v for k, v in leer_config().items() if k != "ruta"})
             return self._json(estado_mega())
+        if ruta == "/local/libro/elegir":
+            elegida = elegir_libro_con_cuadro()
+            if elegida is None:
+                return self._json({"sinInterfaz": True})
+            if elegida == "":
+                return self._json({"cancelado": True})
+            return self._json(validar_y_guardar_libro(elegida))
+        if ruta == "/local/libro/olvidar":
+            guardar_config({k: v for k, v in leer_config().items() if k != "libro"})
+            return self._json(estado_libro())
         self.send_error(404)
 
     def _mega(self, enviar_cuerpo):
@@ -230,7 +305,23 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         if ext not in EXTENSIONES or ext not in rutas:
             return self.send_error(404)
 
-        archivo = rutas[ext]
+        return self._enviar_archivo(rutas[ext], enviar_cuerpo)
+
+    def _libro(self, enviar_cuerpo):
+        ruta = self.path.split("?")[0]
+        if ruta == "/local/libro":
+            return self._json(estado_libro())
+        if not ruta.startswith("/local/libro/archivo/"):
+            return self.send_error(404)
+        ext = ruta.rsplit("/", 1)[1].lower()
+        configurado = leer_config().get("libro", "")
+        rutas, _ = archivos_libro(configurado) if configurado else ({}, [])
+        if ext not in EXTENSIONES_LIBRO or ext not in rutas:
+            return self.send_error(404)
+        return self._enviar_archivo(rutas[ext], enviar_cuerpo)
+
+    def _enviar_archivo(self, archivo, enviar_cuerpo):
+        """Entrega un archivo entero o el trozo que pida la cabecera Range."""
         tam = os.path.getsize(archivo)
         inicio, fin, codigo = 0, tam - 1, 200
         rango = self.headers.get("Range", "")

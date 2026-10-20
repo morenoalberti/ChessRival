@@ -24,6 +24,7 @@ export const SECCIONES = [
     h('Cabecera y accesos'),
     lista('Caja de búsqueda: admite la URL de un torneo, el nombre de un jugador o su ID FIDE.',
       '«Cargar» trae un torneo; «Añadir» busca un jugador en la FIDE.',
+      'Los avisos de la MegaDatabase y del libro de aperturas se conectan con «Elegir»: ChessRival solo lee esos archivos, nunca los modifica. El libro es el Power Book de ChessBase u otro libro .ctg (necesita los tres archivos .ctg, .ctb y .cto).',
       'Arriba a la derecha, las banderas cambian el idioma de ChessRival (español o inglés) al instante; a su derecha, los iconos abren las copias de seguridad y esta ayuda.'),
     h('Organizar las tarjetas'),
     lista('«Todos» reúne todas las tarjetas. «Jugadores» contiene los jugadores sueltos.',
@@ -100,6 +101,7 @@ export const SECCIONES = [
       '«Ver partidas» lista las partidas que pasan por la posición actual; haz clic en una para abrirla en el visor.'),
     h('La línea que te conviene jugarle'),
     p('«Buscar la línea» usa Stockfish para proponer, a partir de la posición actual, una línea con tus mejores jugadas frente a sus respuestas más habituales. Tus jugadas salen en azul y las de él en gris. «Ir a la línea» coloca el árbol al final de esa línea.'),
+    p('Cuando sus partidas se acaban, la línea sigue con la teoría del libro de aperturas que hayas elegido en la pantalla principal (por ejemplo el PowerBook de ChessBase): sus jugadas salen en cursiva. Si el libro no tiene la posición, sigue con Stockfish (subrayado).'),
     nota('Una línea con pocas partidas puede deberse a la casualidad: el propio árbol avisa de cuál es la parte menos fiable.')
   ]],
   ['analizar', 'Análisis y debilidades', 'Estudiar al rival', [
@@ -194,6 +196,19 @@ export const SECCIONES = [
     p('Pulsa la papelera roja de una copia reciente y confirma el borrado. Se elimina del historial; tus datos actuales y los archivos que hayas descargado se conservan.'),
     nota('El historial pertenece al navegador. Descarga los archivos que quieras conservar fuera de él. Las copias no incluyen claves de IA ni la MegaDatabase, y no son compatibles con los ZIP de escritorio.')
   ]],
+  ['licencias', 'Licencias y créditos', 'Herramientas', [
+    p('ChessRival es de código abierto y usa software de terceros con sus propias licencias.'),
+    h('Stockfish'),
+    p('El motor es Stockfish 19 (versión «lite» de un solo hilo) compilado a WebAssembly por stockfish.js, bajo licencia GNU GPL versión 3. Su código fuente está en [stockfish.js](https://github.com/nmrugg/stockfish.js) y en [Stockfish](https://github.com/official-stockfish/Stockfish). El texto de la licencia está en [este archivo](https://chessrival.net/assets/motor/LICENCIA-Stockfish-GPL3.txt).'),
+    h('Código de ChessRival'),
+    p('El código de ChessRival está publicado en [GitHub](https://github.com/morenoalberti/ChessRival).'),
+    h('Otros componentes'),
+    lista('Reglas del ajedrez: [chess.js](https://github.com/jhlywa/chess.js), licencia BSD.',
+      'Nombres de aperturas: [chess-openings](https://github.com/lichess-org/chess-openings) de Lichess, dominio público (CC0).',
+      'Banderas de los países: [Flagcdn](https://flagcdn.com).',
+      'Las imágenes de las piezas llevan su licencia en el archivo LICENSE.txt de la carpeta de piezas.'),
+    nota('MegaDatabase, PowerBook y ChessBase son marcas y productos de ChessBase GmbH. ChessRival solo lee los archivos que tú tienes y no los incluye ni los distribuye.')
+  ]],
   ['datos', 'Dónde se guardan los datos', 'Herramientas', [
     p('Tus datos se guardan en el navegador y en la dirección desde la que abres la web.'),
     h('Usa siempre la misma dirección'),
@@ -206,10 +221,14 @@ export const SECCIONES = [
 ];
 const normalizar = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 function ponerTexto(elemento, texto) {
-  // Solo los nombres de controles escritos entre comillas se destacan; el contenido sigue siendo texto.
+  // Los nombres de controles escritos entre comillas se destacan y [texto](https://…) es un enlace; el resto es texto.
   for (const [i, parte] of texto.split(/«([^»]+)»/g).entries()) {
-    if (i % 2) { const fuerte = document.createElement('strong'); fuerte.textContent = parte; elemento.append(fuerte); }
-    else elemento.append(document.createTextNode(parte));
+    if (i % 2) { const fuerte = document.createElement('strong'); fuerte.textContent = parte; elemento.append(fuerte); continue; }
+    for (const [j, trozo] of parte.split(/\[([^\]]+)\]\((https:\/\/[^)\s]+)\)/g).entries()) {
+      if (j % 3 === 0) elemento.append(document.createTextNode(trozo));
+      else if (j % 3 === 1) { const a = document.createElement('a'); a.textContent = trozo; a.target = '_blank'; a.rel = 'noopener noreferrer'; elemento.append(a); }
+      else elemento.lastChild.href = trozo;
+    }
   }
 }
 
