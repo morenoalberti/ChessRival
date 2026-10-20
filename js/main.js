@@ -227,10 +227,37 @@ function pintarTarjetas(lista) {
 }
 
 function mostrarEstado(texto, cargando = false) {
+  el.estado.classList.remove('bienvenida');
   if (cargando) ponerCargando(el.estado, texto); else el.estado.textContent = texto;
   el.estado.classList.remove('oculto');
 }
-const ocultarEstado = () => el.estado.classList.add('oculto');
+const ocultarEstado = () => { el.estado.classList.add('oculto'); el.estado.classList.remove('bienvenida'); };
+
+/** La primera vez (sin ningún torneo ni jugador): qué es ChessRival, cómo empezar y un ejemplo para probar con un clic. */
+function mostrarBienvenida() {
+  el.estado.classList.remove('oculto'); el.estado.classList.add('bienvenida');
+  el.estado.innerHTML = `<div class="bienvenida-panel">
+    <h2>Bienvenido a ChessRival</h2>
+    <p class="bienvenida-sub">Prepara tus partidas estudiando a tu rival: cómo abre, dónde falla y qué conviene jugarle.</p>
+    <ol class="bienvenida-pasos">
+      <li><b>1</b><div><strong>Busca a tu rival</strong><span>Pega la URL de un torneo (Chess-Results o Info64) o escribe el nombre o el ID FIDE de un jugador en la caja de arriba y pulsa Enter.</span></div></li>
+      <li><b>2</b><div><strong>Importa sus partidas</strong><span>Abre su ficha con doble clic en su tarjeta y pulsa «Importar partidas»: con archivos PGN o desde tu MegaDatabase.</span></div></li>
+      <li><b>3</b><div><strong>Analiza y prepara</strong><span>Stockfish revisa sus partidas y te dice cómo juega y qué te conviene jugarle.</span></div></li>
+    </ol>
+    <div class="bienvenida-botones">
+      <button type="button" class="btn btn-primario" data-bienvenida="ejemplo">${contenidoBoton('visto', 'Probar con un jugador de ejemplo')}</button>
+      <button type="button" class="btn btn-secundario" data-bienvenida="video">${contenidoBoton('video', 'Ver el vídeo tutorial')}</button>
+      <button type="button" class="btn btn-secundario" data-bienvenida="ayuda">${contenidoBoton('ayuda', 'Abrir la ayuda')}</button>
+    </div>
+    <p class="bienvenida-nota">La MegaDatabase y el libro de aperturas son opcionales: conéctalos cuando quieras con los avisos de arriba.</p>
+  </div>`;
+}
+el.estado.addEventListener('click', async (e) => {
+  const accion = e.target.closest('[data-bienvenida]')?.dataset.bienvenida;
+  if (accion === 'ejemplo') await anadirJugador('1503014');                  // Magnus Carlsen: siempre está en la FIDE
+  else if (accion === 'video') document.querySelector('[data-video]')?.click();
+  else if (accion === 'ayuda') document.querySelector('[data-ayuda]')?.click();
+});
 
 /** Pone en pantalla las tarjetas de la pestaña abierta. Sin ningún torneo ni jugador: la pantalla de bienvenida. */
 async function cargarVista() {
@@ -239,7 +266,7 @@ async function cargarVista() {
 
   if (pestanas.every(p => p.contador === 0)) {
     el.subtitulo.textContent = 'Pega una URL de Chess-Results o Info64';
-    mostrarEstado('Aquí aparecerán las tarjetas de los primeros de cada torneo y los jugadores que añadas.');
+    mostrarBienvenida();
     el.pie.textContent = '';
     return;
   }

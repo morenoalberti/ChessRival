@@ -158,6 +158,18 @@ export const exactas = {
   "Se abrirá un cuadro para elegir la carpeta donde guardas la MegaDatabase de ChessBase: la que contiene el archivo «Mega Database 2025.cbh». Entra en esa carpeta y pulsa «Seleccionar carpeta». ChessRival encontrará solo los archivos que necesita.": "A dialog will open to choose the folder where you keep the ChessBase MegaDatabase: the one containing the file “Mega Database 2025.cbh”. Go into that folder and press “Select folder”. ChessRival will find the files it needs on its own.",
   "Se abrirá un cuadro para elegir la carpeta donde guardas el libro de aperturas de ChessBase (por ejemplo, «PowerBook 2025»): la que contiene el archivo «.ctg». Entra en esa carpeta y pulsa «Seleccionar carpeta». ChessRival encontrará solo los archivos que necesita.": "A dialog will open to choose the folder where you keep the ChessBase opening book (for example, “PowerBook 2025”): the one containing the “.ctg” file. Go into that folder and press “Select folder”. ChessRival will find the files it needs on its own.",
   "Elegir carpeta": "Choose folder",
+  "Bienvenido a ChessRival": "Welcome to ChessRival",
+  "Prepara tus partidas estudiando a tu rival: cómo abre, dónde falla y qué conviene jugarle.": "Prepare your games by studying your opponent: how they open, where they fail and what to play against them.",
+  "Busca a tu rival": "Find your opponent",
+  "Pega la URL de un torneo (Chess-Results o Info64) o escribe el nombre o el ID FIDE de un jugador en la caja de arriba y pulsa Enter.": "Paste a tournament URL (Chess-Results or Info64) or type a player’s name or FIDE ID in the box above and press Enter.",
+  "Importa sus partidas": "Import their games",
+  "Abre su ficha con doble clic en su tarjeta y pulsa «Importar partidas»: con archivos PGN o desde tu MegaDatabase.": "Open their profile by double-clicking their card and press “Import games”: with PGN files or from your MegaDatabase.",
+  "Analiza y prepara": "Analyse and prepare",
+  "Stockfish revisa sus partidas y te dice cómo juega y qué te conviene jugarle.": "Stockfish reviews their games and tells you how they play and what you should play against them.",
+  "Probar con un jugador de ejemplo": "Try with an example player",
+  "Ver el vídeo tutorial": "Watch the video tutorial",
+  "Abrir la ayuda": "Open the help",
+  "La MegaDatabase y el libro de aperturas son opcionales: conéctalos cuando quieras con los avisos de arriba.": "The MegaDatabase and the opening book are optional: connect them whenever you want with the notices above.",
 };
 
 export const plantillas = {
