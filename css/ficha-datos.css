@@ -8,6 +8,12 @@
 .estudio-entrenamiento input, .estudio-entrenamiento select { font: inherit; color: var(--texto); background: #fff; border: 1px solid #ADC6F2; border-radius: 7px; padding: 6px 9px; max-width: 100%; }
 .estudio-tarjeta { padding: 13px 15px; margin-bottom: 14px; font-size: 13px; }
 .estudio-tarjeta h3 { color: var(--azul); font-size: 15px; margin: 0 0 9px; }
+/* Tarjetas del informe con cabecera de color e icono (las que tienen título propio), como las del resumen */
+.estudio-tarjeta:has(> h3) { --c: var(--azul); padding: 0 0 13px; border: 1.5px solid var(--c); overflow: hidden; background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--c) 8%, #fff)); box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 26%, transparent); }
+.estudio-tarjeta:has(> h3)::before { display: none; }
+.estudio-tarjeta > h3 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 7px 14px; background: var(--c); color: #fff; font-size: 13.5px; font-weight: 700; }
+.estudio-tarjeta > h3 + * { margin-top: 11px; }
+.estudio-tarjeta:has(> h3) > :not(h3) { margin-left: 15px; margin-right: 15px; }
 .estudio-tarjeta p { line-height: 1.5; margin: 7px 0; }
 .estudio-cab { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 15px; margin-bottom: 8px; }
 .estudio-cab h2 { margin: 0; color: var(--azul); font-size: 18px; flex: 1; }
