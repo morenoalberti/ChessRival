@@ -134,11 +134,11 @@ async function cargarFoto() {
 /** Pide a la FIDE las estadísticas y el historial; su web a veces devuelve la respuesta vacía, así que se reintenta un par de veces. */
 async function pedirDatosFide(id) {
   let est = null, his = null;
-  for (let intento = 0; intento < 3; intento++) {
+  for (let intento = 0; intento < 2; intento++) {
     if (!est?.bloques?.length) est = await fuentes.estadisticasFide(id).catch(() => null);
     if (!(his?.length >= 2)) his = await fuentes.historialElo(id).catch(() => null);
     if (est?.bloques?.length && his?.length >= 2) break;
-    if (intento < 2) await new Promise(r => setTimeout(r, 1500));
+    if (intento < 1) await new Promise(r => setTimeout(r, 3000));
   }
   return { estadisticas: est?.bloques?.length ? est : null, historial: his?.length >= 2 ? his : null };
 }

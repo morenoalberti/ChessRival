@@ -35,7 +35,7 @@ const json = (datos, cors, { status = 200, ...cabeceras } = {}) =>
 
 /** Descarga una página y la decodifica con la codificación que declara. */
 /** La misma dirección con un parámetro nuevo: la FIDE guarda en caché, a veces, una respuesta vacía y la sirve una y otra vez para esa dirección exacta. */
-const REINTENTOS_FIDE = 2;
+const REINTENTOS_FIDE = 1;
 const pausa = (ms) => new Promise(r => setTimeout(r, ms));
 const sinCache = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
 
