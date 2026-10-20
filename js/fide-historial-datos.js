@@ -32,7 +32,7 @@ export function tarjetaTrayectoria(bloques, historial) {
   for (const [titulo, ritmo] of Object.entries(RITMOS)) {
     for (const p of puntos) if (p[ritmo] > (mejor?.elo ?? 0)) mejor = { elo: p[ritmo], titulo, anio: p.fecha.slice(0, 4) };
   }
-  if (mejor) extras.push({ etiqueta: 'Mejor ELO', icono: 'copa', valor: `${mejor.elo} en ${mejor.titulo} ${mejor.anio}` });
+  if (mejor) extras.push({ etiqueta: 'Mejor ELO', icono: 'copa', valor: `${mejor.elo} ${mejor.titulo} en ${mejor.anio}` });
   const fuerte = bloques.filter(b => RITMOS[b.titulo] && Number(b.elo) > 0).sort((x, y) => Number(y.elo) - Number(x.elo))[0];
   if (fuerte) extras.push({ etiqueta: 'Ritmo más fuerte', icono: 'grafico', valor: `${fuerte.titulo} ${fuerte.elo}` });
   return { titulo: 'Trayectoria', elo: '', blancas: null, negras: null, extras };

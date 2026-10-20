@@ -39,6 +39,6 @@ test('Solo se completan los bloques sin resultados de la FIDE', () => {
 test('La trayectoria dice desde cuándo tiene Elo, su mejor Elo y su ritmo más fuerte', () => {
   const bloques = [{ titulo: 'Standard', elo: '2490' }, { titulo: 'Rapid', elo: '2410' }, { titulo: 'Blitz', elo: '2290' }];
   const t = tarjetaTrayectoria(bloques, H);
-  assert.deepEqual(t.extras.map(e => e.valor), ['2022', '2500 en Standard 2024', 'Standard 2490']);
+  assert.deepEqual(t.extras.map(e => e.valor), ['2022', '2500 Standard en 2024', 'Standard 2490']);
   assert.equal(tarjetaTrayectoria(bloques, []), null);
 });

@@ -24,7 +24,7 @@ const icono = (nombre, tam) => `<svg viewBox="0 0 24 24" width="${tam}" height="
 
 /** «2641 en 2024»: la palabra «en» va aparte para que se traduzca («in») al cambiar de idioma. */
 function valorHtml(valor) {
-  const m = /^(\S+) en (.+)$/.exec(valor);
+  const m = /^(.+?) en (\d{4})$/.exec(valor);
   return m ? `${esc(m[1])} <span>en</span> ${esc(m[2])}` : esc(valor);
 }
 
