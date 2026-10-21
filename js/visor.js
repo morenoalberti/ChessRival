@@ -8,7 +8,7 @@ import { leerPgn, jugadasDe } from './pgn.js';
 import { Tablero } from './tablero.js';
 import { convertirFiguras, figurasHtml } from './figuritas.js';
 import { informar, preguntarTres } from './dialogos.js';
-import { elegirOpcionJugada, pedirTexto, mostrarConclusiones, abrirMenu } from './visor-dialogos.js';
+import { elegirOpcionJugada, pedirTexto, mostrarConclusiones, abrirMenu, elegirVariante } from './visor-dialogos.js';
 import { MotorUci, NOMBRE_MOTOR, PARALELO, simbolo as simboloVentaja } from './motor.js';
 import { calcularPrecisiones, calcularErrores, resumenErrores, construirConclusiones, corto, PROFUNDIDAD_ANALISIS, TOPE } from './visor-analisis.js';
 import { puntos } from './debilidades.js';
@@ -437,10 +437,57 @@ function detener() {
   clearInterval(reloj); reloj = null;
   actualizarBotonReproducir(false);
 }
+// ---------- Avanzar y elegir entre varias continuaciones («Variante») ----------
+
+/** Las jugadas posibles desde la posición actual: la de la partida y las variantes que se desvían aquí. Dentro de una variante no hay alternativas. */
+function continuaciones() {
+  if (varActual && ply > varActual.desvio) return [];
+  const lista = [];
+  if (ply < ucisP.length) lista.push({ variante: null, san: sansP[ply] });
+  for (const x of variantes) if (x.desvio === ply && x.ucis.length && x.sans.length) lista.push({ variante: x, san: x.sans[0] });
+  return lista;
+}
+
+const textoContinuacion = (c, p) => `${numeroDe(p + 1)}${(blancasEmpiezan ? p % 2 === 0 : p % 2 === 1) ? '.' : '...'}${convertirFiguras(c.san)}`;
+
+/** Un paso adelante: si hay varias continuaciones, se detiene el avance y se pregunta cuál seguir. */
+function avanzar() {
+  const opciones = continuaciones();
+  if (opciones.length < 2) { ir(ply + 1); return; }
+  detener();
+  const p = ply;
+  elegirVariante({
+    obtener: () => continuaciones().map(c => textoContinuacion(c, p)),
+    elegir: (i) => {
+      const c = continuaciones()[i];
+      if (!c) return;
+      usarLinea(c.variante);
+      ir(p + 1);
+    },
+    reordenar: (i, direccion) => {
+      const lista = continuaciones(), destino = i + direccion;
+      if (destino < 0 || destino >= lista.length) return i;
+      const a = lista[i], b = lista[destino];
+      if (!a.variante || !b.variante) {                  // una de las dos es la de la partida: la variante pasa a ser la línea principal y la anterior queda como variante
+        const v = a.variante ?? b.variante, lugar = variantes.indexOf(v);
+        promocionarVariante(v);
+        const anterior = variantes.pop();
+        variantes.splice(Math.min(lugar, variantes.length), 0, anterior);
+        reconstruirLista(); ir(p);
+      } else {                                           // dos variantes: cambian de sitio entre ellas
+        const ia = variantes.indexOf(a.variante), ib = variantes.indexOf(b.variante);
+        [variantes[ia], variantes[ib]] = [variantes[ib], variantes[ia]];
+        modificado(); reconstruirLista(); ir(p);
+      }
+      return destino;
+    }
+  });
+}
+
 function reproducir() {
   if (reloj) { detener(); return; }
   if (ply >= sans.length) ir(0);
-  reloj = setInterval(() => { if (ply >= sans.length) detener(); else ir(ply + 1); }, 1000);
+  reloj = setInterval(() => { if (ply >= sans.length) detener(); else avanzar(); }, 1000);
   actualizarBotonReproducir(true);
 }
 function girar() {
@@ -453,7 +500,7 @@ document.querySelector('.visor-controles').addEventListener('click', (e) => {
   const a = e.target.closest('[data-accion]')?.dataset.accion;
   if (a === 'inicio') { detener(); ir(0); }
   else if (a === 'anterior') { detener(); ir(ply - 1); }
-  else if (a === 'siguiente') { detener(); ir(ply + 1); }
+  else if (a === 'siguiente') { detener(); avanzar(); }
   else if (a === 'final') { detener(); ir(sans.length); }
   else if (a === 'reproducir') reproducir();
   else if (a === 'girar') girar();
@@ -464,7 +511,7 @@ document.addEventListener('keydown', (e) => {
   const enControl = ['BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'LABEL'].includes(e.target.tagName);
   switch (e.key) {
     case 'ArrowLeft': detener(); ir(ply - 1); break;
-    case 'ArrowRight': detener(); ir(ply + 1); break;
+    case 'ArrowRight': detener(); avanzar(); break;
     case 'Home': detener(); ir(0); break;
     case 'End': detener(); ir(sans.length); break;
     case ' ': if (enControl) return; reproducir(); break;
@@ -623,7 +670,7 @@ let sinGuardar = false;
 
 function modificado() {
   sinGuardar = true;
-  $('guardarBtn').hidden = false;
+  $('guardarBtn').disabled = false;
 }
 
 async function guardar() {
@@ -641,7 +688,7 @@ async function guardar() {
       ]
     });
     sinGuardar = false;
-    $('guardarBtn').hidden = true;
+    $('guardarBtn').disabled = true;
     const g = $('guardado');
     g.textContent = 'Cambios guardados';
     g.classList.add('visible');
@@ -657,6 +704,7 @@ window.confirmarCierreVisor = async () => {
   if (r === null) return false;
   if (r === true) return guardar();
   sinGuardar = false;                                    // «No guardar»: se descartan
+  $('guardarBtn').disabled = true;
   return true;
 };
 

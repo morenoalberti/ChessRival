@@ -46,6 +46,56 @@ export function elegirOpcionJugada(jugada, enVariante) {
   return promesa;
 }
 
+/** «Variante»: al avanzar hasta una posición con más de una continuación, lista las jugadas posibles. Flechas arriba/abajo cambian la elegida,
+ *  Intro, flecha derecha o doble clic la juegan, y Esc o flecha izquierda cierran. «Jugada arriba» y «Jugada abajo» cambian su sitio en la lista.
+ *  @param {{ obtener: () => string[], elegir: (i: number) => void, reordenar: (i: number, direccion: -1 | 1) => number }} f
+ *  obtener: el texto de cada jugada (con figuritas); reordenar: devuelve el nuevo lugar de la jugada. */
+export function elegirVariante({ obtener, elegir, reordenar }) {
+  const previo = document.activeElement;
+  const velo = document.createElement('div');
+  velo.className = 'velo';
+  velo.innerHTML = `<div class="dialogo dialogo-variante" role="dialog" aria-modal="true" aria-label="Variante">
+      <div class="dialogo-cab"><img src="assets/icon.png" alt=""><span>Variante</span><button type="button" class="variante-cerrar" data-cerrar title="Cerrar" aria-label="Cerrar">✕</button></div>
+      <div class="variante-cuerpo">
+        <div class="variante-opciones" role="listbox" tabindex="0"></div>
+        <div class="variante-acciones">
+          <button type="button" class="btn btn-secundario" data-mover="-1">Jugada arriba</button>
+          <button type="button" class="btn btn-secundario" data-mover="1">Jugada abajo</button>
+        </div>
+      </div>
+    </div>`;
+  const lista = velo.querySelector('.variante-opciones');
+  let seleccion = 0, textos = obtener();
+  function pintar() {
+    textos = obtener();
+    seleccion = Math.max(0, Math.min(seleccion, textos.length - 1));
+    lista.innerHTML = textos.map((t, i) => `<button type="button" role="option" class="variante-opcion${i === seleccion ? ' seleccionada' : ''}" aria-selected="${i === seleccion}" data-i="${i}">${figurasHtml(t)}</button>`).join('');
+    velo.querySelector('[data-mover="-1"]').disabled = seleccion === 0;
+    velo.querySelector('[data-mover="1"]').disabled = seleccion === textos.length - 1;
+  }
+  const cerrar = () => { document.removeEventListener('keydown', teclas, true); velo.remove(); previo?.focus?.(); };
+  const jugar = (i) => { cerrar(); elegir(i); };
+  function mover(direccion) { seleccion = reordenar(seleccion, direccion); pintar(); }
+  function teclas(e) {
+    const tecla = e.key;
+    if (!['Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter'].includes(tecla)) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    if (tecla === 'Escape' || tecla === 'ArrowLeft') cerrar();
+    else if (tecla === 'ArrowUp') { seleccion = seleccion <= 0 ? textos.length - 1 : seleccion - 1; pintar(); }
+    else if (tecla === 'ArrowDown') { seleccion = seleccion >= textos.length - 1 ? 0 : seleccion + 1; pintar(); }
+    else jugar(seleccion);                                // Intro o flecha derecha
+  }
+  lista.addEventListener('click', (e) => { const o = e.target.closest('[data-i]'); if (o) { seleccion = Number(o.dataset.i); pintar(); } });
+  lista.addEventListener('dblclick', (e) => { const o = e.target.closest('[data-i]'); if (o) jugar(Number(o.dataset.i)); });
+  velo.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+  velo.querySelectorAll('[data-mover]').forEach(b => b.addEventListener('click', () => mover(Number(b.dataset.mover))));
+  velo.addEventListener('mousedown', (e) => { if (e.target === velo) cerrar(); });
+  document.addEventListener('keydown', teclas, true);
+  document.body.appendChild(velo);
+  pintar();
+  lista.focus();
+}
+
 /** Pide el texto previo o posterior de una jugada y su color. Devuelve { texto, color } o null; con el texto vacío el comentario se quita. */
 export function pedirTexto(titulo, texto, color) {
   const piezas = [['♔', 'rey'], ['♕', 'dama'], ['♖', 'torre'], ['♗', 'alfil'], ['♘', 'caballo'], ['♙', 'peón']];

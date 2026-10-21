@@ -101,6 +101,9 @@ export const exactas = {
   "Guardar los cambios de la partida (Ctrl+S)": "Save the changes to the game (Ctrl+S)",
   "Quitar de la partida las variantes del análisis": "Remove the analysis variations from the game",
   "Volver a añadir a la partida la mejor jugada de cada error, con la valoración del módulo": "Add the best move of each error back to the game, with the engine’s evaluation",
+  "Variante": "Variation",
+  "Jugada arriba": "Move up",
+  "Jugada abajo": "Move down",
 };
 
 export const plantillas = {
