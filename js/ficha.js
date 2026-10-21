@@ -22,6 +22,7 @@ import { montarAyudaTarjetas } from './ayuda-tarjetas.js';
 import { calcular as calcularDebilidades, nivel, puntos as puntosTexto } from './debilidades.js';
 import { mostrarVistaPrevia, ocultarVistaPrevia } from './vista-previa.js';
 import { ArbolUI } from './arbol-ui.js';
+import { montarQueJugar } from './que-jugar.js';
 import { abrirImportar } from './importar-dialogo.js';
 import * as mega from './mega.js';
 import { abrirAnalizar } from './analizar-dialogo.js';
@@ -34,6 +35,8 @@ const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<':
 const menosMovimiento = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const PESTANAS = [
+  { id: 'quejugar', texto: '¿Qué debemos jugar?', destacada: true, ayuda: 'La respuesta concreta: qué jugarle con blancas y con negras', trazo: 'M12,3 A9,9 0 1 1 11.99,3 Z M15.5,8.5 L13.5,13.5 L8.5,15.5 L10.5,10.5 Z' },
+  { separador: true },
   { id: 'resumen', texto: 'Resumen', ayuda: 'Cifras generales, debilidades y aperturas principales', trazo: 'M3,3 H10 V10 H3 Z M14,3 H21 V8 H14 Z M14,12 H21 V21 H14 Z M3,14 H10 V21 H3 Z' },
   { id: 'partidas', texto: 'Partidas', ayuda: 'Lista de todas sus partidas', trazo: 'M8,6 H21 M8,12 H21 M8,18 H21 M3.5,6 H4.5 M3.5,12 H4.5 M3.5,18 H4.5' },
   { id: 'aperturas', texto: 'Aperturas', ayuda: 'Las aperturas que juega y qué tal le van', trazo: 'M12,6 C10,4.5 6.5,4 3,4.5 V19 C6.5,18.5 10,19 12,20.5 C14,19 17.5,18.5 21,19 V4.5 C17.5,4 14,4.5 12,6 Z M12,6 V20.5' },
@@ -54,7 +57,8 @@ let jugador = null;            // la tarjeta del jugador
 let partidas = [];             // sus partidas importadas
 let jugadasAnalizadas = [];    // las jugadas analizadas con el motor
 let ultimoAnalisisInfo = null; // { motor, profundidad } del último análisis
-let arbol = null;              // la pestaña «Árbol»
+let arbol = null;
+let queJugar = null;           // la pantalla «¿Qué debemos jugar?»              // la pestaña «Árbol»
 let megaListo = Promise.resolve();   // la MegaDatabase abriéndose
 let filtroColor = '';          // '', 'B' o 'N'
 let orden = { columna: null, ascendente: true };
@@ -82,6 +86,7 @@ async function iniciar() {
   estudioUi = montarEstudioUi({ obtenerJugador: () => jugador });
   montarIa();
   conectarArrastre();
+  queJugar = montarQueJugar($('queJugarContenedor'), { nombreJugador: () => nombreConTitulo(jugador, tituloFide), apellido });
   arbol = new ArbolUI($('arbolContenedor'), { nombreJugador: () => nombreConTitulo(jugador, tituloFide), alAbrirPartida: abrirVisor });
 
   await recargar();
@@ -255,9 +260,9 @@ function conectarArrastre() {
 // ---------- Pestañas ----------
 
 function montarPestanas() {
-  $('pestanasFicha').innerHTML = PESTANAS.map(p => p.borrar
+  $('pestanasFicha').innerHTML = PESTANAS.map(p => p.separador ? '<span class="pestanas-separador" aria-hidden="true"></span>' : p.borrar
     ? `<button id="borrarBtn" class="btn btn-borrar" type="button" disabled title="Borra todas sus partidas importadas">${svg('papelera', 16)}<span>Borrar partidas</span></button>`
-    : `<button class="pestana-ficha" type="button" role="tab" data-pestana="${p.id}" title="${esc(p.ayuda)}" aria-selected="false">${svgTrazo(p.trazo, 16)}<span class="pestana-texto">${p.texto}</span></button>`).join('');
+    : `<button class="pestana-ficha${p.destacada ? ' pestana-destacada' : ''}" type="button" role="tab" data-pestana="${p.id}" title="${esc(p.ayuda)}" aria-selected="false">${svgTrazo(p.trazo, 16)}<span class="pestana-texto">${p.texto}</span></button>`).join('');
   $('pestanasFicha').addEventListener('click', (e) => {
     const b = e.target.closest('[data-pestana]');
     if (b) mostrarPestana(b.dataset.pestana);
@@ -284,6 +289,7 @@ function mostrarPestana(id, guardarHash = true) {
   for (const s of document.querySelectorAll('.seccion')) s.hidden = s.dataset.panel !== id;
   $('borrarBtn').disabled = id !== 'partidas';          // solo tiene sentido viendo la lista
   if (id === 'arbol') arbol?.alMostrar();
+  if (id === 'quejugar') queJugar?.alMostrar();
   if (guardarHash) history.replaceState(null, '', `#${id}`);
 }
 
@@ -333,6 +339,7 @@ function pintar() {
   arbol.cargar(vis);
   pintarAnalisis(vis);
   pintarPreparacion(vis);
+  queJugar.pintar(vis, calcularDebilidades(vis, jugadasAnalizadas)?.debilidades ?? []);
   pintarVacios({ partidas: partidas.length, analizadas: jugadasAnalizadas.length, importar: () => $('importarBtn').click(), analizar: () => $('analizarBtn').click() });
 }
 

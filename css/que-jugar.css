@@ -1,0 +1,82 @@
+/* ---------- «¿Qué debemos jugar?» ---------- */
+.pestanas-separador { width: 1px; height: 28px; background: #9DB3DC; margin: 0 -1px; }
+.pestanas-ficha-lista { gap: 6px; }
+.pestanas-ficha-lista .pestana-ficha { padding: 6.5px 10px 6.5px 9px; gap: 5px; }
+.pestana-ficha.pestana-destacada {
+  background: linear-gradient(135deg, #1E8E4F, #2EB36A); border-color: #1E8E4F; color: #fff; padding: 8px 14px 8px 11px; font-size: 14px;
+  box-shadow: 0 0 0 3px rgba(46, 179, 106, .25), 0 5px 14px rgba(30, 142, 79, .4);
+}
+.pestana-ficha.pestana-destacada svg { width: 18px; height: 18px; color: #fff !important; }
+.pestana-ficha.pestana-destacada:hover { background: linear-gradient(135deg, #1A7F46, #29A05F); box-shadow: 0 0 0 4px rgba(46, 179, 106, .3), 0 7px 18px rgba(30, 142, 79, .5); }
+.pestana-ficha.pestana-destacada.activa { background: linear-gradient(135deg, #14703B, #1E8E4F); box-shadow: 0 0 0 4px rgba(46, 179, 106, .4), 0 6px 16px rgba(30, 142, 79, .5); }
+
+.qj-panel { background: #fff; border: 1.5px solid var(--azul); border-radius: 14px; overflow: hidden; box-shadow: 0 6px 22px rgba(47, 111, 224, .18); }
+.qj-cab { background: var(--azul); color: #fff; padding: 11px 18px; font-size: 17px; font-weight: 600; display: flex; gap: 10px; align-items: center; }
+.qj-cuerpo { padding: 16px 18px 18px; background: linear-gradient(180deg, #fff, #F3F7FF); }
+.qj-respuesta { display: flex; align-items: center; gap: 18px; padding: 14px 18px; border-radius: 12px; background: linear-gradient(135deg, #E2F5EA, #F1FAF4); border: 1.5px solid #9AD3AF; margin-bottom: 14px; }
+.qj-sello { background: #1E8E4F; color: #fff; font-weight: 800; letter-spacing: .08em; font-size: 11.5px; padding: 6px 12px; border-radius: 8px; flex: none; }
+.qj-txt { font-size: 19px; line-height: 1.4; } .qj-txt b { color: #1E8E4F; }
+.qj-txt small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--texto-suave); }
+.qj-dos { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .qj-dos, .qj-grid, .qj-tres { grid-template-columns: 1fr !important; } .qj-respuesta { flex-direction: column; align-items: flex-start; } }
+.qj-col-tit { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14px; letter-spacing: .04em; margin-bottom: 8px; }
+.qj-col-tit small { font-weight: 500; letter-spacing: 0; color: var(--texto-suave); font-size: 12.5px; }
+.qj-ficha { display: inline-block; width: 18px; height: 18px; border-radius: 5px; border: 2px solid #4A5568; vertical-align: -3px; margin-right: 6px; flex: none; }
+.qj-ficha.b { background: #fff; } .qj-ficha.n { background: #1F232B; }
+.qj-rec { display: block; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; background: #fff; border: 1.5px solid #CFDCF6; border-left: 5px solid #1E8E4F; border-radius: 12px; padding: 12px 14px 12px 16px; margin-bottom: 11px; box-shadow: 0 3px 10px rgba(47, 111, 224, .10); transition: transform .15s, box-shadow .15s; }
+.qj-rec:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(47, 111, 224, .22); }
+.qj-rec.alt { border-left-color: #8FB4F0; }
+.qj-tag { display: inline-block; font-size: 10.5px; font-weight: 800; letter-spacing: .07em; padding: 2px 9px; border-radius: 10px; background: #1E8E4F; color: #fff; margin-bottom: 5px; }
+.qj-rec.alt .qj-tag { background: #6C93D6; }
+.qj-rec h3 { margin: 0; font-size: 17px; }
+.qj-jug { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0; }
+.qj-jug > span { padding: 2px 8px; border-radius: 12px; font-size: 13px; background: #EEF0F5; color: #4A5568; border: 1px solid #D3D8E3; }
+.qj-jug > span.mia { background: #E3EDFF; color: #1E55B8; border-color: #B7CEF5; }
+.qj-jug > span.actual { outline: 2px solid var(--azul); background: var(--azul); color: #fff; }
+.qj-datos { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; margin-top: 8px; font-size: 13px; }
+.qj-datos small { display: block; font-size: 11.5px; color: var(--texto-suave); margin-top: 5px; }
+.qj-barra { height: 10px; border-radius: 6px; background: #E3EAF6; position: relative; }
+.qj-barra i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; background: linear-gradient(90deg, #1E8E4F, #3FB872); }
+.qj-barra u { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #3F4650; }
+.qj-num { font-size: 22px; font-weight: 800; color: #1E8E4F; line-height: 1; text-align: right; }
+.qj-num small { display: block; font-size: 11.5px; color: var(--texto-suave); font-weight: 500; margin-top: 3px; }
+.qj-porque { margin: 7px 0 2px; font-size: 12.8px; color: #394763; }
+.qj-meta { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 12px; color: var(--texto-suave); margin-top: 6px; }
+.qj-punto { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #CBD3E4; margin-right: 2px; }
+.qj-punto.on.bajo { background: var(--coral); } .qj-punto.on.medio { background: #D9A21B; } .qj-punto.on.alto { background: #1E8E4F; }
+.qj-simb { font-weight: 800; color: var(--azul); font-size: 15px; }
+.qj-pie { display: flex; align-items: center; gap: 12px; margin-top: 4px; padding-top: 12px; border-top: 1px solid #DCE5F6; font-size: 12.5px; color: var(--texto-suave); }
+.qj-pie .btn { margin-left: auto; }
+
+.qj-migas { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; color: var(--texto-suave); }
+.qj-grid { display: grid; grid-template-columns: 420px 1fr; gap: 20px; }
+.qj-ctrl { display: flex; gap: 8px; margin: 10px 0 6px; flex-wrap: wrap; }
+.qj-ley { font-size: 11.5px; color: var(--texto-suave); margin-top: 4px; }
+.qj-caja { background: #fff; border: 1.5px solid #CFDCF6; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; box-shadow: 0 2px 8px rgba(47, 111, 224, .08); }
+.qj-caja h4 { margin: 0 0 8px; font-size: 13px; letter-spacing: .05em; text-transform: uppercase; color: #34507F; }
+.qj-fila { display: grid; grid-template-columns: 210px 1fr 100px; gap: 10px; align-items: center; margin: 6px 0; font-size: 13px; }
+.qj-fila .bar { height: 16px; border-radius: 8px; background: #E3EAF6; position: relative; }
+.qj-fila .bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 8px; background: #A8B6D2; }
+.qj-fila.sel .bar i { background: linear-gradient(90deg, #1E8E4F, #3FB872); }
+.qj-fila .bar u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #3F4650; }
+.qj-fila .val { text-align: right; font-weight: 700; } .qj-fila small { color: var(--texto-suave); font-weight: 400; }
+.qj-fila.sel { background: #EAF8EF; border-radius: 8px; padding: 3px 6px; margin-left: -6px; margin-right: -6px; }
+.qj-tabla { width: 100%; border-collapse: collapse; font-size: 13px; }
+.qj-tabla th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #34507F; background: #E8EFFC; padding: 4px 8px; }
+.qj-tabla td { padding: 5px 8px; border-top: 1px solid #E4EAF6; }
+.qj-lista { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+.qj-aviso { margin-top: 8px; background: #FFF3D6; border: 1px solid #F0D79A; border-radius: 10px; padding: 8px 12px; font-size: 12.8px; color: #6F520F; }
+.qj-acc { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+
+.qj-hoja { padding: 6px 10px 4px; }
+.qj-hoja h2 { margin: 0 0 2px; font-size: 22px; } .qj-fecha { color: var(--texto-suave); font-size: 12.5px; margin-bottom: 12px; }
+.qj-plan { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 14px; }
+.qj-plan th { text-align: left; padding: 7px 10px; background: #34507F; color: #fff; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.qj-plan td { padding: 9px 10px; border-bottom: 1px solid #E4EAF6; vertical-align: top; }
+.qj-plan td.col { white-space: nowrap; font-weight: 700; } .qj-plan tr.prin td { background: #F2FAF5; }
+.qj-plan .nom { font-weight: 700; } .qj-plan .lin { color: #394763; font-size: 12.8px; }
+.qj-tres { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.qj-tres .qj-caja { margin: 0; }
+.qj-pasos { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.55; }
+.qj-panel-hoja { max-width: 980px; }
+.pestanas-ficha-lista .pestana-ficha.pestana-destacada { padding: 8px 14px 8px 11px; }
