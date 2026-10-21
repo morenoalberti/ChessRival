@@ -238,7 +238,8 @@ export function construirConclusiones(c) {
     if (fases.length) res.push({ titulo: tr('Dónde se equivocaron'), texto: fases.join('; ') + '.' });
   }
 
-  // 6) El resultado frente a lo que decía el análisis
+  // 6) El resultado frente a lo que decía el análisis (se escribe aquí, pero va al final del todo, tras los puntos fuertes y débiles)
+  let seccionResultado = null;
   const resultado = c.partida.resultado;
   const ganaBlancas = resultado === '1-0' ? true : resultado === '0-1' ? false : null;
   if (ganaBlancas !== null) {
@@ -255,12 +256,12 @@ export function construirConclusiones(c) {
     for (let i = delGanador.length - 1; i >= 0; i--) if (delGanador[i] < 200) { ultima = i; break; }
     if (ultima < n - 1 && ultima >= 0 && delGanador.at(-1) >= 200)
       partes.push(tr(`la partida quedó prácticamente decidida a partir de la jugada ${jugada(Math.max(1, ultima + 1))}, con ventaja sostenida de ${ganador}`));
-    res.push({ titulo: tr('Resultado') + ' ' + resultado, texto: partes.join('; ') + '.' });
+    seccionResultado = ({ titulo: tr('Resultado') + ' ' + resultado, texto: partes.join('; ') + '.' });
   } else if (resultado === '1/2-1/2') {
     const partes = [];
     if (Math.max(...ev) >= 200) partes.push(tr(`${nb} llegó a tener ${describir(Math.max(...ev))}`));
     if (-Math.min(...ev) >= 200) partes.push(tr(`${nn} llegó a tener ${describir(-Math.min(...ev))}`));
-    res.push({ titulo: tr('Resultado') + ' ½-½', texto: partes.length ? tr('Terminó en tablas, pero') + ' ' + partes.join(tr(' y ')) + ' ' + tr('sin llegar a ganar.') : tr('Las tablas concuerdan con el análisis: nadie tuvo una ventaja clara.') });
+    seccionResultado = ({ titulo: tr('Resultado') + ' ½-½', texto: partes.length ? tr('Terminó en tablas, pero') + ' ' + partes.join(tr(' y ')) + ' ' + tr('sin llegar a ganar.') : tr('Las tablas concuerdan con el análisis: nadie tuvo una ventaja clara.') });
   }
 
   // 7) Conclusión final: puntos fuertes y débiles de cada jugador, solo con lo que muestran los datos de esta partida
@@ -270,6 +271,7 @@ export function construirConclusiones(c) {
     res.push({ titulo: (blancas ? tr('Puntos fuertes y débiles') + ' · ' : '') + nombre(blancas), texto: `${tr('Fuertes:')} ${lista(fuertes)}.\n${tr('Débiles:')} ${lista(debiles)}.` });
   }
 
+  if (seccionResultado) res.push(seccionResultado);
   res.push({ titulo: '', texto: tr(`Basado en el análisis de Stockfish a profundidad ${PROFUNDIDAD_ANALISIS}: son valores orientativos, no una verdad absoluta.`) });
   return res;
 }

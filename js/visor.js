@@ -873,6 +873,7 @@ async function analizarPartida() {
     errores = calcularErrores(valores, sans.length, mejorEnSan, blancasEmpiezan);
     const pr = calcularPrecisiones(valores, fens, blancasEmpiezan);
     analisisDatos = { valores, mejores, fens: [...fens], sans: [...sans], precisionBlancas: pr.blancas, precisionNegras: pr.negras, detalle: pr.detalle };
+    anadirVariantesDelAnalisis();
     mostrarResultadoAnalisis();
   } catch (ex) {
     if (ex?.name === 'AbortError') {
@@ -888,6 +889,23 @@ async function analizarPartida() {
     conclusionesPendientes = false;
     if (abrir) abrirConclusiones();
   }
+}
+
+/** En cada error, la jugada que Stockfish proponía se añade a la anotación de la partida como variante (en lugar de la jugada jugada). Cuenta como cambio: al cerrar se pregunta si se guarda. */
+function anadirVariantesDelAnalisis() {
+  let nuevas = 0;
+  for (const e of errores.values()) {
+    const mejor = analisisDatos.mejores[e.ply - 1], desvio = e.ply - 1;
+    if (!mejor || mejor === ucisP[desvio]) continue;
+    if (variantes.some(v => v.desvio === desvio && v.ucis[0] === mejor)) continue;     // ya está (de otro análisis o escrita por el usuario)
+    variantes.push({ desvio, plegada: false, ucis: [mejor], sans: [], casillas: [], fens: [], fichas: [] });
+    nuevas++;
+  }
+  if (!nuevas) return;
+  rehacerTodo();
+  usarLinea(null);
+  reconstruirLista();
+  modificado();
 }
 
 const textoPrecision = (p) => (p !== null && p !== undefined ? `Precisión ${decimal(p)} %\n` : '');
