@@ -70,7 +70,7 @@ function tarjetasPatrones(patrones) {
     const [color, icono] = ESTILO_PATRON[g.nombre.toLowerCase()] ?? ['#34507F', 'patrones'];
     const ejemplos = g.ejemplos.filter((x, i, l) => l.findIndex(y => y.partidaId === x.partidaId) === i).slice(0, 3);
     return `<section class="tarjeta-ficha estudio-tarjeta" style="--c:${color}"><h3>${ico(ICO[icono])}${esc(mayuscula(g.nombre))}</h3>
-      <p class="estudio-patron-res"><span>${g.ejemplos.length} ${g.ejemplos.length === 1 ? 'error' : 'errores'} en ${g.partidas} ${g.partidas === 1 ? 'partida' : 'partidas'}</span><span class="patron-estado ${g.recurrente ? 'rep' : 'poca'}">${g.recurrente ? 'repetido' : 'muestra insuficiente para generalizar'}</span></p>
+      <p class="estudio-patron-res"><span>${g.ejemplos.length} ${g.ejemplos.length === 1 ? 'error' : 'errores'} en ${g.partidas} ${g.partidas === 1 ? 'partida' : 'partidas'}</span><span class="patron-estado ${g.recurrente ? 'rep' : 'poca'}">${g.recurrente ? 'Error repetido en varias partidas' : 'muestra insuficiente para generalizar'}</span></p>
       ${ejemplos.map(x => `<div class="estudio-evidencia"><span>${esc(referencia(x.partida, x.ply))}<br>Jugó ${jugadaHtml(x.san)}; propuesta ${jugadaHtml(x.sanMejor)} · pérdida ${puntos(x.perdida)} · ${x.confirmada ? 'confirmada a profundidad ' + x.profundidad : 'pendiente de confirmación'}</span>${evidencia(x.partida, x.ply - 1, 'Ver')}</div>`).join('')}
     </section>`;
   }).join('')}</div>`;

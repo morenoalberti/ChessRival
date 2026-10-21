@@ -204,6 +204,7 @@ export const exactas = {
   "• Subrayadas, jugadas de Stockfish: el libro no tiene esa posición.": "• Underlined, Stockfish moves: the book does not have that position.",
   "Ver": "View",
   "repetido": "repeated",
+  'Error repetido en varias partidas': 'Mistake repeated in several games',
 };
 
 export const plantillas = {

@@ -324,4 +324,4 @@ select:focus-visible, .ia-campos input:focus-visible { outline: none; border-col
 .patron-estado.rep { background: #DDF3E6; color: #1E7A47; }
 .patron-estado.poca { background: #E7ECF5; color: #5A6B8C; }
 @media (max-width: 900px) { .estudio-patrones { grid-template-columns: 1fr; } }
-
+.patron-estado.rep { white-space: nowrap; }
