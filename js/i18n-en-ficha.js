@@ -387,4 +387,5 @@ export const plantillas = {
   'La copia está en el historial, pero no se pudo guardar el archivo: {}': 'The backup is in the history, but the file could not be saved: {}',
   'Copia creada y guardada en «{}».': 'Backup created and saved to “{}”.',
   'Se sustituirán los datos actuales por los del {}: {}. Se guardará una copia de lo que tienes ahora en «Copias recientes». Las ventanas abiertas se recargarán. ¿Continuar?': 'The current data will be replaced with that of {}: {}. A backup of what you have now will be saved in “Recent backups”. Open windows will reload. Continue?',
+  'Debilidades - {}': 'Weaknesses - {}',
 };

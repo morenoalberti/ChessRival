@@ -476,7 +476,7 @@ function filaDebilidad(d, conDetalle) {
   const c = colorGravedad(d.gravedad);
   return `<div class="deb-fila ${conDetalle ? 'completa' : ''}">
     <div class="deb-cab"><span class="deb-titulo recortar" title="${esc(d.titulo)}">${figurasHtml(d.titulo)}</span><b style="color:${c}">${nivel(d.gravedad)}</b></div>
-    <div class="deb-jugadores">${esc(textoColoresDeLinea({ ...jugador, fideTitle: tituloFide || jugador.fideTitle }, d.colorJugador))}</div>
+    ${d.colorJugador === 'B' || d.colorJugador === 'N' ? `<div class="deb-jugadores">${esc(textoColoresDeLinea({ ...jugador, fideTitle: tituloFide || jugador.fideTitle }, d.colorJugador))}</div>` : ''}
     ${d.linea ? `<div class="deb-linea">${d.eco ? `<span class="suave">ECO ${esc(d.eco)} · </span>` : ''}Línea: ${jugadaHtml(d.linea)}</div>` : ''}
     <div class="deb-barra"><i style="width:${Math.max(d.gravedad, 4)}%;background:${c}"></i></div>
     ${d.muestra ? `<div class="suave estudio-nota">${d.muestra.partidas} partidas · fiabilidad ${d.muestra.nivel.toLowerCase()}</div>` : ''}
@@ -484,6 +484,7 @@ function filaDebilidad(d, conDetalle) {
 }
 
 function pintarAnalisis(vis) {
+  $('debTitulo').textContent = `Debilidades - ${nombreConTitulo({ ...jugador, fideTitle: tituloFide || jugador.fideTitle })}`;
   const r = calcularDebilidades(vis, jugadasAnalizadas);
   const motor = ultimoAnalisisInfo ? `${ultimoAnalisisInfo.motor}, profundidad ${ultimoAnalisisInfo.profundidad}` : 'Stockfish';
   $('tarjetaDebilidades').classList.toggle('con-datos', !!r);
