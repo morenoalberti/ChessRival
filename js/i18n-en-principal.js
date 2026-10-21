@@ -169,6 +169,10 @@ export const exactas = {
   "Probar con un jugador de ejemplo": "Try with an example player",
   "Ver el vídeo tutorial": "Watch the video tutorial",
   "Abrir la ayuda": "Open the help",
+  "Sin historial": "No history",
+  "Nuevo": "New",
+  "No hay historial de ELO de este jugador": "There is no rating history for this player",
+  "Jugador recién entrado en la lista de la FIDE: aún hay muy poco historial para dibujar su evolución": "Player who has only just entered the FIDE list: there is not enough history yet to draw their progress",
 };
 
 export const plantillas = {

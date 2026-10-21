@@ -392,7 +392,7 @@ async function cargarMiniElo(lista) {
 function repintarMiniElo(j) {
   const celda = elementosTarjeta.get(j.id)?.querySelector('.elo-celda');
   if (!celda) return;
-  celda.querySelector('.mini-elo')?.remove();
+  celda.querySelector('.mini-elo, .mini-elo-etiqueta')?.remove();
   celda.insertAdjacentHTML('beforeend', svgMiniElo(miniElo.get(j.fideId)));
 }
 

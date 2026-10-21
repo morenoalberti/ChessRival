@@ -466,9 +466,9 @@ function continuaciones() {
 const textoContinuacion = (c, p) => `${numeroDe(p + 1)}${(blancasEmpiezan ? p % 2 === 0 : p % 2 === 1) ? '.' : '...'}${convertirFiguras(c.san)}`;
 
 /** Un paso adelante: si hay varias continuaciones, se detiene el avance y se pregunta cuál seguir. */
-function avanzar() {
+function avanzar(automatico = false) {
   const opciones = continuaciones();
-  if (opciones.length < 2) { ir(ply + 1); return; }
+  if (opciones.length < 2 || automatico) { ir(ply + 1); return; }      // en la reproducción automática no se pregunta: se sigue por la línea principal (o por la variante en la que se esté)
   detener();
   const p = ply;
   elegirVariante({
@@ -502,7 +502,7 @@ function avanzar() {
 function reproducir() {
   if (reloj) { detener(); return; }
   if (ply >= sans.length) ir(0);
-  reloj = setInterval(() => { if (ply >= sans.length) detener(); else avanzar(); }, 1000);
+  reloj = setInterval(() => { if (ply >= sans.length) detener(); else avanzar(true); }, 1000);
   actualizarBotonReproducir(true);
 }
 function girar() {
