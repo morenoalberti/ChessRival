@@ -84,3 +84,6 @@
 .qj-rec-cab .qj-tag { margin-bottom: 0; }
 .qj-ver { color: var(--azul); background: #fff; border: 1.5px solid var(--azul); border-radius: 8px; padding: 3px 10px; font-weight: 700; font-size: 12px; white-space: nowrap; transition: background-color .15s, color .15s; }
 .qj-rec:hover .qj-ver { background: var(--azul); color: #fff; }
+.qj-volver { padding: 9px 18px; font-size: 14.5px; font-weight: 700; box-shadow: 0 4px 12px rgba(47, 111, 224, .35); }
+.qj-volver::before { content: '‹'; font-size: 20px; line-height: 1; margin-right: 8px; }
+.qj-migas { gap: 14px; }

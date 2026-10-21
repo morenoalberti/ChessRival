@@ -228,7 +228,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
     ({ fens, mov: movs } = fensDe(g));
     paso = fens.length - 1;
     contenedor.innerHTML = `<div class="qj-panel"><div class="qj-cab"><span>${color === 'B' ? 'Con blancas' : 'Con negras'}: ${tituloHtml(g)}</span></div><div class="qj-cuerpo">
-      <div class="qj-migas"><button type="button" class="btn" data-qj-volver>${'Volver a la respuesta'}</button><span>Contra ${esc(nombreJugador())} · tú llevas las <b>${color === 'B' ? 'blancas' : 'negras'}</b>, él las <b>${color === 'B' ? 'negras' : 'blancas'}</b></span></div>
+      <div class="qj-migas"><button type="button" class="btn btn-primario qj-volver" data-qj-volver>${'Volver a la respuesta'}</button><span>Contra ${esc(nombreJugador())} · tú llevas las <b>${color === 'B' ? 'blancas' : 'negras'}</b>, él las <b>${color === 'B' ? 'negras' : 'blancas'}</b></span></div>
       <div class="qj-grid"><div class="qj-izq"><div data-qj-tablero></div>${chips(g)}
         <div class="qj-ctrl"><button type="button" class="btn" data-qj-ant>‹ Anterior</button><button type="button" class="btn" data-qj-sig>Siguiente ›</button><button type="button" class="btn btn-primario" data-qj-rep>▶ Reproducir</button></div>
         <div class="qj-ley">Azul: tus jugadas · Gris: las suyas</div></div>
