@@ -14,12 +14,7 @@ export const exactas = {
   // Resumen: leyendas y explicaciones de la tarjeta de aperturas
   'Atrás': 'Back',
   'Posición inicial': 'Starting position',
-  '· 1 orden de llegada': '· 1 move order',
   'Pulsa «Analizar» para que Stockfish revise sus partidas y aquí aparezcan sus puntos débiles.': 'Press “Analyse” so Stockfish reviews their games and their weak points appear here.',
-  'Ritmo lento': 'Classical pace',
-  'Ritmo rápido': 'Rapid pace',
-  'Ritmo blitz': 'Blitz pace',
-  'Ritmo desconocido': 'Unknown pace',
   'Esta jugada la elige él': 'He chooses this move',
   'Esta jugada la elige su rival': 'His opponent chooses this move',
   '«Otras» suma las aperturas que menos ha jugado.': '“Others” adds up the openings played least.',

@@ -4,7 +4,7 @@ import { buscarApertura, epdDe, nombreCompleto } from './aperturas.js';
 
 const cache = new WeakMap();
 const nombre = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
-export function fechaPartida(fecha) {
+function fechaPartida(fecha) {
   if (!/^\d{4}[.-]\d{2}[.-]\d{2}$/.test(fecha || '')) return null;
   const [a, m, d] = fecha.split(/[.-]/).map(Number), f = new Date(Date.UTC(a, m - 1, d));
   return f.getUTCFullYear() === a && f.getUTCMonth() === m - 1 && f.getUTCDate() === d ? f : null;
@@ -117,7 +117,7 @@ export function resumirMuestra(partidas, hoy = new Date()) {
 }
 
 /** Evidencias reconstruidas desde el PGN, incluidas las de análisis anteriores. */
-export function evidenciasEstudio(partidas, jugadas) {
+function evidenciasEstudio(partidas, jugadas) {
   const porId = new Map(partidas.map(p => [p.id, p]));
   return jugadas.flatMap(j => {
     if (j.perdida < 150) return [];
@@ -132,7 +132,7 @@ export function evidenciasEstudio(partidas, jugadas) {
   }).sort((a, b) => b.perdida - a.perdida);
 }
 
-export function patronesEstudio(evidencias) {
+function patronesEstudio(evidencias) {
   const grupos = new Map();
   for (const e of evidencias.filter(e => e.perdida >= 150)) {
     const t = new Chess(e.fen), material = e.fen.split(' ')[0].replace(/[1-8/]/g, '').toLowerCase();

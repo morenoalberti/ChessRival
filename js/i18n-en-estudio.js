@@ -136,7 +136,6 @@ export const exactas = {
   'Buscando… (Stockfish evalúa las jugadas candidatas)': 'Searching… (Stockfish evaluates the candidate moves)',
   'No hay jugadas con al menos 2 partidas desde esta posición, así que no se puede recomendar ninguna.': 'There are no moves with at least 2 games from this position, so none can be recommended.',
   'Tus jugadas, en azul; las de él, en gris (son las que más repite).': 'Your moves, in blue; his, in grey (they are the ones he repeats most).',
-  '• Subrayadas, jugadas de Stockfish: sus partidas ya no dan más información.': '• Underlined, Stockfish moves: his games give no more information.',
   '• Sin Stockfish: la línea se ha elegido solo por los resultados de él.': '• Without Stockfish: the line was chosen only from his results.',
   'Buscando su respuesta con Stockfish…': 'Looking for his reply with Stockfish…',
   'Buscando tu jugada con Stockfish…': 'Looking for your move with Stockfish…',
@@ -204,6 +203,13 @@ export const exactas = {
   "Ver": "View",
   "repetido": "repeated",
   'Error repetido en varias partidas': 'Mistake repeated in several games',
+  "Jugó": "Played",
+  "Año": "Year",
+  "Género": "Gender",
+  "Título": "Title",
+  "Resultados con blancas y negras": "Results with white and black",
+  "; propuesta": "; proposed",
+  'Clasificación': 'Ranking',
 };
 
 export const plantillas = {
@@ -305,4 +311,16 @@ export const plantillas = {
   "{} error en {} partida": "{} mistake in {} game",
   "{} errores en {} partida": "{} mistakes in {} game",
   "{} error en {} partidas": "{} mistake in {} games",
+  "{} partidas · fiabilidad {}": "{} games · {} reliability",
+  "{} partidas · {} %": "{} games · {} %",
+  "{} partidas con blancas": "{} games with white",
+  "{} partidas con negras": "{} games with black",
+  "{} al salir de la apertura · resultado {}": "{} on leaving the opening · result {}",
+  "{}; propuesta": "{}; proposed",
+  "{} · pérdida {} · confirmada a profundidad {}": "{} · loss {} · confirmed at depth {}",
+  "{} · pérdida {} · pendiente de confirmación": "{} · loss {} · pending confirmation",
+  "Partida {}": "Game {}",
+  "Jugó {}; propuesta": "Played {}; proposed",
+  "· pérdida {} · confirmada a profundidad {}": "· loss {} · confirmed at depth {}",
+  "· pérdida {} · pendiente de confirmación": "· loss {} · pending confirmation",
 };

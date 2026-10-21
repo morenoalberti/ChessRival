@@ -53,10 +53,10 @@ export function calcularPrecisiones(valores, fens, blancasEmpiezan) {
 }
 
 /** Fase de la partida en la que se juega la jugada «ply»: apertura (primeras 10 jugadas), final (poco material) o medio juego. */
-export const faseDe = (ply, fens) => (ply <= 20 ? 'apertura' : materialSinPeones(fens[ply - 1]) <= 24 ? 'final' : 'medio juego');
+const faseDe = (ply, fens) => (ply <= 20 ? 'apertura' : materialSinPeones(fens[ply - 1]) <= 24 ? 'final' : 'medio juego');
 
 /** Precisión de un jugador en una fase, con el mismo método que la total; null si jugó menos de tres jugadas en ella. */
-export function precisionEnFase(detalle, blancas, fase, fens) {
+function precisionEnFase(detalle, blancas, fase, fens) {
   const datos = detalle.filter(d => d.blancas === blancas && faseDe(d.ply, fens) === fase);
   return datos.length < 3 ? null : mediaPrecision(datos);
 }

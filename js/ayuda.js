@@ -9,7 +9,7 @@ const pasos = (...items) => ({ tipo: 'pasos', items });
 const nota = texto => ({ tipo: 'nota', texto });
 
 // Manual de escritorio adaptado a la web: conserva la jerarquía de apartados, pasos y notas.
-export const SECCIONES = [
+const SECCIONES = [
   ['inicio', 'Primeros pasos', 'Empezar', [
     p('Reúne las partidas de un rival, estúdialas con Stockfish y prepara qué jugarle con blancas y con negras.'),
     h('Tu primera preparación'),

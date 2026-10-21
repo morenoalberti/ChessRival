@@ -129,6 +129,8 @@ function restaurarNodo(nodo) {
 let observador = null, pendientes = new Set(), programado = false;
 function vaciar() {
   programado = false;
+  // Al desconectar, el navegador descarta los cambios que aún no ha entregado: se recogen antes, para no dejar sin traducir lo que se escribió justo ahora.
+  if (observador) anotar(observador.takeRecords());
   observador?.disconnect();
   try {
     for (const n of pendientes) {
@@ -150,13 +152,18 @@ async function cargarDiccionario() {
   diccionarioCargado = true;
 }
 
+/** Apunta los nodos que han cambiado, para traducirlos en cuanto toque. */
+function anotar(cambios) {
+  for (const c of cambios) {
+    if (c.type === 'childList') c.addedNodes.forEach(n => pendientes.add(n));
+    else pendientes.add(c.target);
+  }
+}
+
 function crearObservador() {
   observador = new MutationObserver((cambios) => {
     if (IDIOMA !== 'en') return;
-    for (const c of cambios) {
-      if (c.type === 'childList') c.addedNodes.forEach(n => pendientes.add(n));
-      else pendientes.add(c.target);
-    }
+    anotar(cambios);
     if (!programado) { programado = true; queueMicrotask(vaciar); }
   });
   observar();

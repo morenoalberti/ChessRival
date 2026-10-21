@@ -118,7 +118,7 @@ export function palabras(texto) {
 }
 
 /** «Moreno Ruiz, Javier», «Moreno Ruiz Javier» y «Javier Moreno Ruiz» son la misma persona; «Moreno, Javier» también. */
-export function nombreCoincide(nombre, enPgn) {
+function nombreCoincide(nombre, enPgn) {
   const a = palabras(nombre), b = palabras(enPgn);
   if (!a.size || !b.size) return false;
   if (a.size === b.size && [...a].every(x => b.has(x))) return true;

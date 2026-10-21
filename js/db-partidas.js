@@ -70,7 +70,7 @@ export async function borrarPartidasDe(jugadorClave) {
 }
 
 /** Texto para la tarjeta: cada fuente con el porcentaje de las partidas del jugador que están en ella, una por línea. */
-export function textoFuentes(partidas, nombreMega = '') {
+function textoFuentes(partidas, nombreMega = '') {
   if (!partidas.length) return '—';
   const porFuente = new Map();
   for (const p of partidas) for (const f of (p.origen ?? '').split(';').filter(Boolean)) porFuente.set(f, (porFuente.get(f) ?? 0) + 1);

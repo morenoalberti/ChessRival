@@ -172,7 +172,7 @@ export function mostrarConclusiones(titulo, apartados) {
 // ---------- Menú contextual (botón derecho) ----------
 
 let menuAbierto = null;
-export function cerrarMenu() { menuAbierto?.remove(); menuAbierto = null; }
+function cerrarMenu() { menuAbierto?.remove(); menuAbierto = null; }
 
 /** «items»: [{ texto, accion, activo, marcado, submenu: [...] } | { separador: true }] */
 export function abrirMenu(x, y, items) {

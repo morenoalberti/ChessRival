@@ -222,13 +222,13 @@ function buscarTabla(blancas, token) {
 }
 
 /** Chess960 y las codificaciones especiales no se leen. */
-export const tieneBanderasValidas = (info) => (info & NOT_ENCODED) === 0 && (info & SPECIAL_ENCODING) === 0 && (info & IS_960) === 0;
+const tieneBanderasValidas = (info) => (info & NOT_ENCODED) === 0 && (info & SPECIAL_ENCODING) === 0 && (info & IS_960) === 0;
 const info32 = (b, i = 0) => ((b[i] << 24) | (b[i + 1] << 16) | (b[i + 2] << 8) | b[i + 3]) >>> 0;
-export const longitudDeLaPartida = (info) => info & GAME_LENGTH;
+const longitudDeLaPartida = (info) => info & GAME_LENGTH;
 
 /** Decodifica la partida (el bloque entero del .cbg). Devuelve { startFen, san, eco, opening } o null si el formato no es compatible
  *  (Chess960, codificación especial) o si alguna jugada resulta ilegal: es mejor descartar una partida que guardarla corrupta. */
-export function decodificarPartida(bloque) {
+function decodificarPartida(bloque) {
   if (bloque.length < 4) return null;
   const info = info32(bloque);
   if (!tieneBanderasValidas(info)) return null;

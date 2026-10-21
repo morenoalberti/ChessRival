@@ -1,7 +1,7 @@
 // Copias portátiles de IndexedDB. El historial vive en otra base y nunca se incluye en sí mismo.
 import { tx, prom } from './db.js';
 
-export const ALMACENES_COPIA = ['torneos', 'tarjetas', 'partidas', 'analisis', 'ediciones', 'ajustes'];
+const ALMACENES_COPIA = ['torneos', 'tarjetas', 'partidas', 'analisis', 'ediciones', 'ajustes'];
 const preferencias = new Set(['torneo_actual', 'jugadores_a_cargar', 'ficha_solo_lento', 'ficha_orden_fide', 'ficha_elo_arriba', 'visor_motor_arriba', 'analisis_profundidad', 'analisis_seg_partida', 'analisis_seg_prof', 'ia_modelo', 'ia_proveedor']);
 const portable = a => preferencias.has(a.clave) || a.clave.startsWith('foto:');
 let archivoDb;

@@ -114,7 +114,7 @@ export class MotorUci {
 // ---------- Evaluador del árbol de aperturas ----------
 // Guarda lo ya evaluado (una posición no se calcula dos veces). Las evaluaciones son siempre desde el punto de vista de las blancas.
 
-export const PROFUNDIDAD_ARBOL = 12;
+const PROFUNDIDAD_ARBOL = 12;
 
 export class EvaluadorArbol {
   constructor() { this.cache = new Map(); this.mejores = new Map(); this.motor = null; this.liberado = false; }

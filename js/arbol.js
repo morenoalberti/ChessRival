@@ -10,7 +10,7 @@ import * as libro from './libro.js';
 export const PLIES_MAX = 20;
 export const FEN_INICIAL = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
-export class NodoArbol {
+class NodoArbol {
   constructor({ san = '', ply = 0, fen = FEN_INICIAL, desde = null, hasta = null, padre = null } = {}) {
     Object.assign(this, { san, ply, fen, desde, hasta, padre });
     this.partidas = 0; this.victorias = 0; this.tablas = 0; this.derrotas = 0;

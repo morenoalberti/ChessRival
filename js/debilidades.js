@@ -5,7 +5,7 @@ import { FASES } from './analizador.js';
 import { fiabilidad, aperturasEstudio } from './estudio-datos.js';
 import { t as tr } from './i18n.js';
 
-export const ERROR_GRAVE = 300, VENTAJA_CLARA = 200;
+const ERROR_GRAVE = 300, VENTAJA_CLARA = 200;
 
 const num = (v) => (Math.round(v * 100) / 100).toLocaleString(LOCALE, { maximumFractionDigits: 2 });
 /** Solo el número, con hasta dos decimales: «2», «0,35». */

@@ -102,7 +102,6 @@ export const exactas = {
   'La fuente tarda demasiado en responder. Inténtalo de nuevo en un momento.': 'The source is taking too long to respond. Try again in a moment.',
   'No se pudo conectar con el servidor intermedio. Comprueba que está en marcha (iniciar.bat) y tu conexión a internet.': 'Could not connect to the intermediate server. Check that it is running (iniciar.bat) and your internet connection.',
   'Sin servidor intermedio.': 'No intermediate server.',
-  'Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar la MegaDatabase.': 'Your browser does not allow reading files from disk. Use Chrome or Edge to connect the MegaDatabase.',
   'Transacción cancelada': 'Transaction cancelled',
   'Se ha restaurado una copia. Recarga esta ventana para continuar.': 'A backup has been restored. Reload this window to continue.',
 
@@ -134,7 +133,6 @@ export const exactas = {
   'Derrota': 'Loss',
 
   // Indicador de carga
-  'Cargando…': 'Loading…',
   'Preparando…': 'Preparing…',
   "Libro de aperturas no disponible": "Opening book not available",
   "Comprobando el libro…": "Checking the book…",
@@ -142,7 +140,6 @@ export const exactas = {
   "El navegador pide confirmar el acceso a los archivos del libro cada vez que abres la página.": "The browser asks you to confirm access to the book files every time you open the page.",
   "No se ha dado permiso para leer los archivos del libro.": "Permission to read the book files was not granted.",
   "El servidor local respondió con el error {}.": "The local server responded with error {}.",
-  "Tu navegador no permite leer archivos del disco. Usa Chrome o Edge para conectar el libro de aperturas.": "Your browser does not allow reading files from disk. Use Chrome or Edge to connect the opening book.",
   "Este libro no tiene la posición inicial: no parece un libro de aperturas.": "This book does not have the starting position: it does not look like an opening book.",
   "El archivo .ctb del libro no es válido.": "The book’s .ctb file is not valid.",
   "Elegir archivos": "Choose files",
@@ -222,4 +219,6 @@ export const plantillas = {
   "El navegador no permite elegir esa carpeta (por ejemplo, Documentos, Descargas o el escritorio). Elige la carpeta donde guardas {}.": "The browser does not allow choosing that folder (for example Documents, Downloads or the desktop). Choose the folder where you keep {}.",
   "En la carpeta «{}» no hay ningún archivo .{}. Elige la carpeta donde guardas {}.": "In the folder “{}” there is no .{} file. Choose the folder where you keep {}.",
   "Falta algún archivo al lado de «{}.{}»: {}.": "A file is missing next to “{}.{}”: {}.",
+  "Evolución del ELO: {}": "ELO evolution: {}",
+  "Evolución del ELO (últimos años): {}": "ELO evolution (last years): {}",
 };
