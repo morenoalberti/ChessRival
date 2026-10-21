@@ -131,3 +131,9 @@
 /* La mano de arrastre solo al mantener pulsado el botón izquierdo */
 .visor-tarjetas [data-tarjeta]:active, .visor-tarjetas [data-tarjeta].arrastrando { cursor: grabbing; }
 .visor-tarjetas [data-tarjeta]:active .ficha-jugada, .visor-tarjetas [data-tarjeta]:active .motor-check { cursor: pointer; }
+/* El icono que lleva el análisis a la anotación de la partida (o lo quita): a la derecha del nombre de las negras, junto a la X */
+.analisis-aplicar { position: absolute; right: 32px; top: 2px; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1.5px solid var(--azul); border-radius: 8px; background: #fff; color: var(--azul); cursor: pointer; transition: background-color .15s, color .15s, transform .15s; }
+.analisis-aplicar:hover { background: #E6EFFF; transform: translateY(-1px); }
+.analisis-aplicar.activo { color: var(--rojo); border-color: var(--rojo); }
+.analisis-aplicar.activo:hover { background: #FDE4E1; }
+

@@ -873,7 +873,7 @@ async function analizarPartida() {
     errores = calcularErrores(valores, sans.length, mejorEnSan, blancasEmpiezan);
     const pr = calcularPrecisiones(valores, fens, blancasEmpiezan);
     analisisDatos = { valores, mejores, fens: [...fens], sans: [...sans], precisionBlancas: pr.blancas, precisionNegras: pr.negras, detalle: pr.detalle };
-    anadirVariantesDelAnalisis();
+    aplicarAnalisisALaPartida();
     mostrarResultadoAnalisis();
   } catch (ex) {
     if (ex?.name === 'AbortError') {
@@ -891,22 +891,71 @@ async function analizarPartida() {
   }
 }
 
-/** En cada error, la jugada que Stockfish proponía se añade a la anotación de la partida como variante (en lugar de la jugada jugada). Cuenta como cambio: al cerrar se pregunta si se guarda. */
-function anadirVariantesDelAnalisis() {
-  let nuevas = 0;
-  for (const e of errores.values()) {
-    const mejor = analisisDatos.mejores[e.ply - 1], desvio = e.ply - 1;
-    if (!mejor || mejor === ucisP[desvio]) continue;
-    if (variantes.some(v => v.desvio === desvio && v.ucis[0] === mejor)) continue;     // ya está (de otro análisis o escrita por el usuario)
-    variantes.push({ desvio, plegada: false, ucis: [mejor], sans: [], casillas: [], fens: [], fichas: [] });
-    nuevas++;
-  }
-  if (!nuevas) return;
+// ---------- Llevar el análisis a la anotación de la partida (y quitarlo) ----------
+
+/** El símbolo de valoración como en ChessBase, según la ventaja en centipeones (desde las blancas): = ⩲ ± +− para las blancas y ⩱ ∓ −+ para las negras. */
+function simboloDeValoracion(cp) {
+  const a = Math.abs(cp), blancas = cp > 0;
+  if (a < 20) return '=';
+  if (a < 60) return blancas ? '⩲' : '⩱';
+  return a < 150 ? (blancas ? '±' : '∓') : (blancas ? '+−' : '−+');
+}
+
+/** Por cada error: dónde se desvía la variante y la jugada que Stockfish proponía en su lugar. */
+const mejoresDelAnalisis = () => !analisisDatos ? [] : [...errores.values()]
+  .map(e => ({ desvio: e.ply - 1, mejor: analisisDatos.mejores[e.ply - 1] }))
+  .filter(x => x.mejor && x.mejor !== ucisP[x.desvio]);
+const esVarianteDelAnalisis = (v, x) => v.desvio === x.desvio && v.ucis.length === 1 && v.ucis[0] === x.mejor;
+const rutaDeLaVariante = (x) => rutaDe([...ucisP.slice(0, x.desvio), x.mejor], x.desvio + 1);
+const analisisAplicado = () => { const m = mejoresDelAnalisis(); return m.length > 0 && m.every(x => variantes.some(v => esVarianteDelAnalisis(v, x))); };
+
+function actualizarBotonAnalisis() {
+  const aplicado = analisisAplicado();
+  const boton = $('aplicarAnalisis');
+  boton.hidden = mejoresDelAnalisis().length === 0;
+  boton.classList.toggle('activo', aplicado);
+  boton.setAttribute('aria-pressed', String(aplicado));
+  boton.querySelector('[data-marca]').setAttribute('d', aplicado ? 'M15.5 15.5l5 5m0-5l-5 5' : 'M18 15v6m-3-3h6');
+  boton.title = tr(aplicado ? 'Quitar de la partida las variantes del análisis' : 'Volver a añadir a la partida la mejor jugada de cada error, con la valoración del módulo');
+  boton.setAttribute('aria-label', boton.title);
+}
+
+function refrescarAnotacion() {
   rehacerTodo();
   usarLinea(null);
   reconstruirLista();
+  marcarErroresEnLista();
   modificado();
+  actualizarBotonAnalisis();
+  ir(Math.min(ply, sansP.length));
 }
+
+/** En cada error, la jugada que Stockfish proponía se añade a la anotación como variante, con la valoración del módulo tras ella. */
+function aplicarAnalisisALaPartida() {
+  for (const x of mejoresDelAnalisis()) {
+    if (!variantes.some(v => esVarianteDelAnalisis(v, x))) variantes.push({ desvio: x.desvio, plegada: false, ucis: [x.mejor], sans: [], casillas: [], fens: [], fichas: [] });
+    const blancasMueven = analisisDatos.fens[x.desvio].split(' ')[1] === 'w';
+    const cp = analisisDatos.valores[x.desvio] * (blancasMueven ? 1 : -1);        // la mejor jugada conserva el valor de la posición
+    const ruta = rutaDeLaVariante(x), set = notas.get(ruta) ?? new Set();
+    for (const s of SIMBOLOS_VALORACION) set.delete(s);
+    set.add(simboloDeValoracion(cp));
+    notas.set(ruta, set);
+  }
+  refrescarAnotacion();
+}
+
+function quitarAnalisisDeLaPartida() {
+  for (const x of mejoresDelAnalisis()) {
+    const variante = variantes.find(v => esVarianteDelAnalisis(v, x));
+    if (!variante) continue;
+    variantes = variantes.filter(v => v !== variante);
+    const set = notas.get(rutaDeLaVariante(x));
+    if (set) { for (const s of SIMBOLOS_VALORACION) set.delete(s); if (!set.size) notas.delete(rutaDeLaVariante(x)); }
+  }
+  refrescarAnotacion();
+}
+
+$('aplicarAnalisis').addEventListener('click', () => (analisisAplicado() ? quitarAnalisisDeLaPartida() : aplicarAnalisisALaPartida()));
 
 const textoPrecision = (p) => (p !== null && p !== undefined ? `Precisión ${decimal(p)} %\n` : '');
 
@@ -927,6 +976,7 @@ function mostrarResultadoAnalisis() {
   }).join('') || '<div class="suave" style="font-size:13px">No hay errores: los dos jugaron una partida muy limpia.</div>';
 
   marcarErroresEnLista();
+  actualizarBotonAnalisis();
   ir(ply);                                               // refresca el texto de la jugada con su calificación
 }
 
