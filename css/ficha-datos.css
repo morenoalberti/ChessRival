@@ -314,3 +314,5 @@ select:focus-visible, .ia-campos input:focus-visible { outline: none; border-col
 .patron-estado.poca { background: #E7ECF5; color: #5A6B8C; }
 @media (max-width: 900px) { .estudio-patrones { grid-template-columns: 1fr; } }
 .patron-estado.rep { white-space: nowrap; }
+.arbol-fin-linea { margin: 4px 0 8px; padding: 6px 10px; border-radius: 8px; background: #FFF3D6; border: 1px solid #F0D79A; color: #7A5A12; font-size: 12px; }
+.arbol-fin-linea[hidden] { display: none; }

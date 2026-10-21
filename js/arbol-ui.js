@@ -55,6 +55,7 @@ export class ArbolUI {
           <div class="arbol-linea-detalle suave" data-linea-detalle hidden></div>
         </div>
         <div class="arbol-nombre"><b data-nombre></b><span class="suave" data-datos></span></div>
+        <div class="arbol-fin-linea" data-fin-linea hidden>El tablero muestra la posición con la que acaba la línea recomendada. Pasa el ratón por la línea para ver cada jugada.</div>
         <div class="arbol-cuerpo">
           <div class="arbol-lista">
             <div class="arbol-cabecera-filas">
@@ -76,7 +77,7 @@ export class ArbolUI {
     const $ = (s) => this.contenedor.querySelector(s);
     this.el = {
       resumen: $('[data-resumen]'), migas: $('[data-migas]'), atras: $('[data-atras]'), partidasBtn: $('[data-partidas]'),
-      lineaTitulo: $('[data-linea-titulo]'), irLinea: $('[data-ir-linea]'), buscarLinea: $('[data-buscar-linea]'),
+      lineaTitulo: $('[data-linea-titulo]'), finLinea: $('[data-fin-linea]'), irLinea: $('[data-ir-linea]'), buscarLinea: $('[data-buscar-linea]'),
       lineaTexto: $('[data-linea-texto]'), lineaDetalle: $('[data-linea-detalle]'),
       nombre: $('[data-nombre]'), datos: $('[data-datos]'), vacio: $('[data-vacio]'), filas: $('[data-filas]'), soloRepetidas: $('[data-solo-repetidas]')
     };
@@ -84,6 +85,7 @@ export class ArbolUI {
     this.el.partidasBtn.innerHTML = contenidoBoton('lista', 'Ver partidas');
     this.el.buscarLinea.innerHTML = contenidoBoton('barras', 'Buscar la línea');
     this.el.irLinea.innerHTML = contenidoBoton('flecha', 'Ir a la línea');
+    this.finalMostrado = null;
     this.tablero = new Tablero($('[data-tablero]'), { casilla: 34 });
 
     this.contenedor.querySelector('.arbol-cab .mini-pestanas').addEventListener('click', (e) => {
@@ -104,6 +106,7 @@ export class ArbolUI {
       // Los pasos de teoría y de Stockfish no están en su árbol: se va hasta la última posición que sí lo está.
       const destino = [...this.linea].reverse().find(p => p.fuente === Fuente.Partidas)?.nodo ?? this.linea[0].nodo.padre;
       if (destino) this._ir(destino, true);
+      this._mostrarFinalDeLaLinea();
     });
     this.el.filas.addEventListener('click', (e) => {
       const f = e.target.closest('[data-san]');
@@ -142,6 +145,15 @@ export class ArbolUI {
     this._refrescar();
   }
 
+  /** El tablero enseña la posición con la que acaba la línea recomendada (aunque sus últimas jugadas sean de teoría o de Stockfish y no estén en el árbol). */
+  _mostrarFinalDeLaLinea() {
+    const final = this.linea?.at(-1)?.nodo;
+    if (!final) return;
+    this.finalMostrado = final;
+    this.tablero.mostrar(final.fen, final.desde, final.hasta, this.color === 'N');
+    this.el.finLinea.hidden = false;
+  }
+
   _ir(nodo, conservarLinea = false) {
     if (!conservarLinea) this._borrarLinea();
     this.actual = nodo;
@@ -150,6 +162,7 @@ export class ArbolUI {
 
   _refrescar() {
     if (!this.actual || !this.raiz) return;
+    this.finalMostrado = null; this.el.finLinea.hidden = true;           // cualquier movimiento por el árbol deja de enseñar el final de la línea
     const nodo = this.actual;
     this.el.resumen.textContent = this.raiz.partidas === 0 ? '' : `${this.raiz.partidas} partidas con ${this.color === 'B' ? 'blancas' : 'negras'}`;
     this.el.atras.disabled = !nodo.padre;
@@ -299,7 +312,7 @@ export class ArbolUI {
     this.el.lineaTexto.hidden = false;
     // Al pasar el ratón por una jugada de la línea, el tablero enseña la posición tras esa jugada.
     this.el.lineaTexto.onmouseover = (e) => { const s = e.target.closest('[data-paso]'); if (s) { const n = linea[Number(s.dataset.paso)].nodo; this.tablero.mostrar(n.fen, n.desde, n.hasta, this.color === 'N'); } };
-    this.el.lineaTexto.onmouseleave = () => { if (this.actual) this.tablero.mostrar(this.actual.fen, this.actual.desde, this.actual.hasta, this.color === 'N'); };
+    this.el.lineaTexto.onmouseleave = () => { const n = this.finalMostrado ?? this.actual; if (n) this.tablero.mostrar(n.fen, n.desde, n.hasta, this.color === 'N'); };
 
     const mias = linea.filter(p => p.esMia && p.fuente === Fuente.Partidas);
     const ultimoDePartidas = [...linea].reverse().find(p => p.fuente === Fuente.Partidas)?.nodo ?? linea[0].nodo.padre;

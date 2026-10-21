@@ -264,6 +264,7 @@ export const exactas = {
   "ELO de partidas relámpago: su ELO actual, su máximo y cómo ha cambiado en el último año. Arrástrala para cambiarla de sitio.": "Blitz rating: their current rating, their peak and how it has changed over the last year. Drag it to move it elsewhere.",
   "Un resumen de toda su carrera: desde cuándo tiene ELO y en qué ritmo es más fuerte ahora": "A summary of their whole career: since when they have been rated and in which format they are strongest now",
   "Un resumen de toda su carrera: desde cuándo tiene ELO y en qué ritmo es más fuerte ahora. Arrástrala para cambiarla de sitio.": "A summary of their whole career: since when they have been rated and in which format they are strongest now. Drag it to move it elsewhere.",
+  'El tablero muestra la posición con la que acaba la línea recomendada. Pasa el ratón por la línea para ver cada jugada.': 'The board shows the position the recommended line ends in. Move the mouse over the line to see each move.',
   'Carpeta de destino': 'Destination folder',
   'Elegir carpeta de destino': 'Choose destination folder',
   'Restaurar copia seleccionada': 'Restore selected backup',
