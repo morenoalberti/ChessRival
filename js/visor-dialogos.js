@@ -85,7 +85,18 @@ export function elegirVariante({ obtener, elegir, reordenar }) {
     else if (tecla === 'ArrowDown') { seleccion = seleccion >= textos.length - 1 ? 0 : seleccion + 1; pintar(); }
     else jugar(seleccion);                                // Intro o flecha derecha
   }
-  lista.addEventListener('click', (e) => { const o = e.target.closest('[data-i]'); if (o) { seleccion = Number(o.dataset.i); pintar(); } });
+  // Un clic solo marca la jugada (sin redibujar la lista, para que el segundo clic del doble clic caiga en la misma); el doble clic la juega.
+  function marcar(i) {
+    seleccion = i;
+    lista.querySelectorAll('[data-i]').forEach(o => { const sel = Number(o.dataset.i) === i; o.classList.toggle('seleccionada', sel); o.setAttribute('aria-selected', String(sel)); });
+    velo.querySelector('[data-mover="-1"]').disabled = seleccion === 0;
+    velo.querySelector('[data-mover="1"]').disabled = seleccion === textos.length - 1;
+  }
+  lista.addEventListener('click', (e) => {
+    const o = e.target.closest('[data-i]');
+    if (!o) return;
+    if (e.detail >= 2) jugar(Number(o.dataset.i)); else marcar(Number(o.dataset.i));
+  });
   lista.addEventListener('dblclick', (e) => { const o = e.target.closest('[data-i]'); if (o) jugar(Number(o.dataset.i)); });
   velo.querySelector('[data-cerrar]').addEventListener('click', cerrar);
   velo.querySelectorAll('[data-mover]').forEach(b => b.addEventListener('click', () => mover(Number(b.dataset.mover))));
