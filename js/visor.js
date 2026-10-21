@@ -864,6 +864,7 @@ function pintarMotor() {
   const { fraccion } = textoEvaluacion(principal, mueveBlancas);
   $('profundidadText').textContent = `profundidad ${principal.profundidad}` + (principal.nps > 0 ? ` · ${decimal(principal.nps / 1e6)} Mn/s` : '');
   actualizarBarra(fraccion);
+  valorarFinalDeVariante();
 }
 
 /** La barra de evaluación: la parte blanca ocupa «fraccion» de la altura (las blancas siempre abajo, aunque se gire el tablero). */
@@ -950,12 +951,52 @@ async function analizarPartida() {
 
 // ---------- Llevar el análisis a la anotación de la partida (y quitarlo) ----------
 
-/** El símbolo de valoración como en ChessBase, según la ventaja en centipeones (desde las blancas): = ⩲ ± +− para las blancas y ⩱ ∓ −+ para las negras. */
-function simboloDeValoracion(cp) {
-  const a = Math.abs(cp), blancas = cp > 0;
-  if (a < 20) return '=';
-  if (a < 60) return blancas ? '⩲' : '⩱';
-  return a < 150 ? (blancas ? '±' : '∓') : (blancas ? '+−' : '−+');
+/** El símbolo de valoración como en ChessBase, el mismo que ve el panel del motor (desde el punto de vista de las blancas). */
+const simboloDeValoracion = (cp) => simboloVentaja(cp);
+
+// ---------- La valoración del módulo al final de las variantes que se crean con el ratón ----------
+
+const valoracionAuto = new Map();                       // ruta → símbolo que ha puesto el motor (los que pone el usuario nunca se tocan)
+
+/** La valoración (desde las blancas) de la posición que está viendo el motor, en centipeones; null si aún no es fiable. */
+function valoracionDelMotor() {
+  const info = infos[0];
+  if (!info || (info.profundidad ?? 0) < 12 || fenAnalizado !== fens[ply]) return null;
+  const mueveBlancas = fens[ply].split(' ')[1] === 'w';
+  if (info.mate !== null) return (mueveBlancas ? info.mate : -info.mate) > 0 ? 10000 : -10000;
+  return (info.centipeones ?? 0) * (mueveBlancas ? 1 : -1);
+}
+
+/** Si se está en la última jugada de una variante propia, el motor pone su valoración en ella (y la quita de la jugada anterior). */
+function valorarFinalDeVariante() {
+  if (!varActual || ply !== varActual.desvio + varActual.sans.length) return;
+  if (mejoresDelAnalisis().some(x => esVarianteDelAnalisis(varActual, x))) return;      // las del análisis ya llevan la suya
+  const cp = valoracionDelMotor();
+  if (cp === null) return;
+  const simbolo = simboloVentaja(cp), ruta = rutaDe(ucisDeLaLinea(), ply);
+  let cambio = false;
+  for (const [r, s] of [...valoracionAuto]) {             // la que puso en una jugada anterior de esta misma variante
+    if (r === ruta || !ruta.startsWith(r + ' ') || r.split(' ').length <= varActual.desvio) continue;
+    const n = notas.get(r);
+    if (n?.delete(s) && n.size === 0) notas.delete(r);
+    valoracionAuto.delete(r); cambio = true;
+  }
+  const nota = notas.get(ruta) ?? new Set();
+  const propia = SIMBOLOS_VALORACION.find(s => nota.has(s));
+  if (propia && valoracionAuto.get(ruta) !== propia) { if (cambio) refrescarPlanilla(); return; }   // ya lleva una que puso el usuario
+  if (propia === simbolo) { if (cambio) refrescarPlanilla(); return; }
+  if (propia) nota.delete(propia);
+  nota.add(simbolo); notas.set(ruta, nota); valoracionAuto.set(ruta, simbolo);
+  modificado();
+  refrescarPlanilla();
+}
+
+/** Redibuja la planilla sin perder el lugar en el que se estaba mirando. */
+function refrescarPlanilla() {
+  const lista = $('listaJugadas'), arriba = lista.scrollTop;
+  reconstruirLista();
+  pintarSeleccion();
+  lista.scrollTop = arriba;
 }
 
 /** Por cada error: dónde se desvía la variante y la jugada que Stockfish proponía en su lugar. */
