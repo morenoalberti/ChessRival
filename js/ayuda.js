@@ -74,7 +74,7 @@ export const SECCIONES = [
     h('Importar paso a paso'),
     pasos('Conecta la MegaDatabase con «Elegir» en la pantalla principal, si quieres utilizarla.',
       'Abre la ficha y pulsa «Importar partidas». Elige o arrastra los archivos PGN, o utiliza la base conectada.',
-      'Para usar YottaChess, abre su enlace, descarga el PGN y vuelve a ChessRival para elegir ese archivo.'),
+      'Si aún no tienes un PGN con sus partidas, pulsa «YottaChess o PGN»: copia el ID FIDE del jugador y abre YottaChess, donde puedes descargarlas. Vuelve a ChessRival, pulsa «Importar partidas» y elige ese archivo. Sirve cualquier PGN: de YottaChess, ChessBase, Lichess…'),
     nota('Las partidas repetidas no se duplican y se conservan sus distintas fuentes. La MegaDatabase se lee sin modificar sus archivos.'),
     h('Herramientas incluidas'),
     p('Stockfish y la clasificación de aperturas vienen incluidos. Las consultas a FIDE y a los torneos utilizan el servicio local que inicia el BAT.')

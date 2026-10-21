@@ -23,18 +23,13 @@ export function datosDelHistorial(titulo, historial) {
   return extras;
 }
 
-/** Una tarjeta más, «Trayectoria», con lo que se sabe de toda su carrera: desde cuándo tiene Elo, su mejor Elo y su ritmo más fuerte. */
+/** Una tarjeta más, «Trayectoria», con lo que se sabe de toda su carrera: desde cuándo tiene Elo y su ritmo más fuerte. */
 export function tarjetaTrayectoria(bloques, historial) {
   const puntos = (historial ?? []).filter(p => p && /^\d{4}-\d{2}$/.test(p.fecha));
   if (puntos.length < 2) return null;
   const extras = [{ etiqueta: 'En la lista desde', icono: 'calendario', valor: puntos[0].fecha.slice(0, 4) }];
-  let mejor = null;
-  for (const [titulo, ritmo] of Object.entries(RITMOS)) {
-    for (const p of puntos) if (p[ritmo] > (mejor?.elo ?? 0)) mejor = { elo: p[ritmo], titulo, anio: p.fecha.slice(0, 4) };
-  }
-  if (mejor) extras.push({ etiqueta: 'Mejor ELO', icono: 'copa', valor: `${mejor.elo} ${mejor.titulo} en ${mejor.anio}` });
   const fuerte = bloques.filter(b => RITMOS[b.titulo] && Number(b.elo) > 0).sort((x, y) => Number(y.elo) - Number(x.elo))[0];
-  if (fuerte) extras.push({ etiqueta: 'Ritmo más fuerte', icono: 'grafico', valor: `${fuerte.titulo} ${fuerte.elo}` });
+  if (fuerte) extras.push({ etiqueta: 'Ritmo más fuerte', icono: 'grafico', valor: `${fuerte.elo} ${fuerte.titulo}` });
   return { titulo: 'Trayectoria', elo: '', blancas: null, negras: null, extras };
 }
 

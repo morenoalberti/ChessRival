@@ -160,6 +160,8 @@ export const exactas = {
   'El proveedor no devolvió ningún modelo de chat; se mantiene la lista habitual.': 'The provider returned no chat model; the usual list is kept.',
 
   // Borrar / YottaChess
+  "Para conseguir un PGN con sus partidas: copia su ID FIDE y abre YottaChess para descargarlas. Después, elige ese PGN en «Importar partidas»": "To get a PGN with their games: copies their FIDE ID and opens YottaChess to download them. Then choose that PGN in “Import games”",
+  'YottaChess o PGN': 'YottaChess or PGN',
   'YottaChess': 'YottaChess',
   'Ventana bloqueada': 'Window blocked',
 
