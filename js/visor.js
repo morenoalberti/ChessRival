@@ -880,7 +880,15 @@ async function analizarPartida() {
   volverALaPartida();                                    // el análisis es de la partida, no de la variante que se esté probando
   if (!sans.length) { conclusionesPendientes = false; return; }
 
+  // Un análisis nuevo sustituye al anterior: se quitan sus variantes, valoraciones y marcas de error para que no queden restos en la planilla.
+  if (analisisDatos) {
+    quitarAnalisisDeLaPartida(false);
+    errores.clear();
+    analisisDatos = null;
+    reconstruirLista();
+  }
   analizando = true;
+  $('aplicarAnalisis').hidden = true;
   const ab = abortarPartida = new AbortController();
   const motores = [];
   $('analizarBtn').textContent = 'Cancelar análisis';
@@ -931,6 +939,7 @@ async function analizarPartida() {
   } finally {
     motores.forEach(m => m.cerrar());
     analizando = false;
+    actualizarBotonAnalisis();
     $('analizarBtn').textContent = 'Analizar partida';
     $('analizarBtn').title = 'Analizar partida';
     const abrir = conclusionesPendientes && analisisDatos;
@@ -957,13 +966,17 @@ const esVarianteDelAnalisis = (v, x) => v.desvio === x.desvio && v.ucis.length =
 const rutaDeLaVariante = (x) => rutaDe([...ucisP.slice(0, x.desvio), x.mejor], x.desvio + 1);
 const analisisAplicado = () => { const m = mejoresDelAnalisis(); return m.length > 0 && m.every(x => variantes.some(v => esVarianteDelAnalisis(v, x))); };
 
+const ICONO_QUITAR = 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6';
+const ICONO_PONER = 'M12 5v14M5 12h14';
+
 function actualizarBotonAnalisis() {
   const aplicado = analisisAplicado();
   const boton = $('aplicarAnalisis');
-  boton.hidden = mejoresDelAnalisis().length === 0;
+  boton.hidden = analizando || mejoresDelAnalisis().length === 0;
   boton.classList.toggle('activo', aplicado);
   boton.setAttribute('aria-pressed', String(aplicado));
-  boton.querySelector('[data-marca]').setAttribute('d', aplicado ? 'M15.5 15.5l5 5m0-5l-5 5' : 'M18 15v6m-3-3h6');
+  boton.querySelector('[data-icono]').setAttribute('d', aplicado ? ICONO_QUITAR : ICONO_PONER);
+  boton.querySelector('[data-texto]').textContent = tr(aplicado ? 'Quitar variantes' : 'Poner variantes');
   boton.title = tr(aplicado ? 'Quitar de la partida las variantes del análisis' : 'Volver a añadir a la partida la mejor jugada de cada error, con la valoración del módulo');
   boton.setAttribute('aria-label', boton.title);
 }
@@ -992,7 +1005,7 @@ function aplicarAnalisisALaPartida() {
   refrescarAnotacion();
 }
 
-function quitarAnalisisDeLaPartida() {
+function quitarAnalisisDeLaPartida(refrescar = true) {
   for (const x of mejoresDelAnalisis()) {
     const variante = variantes.find(v => esVarianteDelAnalisis(v, x));
     if (!variante) continue;
@@ -1000,7 +1013,8 @@ function quitarAnalisisDeLaPartida() {
     const set = notas.get(rutaDeLaVariante(x));
     if (set) { for (const s of SIMBOLOS_VALORACION) set.delete(s); if (!set.size) notas.delete(rutaDeLaVariante(x)); }
   }
-  refrescarAnotacion();
+  if (refrescar) refrescarAnotacion();
+  else { rehacerTodo(); usarLinea(null); modificado(); }
 }
 
 $('aplicarAnalisis').addEventListener('click', () => (analisisAplicado() ? quitarAnalisisDeLaPartida() : aplicarAnalisisALaPartida()));

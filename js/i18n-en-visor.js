@@ -104,6 +104,8 @@ export const exactas = {
   "Variante": "Variation",
   "Jugada arriba": "Move up",
   "Jugada abajo": "Move down",
+  "Quitar variantes": "Remove variations",
+  "Poner variantes": "Add variations",
 };
 
 export const plantillas = {

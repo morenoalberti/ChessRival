@@ -87,7 +87,7 @@
 .analisis-progreso { font-size: 12px; }
 .analisis-barra { height: 5px; border-radius: 3px; background: var(--panel-interior); margin-top: 6px; overflow: hidden; }
 .analisis-barra i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #3D82E8, var(--azul)); transition: width .3s; }
-.analisis-resumen { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 2px; }
+.analisis-resumen { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: 16px; margin-top: 2px; }
 .analisis-resumen b { font-size: 13px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .analisis-resumen .suave { font-size: 12px; white-space: pre-line; }
 .errores-lista { max-height: 88px; overflow-y: auto; scrollbar-width: thin; }
 .error-fila { font-size: 13px; padding: 2px 6px; margin: 1px 0; border-left: 3px solid var(--azul); border-radius: 4px; cursor: pointer; transition: background-color .12s; }
@@ -131,23 +131,12 @@
 /* La mano de arrastre solo al mantener pulsado el botón izquierdo */
 .visor-tarjetas [data-tarjeta]:active, .visor-tarjetas [data-tarjeta].arrastrando { cursor: grabbing; }
 .visor-tarjetas [data-tarjeta]:active .ficha-jugada, .visor-tarjetas [data-tarjeta]:active .motor-check { cursor: pointer; }
-/* El icono que lleva el análisis a la anotación de la partida (o lo quita): a la derecha del nombre de las negras, junto a la X */
-.analisis-aplicar { position: absolute; right: 32px; top: 2px; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1.5px solid var(--azul); border-radius: 8px; background: #fff; color: var(--azul); cursor: pointer; transition: background-color .15s, color .15s, transform .15s; }
-.analisis-aplicar:hover { background: #E6EFFF; transform: translateY(-1px); }
-.analisis-aplicar.activo { color: var(--rojo); border-color: var(--rojo); }
-.analisis-aplicar.activo:hover { background: #FDE4E1; }
-
-/* Cuadro «Variante»: las jugadas posibles, la elegida resaltada, y los botones para cambiarlas de sitio */
-.dialogo-variante { width: 360px; max-width: calc(100vw - 24px); }
-.dialogo-variante .dialogo-cab > span { flex: 1; }
-.variante-cerrar { border: 0; background: transparent; color: #fff; font-size: 16px; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
-.variante-cerrar:hover { background: rgba(255, 255, 255, .22); }
-.variante-cuerpo { padding: 14px 16px 16px; background: var(--fondo); border-radius: 0 0 14px 14px; }
-.variante-opciones { display: grid; gap: 4px; padding: 6px; max-height: 240px; overflow-y: auto; background: #fff; border: 1.5px solid #BFD3F6; border-radius: 10px; outline: none; }
-.variante-opcion { text-align: left; padding: 8px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--texto); font: inherit; font-size: 15px; cursor: pointer; }
-.variante-opcion:hover { background: #EAF1FF; }
-.variante-opcion.seleccionada { background: #CFE0FF; box-shadow: inset 3px 0 0 var(--azul); font-weight: 600; }
-.variante-acciones { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-.variante-acciones .btn:disabled { opacity: .45; }
-.visor-botones-der #guardarBtn:disabled { opacity: .45; cursor: default; }
-
+/* El botón que quita (o vuelve a poner) las variantes del análisis: en la línea del nombre de las negras, alineado a la derecha (antes de la X) */
+.resumen-negras { padding-right: 24px; min-width: 0; }
+.resumen-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.resumen-cab b { flex: 1; min-width: 0; }
+.analisis-aplicar { flex: none; height: 24px; display: inline-flex; align-items: center; gap: 5px; padding: 0 9px; border: 1.5px solid var(--rojo); border-radius: 12px; background: #fff; color: var(--rojo); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; transition: background-color .15s, transform .15s; }
+.analisis-aplicar[hidden] { display: none; }
+.analisis-aplicar:hover { background: #FDE4E1; transform: translateY(-1px); }
+.analisis-aplicar:not(.activo) { border-color: var(--azul); color: var(--azul); }
+.analisis-aplicar:not(.activo):hover { background: #E6EFFF; }
