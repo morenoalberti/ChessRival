@@ -874,6 +874,7 @@ function actualizarBarra(fraccion) { $('barraBlanca').style.transform = `scaleY(
 
 let analizando = false, abortarPartida = null;
 let analisisDatos = null;            // { valores, mejores, fens, sans, precisiones… } del último análisis completo
+let erroresOcultos = null;           // los errores del análisis, guardados aparte mientras la tarjeta está cerrada (la planilla se ve sin ellos)
 let analisisUcis = null;             // las jugadas de la partida cuando se analizó: si cambian, el análisis ya no vale
 let conclusionesPendientes = false;
 
@@ -881,6 +882,10 @@ async function analizarPartida() {
   if (analizando) { abortarPartida?.abort(); return; }
   // Ya analizada y la partida sigue igual: solo se vuelve a enseñar el resultado (por ejemplo, tras cerrar la tarjeta con la ✕), sin analizar otra vez.
   if (analisisDatos && analisisUcis === ucisP.join(' ')) {
+    if (erroresOcultos) {                                // la tarjeta estaba cerrada: vuelven los errores, las marcas y las variantes
+      errores = erroresOcultos; erroresOcultos = null;
+      aplicarAnalisisALaPartida();
+    }
     $('analisisCard').hidden = false;
     mostrarResultadoAnalisis();
     const abrir = conclusionesPendientes;
@@ -895,7 +900,7 @@ async function analizarPartida() {
   if (analisisDatos) {
     quitarAnalisisDeLaPartida(false);
     errores.clear();
-    analisisDatos = null; analisisUcis = null;
+    analisisDatos = null; analisisUcis = null; erroresOcultos = null;
     reconstruirLista();
   }
   analizando = true;
@@ -981,7 +986,7 @@ function valoracionDelMotor() {
 /** Si se está en la última jugada de una variante propia, el motor pone su valoración en ella (y la quita de la jugada anterior). */
 function valorarFinalDeVariante() {
   if (!varActual || ply !== varActual.desvio + varActual.sans.length) return;
-  if (mejoresDelAnalisis().some(x => esVarianteDelAnalisis(varActual, x))) return;      // las del análisis ya llevan la suya
+  if (varActual.delAnalisis) return;                      // las del análisis ya llevan la suya
   const cp = valoracionDelMotor();
   if (cp === null) return;
   const simbolo = simboloVentaja(cp), ruta = rutaDe(ucisDeLaLinea(), ply);
@@ -1046,7 +1051,8 @@ function refrescarAnotacion() {
 /** En cada error, la jugada que Stockfish proponía se añade a la anotación como variante, con la valoración del módulo tras ella. */
 function aplicarAnalisisALaPartida() {
   for (const x of mejoresDelAnalisis()) {
-    if (!variantes.some(v => esVarianteDelAnalisis(v, x))) variantes.push({ desvio: x.desvio, plegada: false, ucis: [x.mejor], sans: [], casillas: [], fens: [], fichas: [] });
+    if (variantes.some(v => esVarianteDelAnalisis(v, x))) continue;               // ya hay una igual (hecha a mano o ya puesta): se respeta tal cual
+    variantes.push({ desvio: x.desvio, plegada: false, ucis: [x.mejor], sans: [], casillas: [], fens: [], fichas: [], delAnalisis: true });
     const blancasMueven = analisisDatos.fens[x.desvio].split(' ')[1] === 'w';
     const cp = analisisDatos.valores[x.desvio] * (blancasMueven ? 1 : -1);        // la mejor jugada conserva el valor de la posición
     const ruta = rutaDeLaVariante(x), set = notas.get(ruta) ?? new Set();
@@ -1059,7 +1065,7 @@ function aplicarAnalisisALaPartida() {
 
 function quitarAnalisisDeLaPartida(refrescar = true) {
   for (const x of mejoresDelAnalisis()) {
-    const variante = variantes.find(v => esVarianteDelAnalisis(v, x));
+    const variante = variantes.find(v => v.delAnalisis && esVarianteDelAnalisis(v, x));       // las hechas a mano con el ratón no se tocan
     if (!variante) continue;
     variantes = variantes.filter(v => v !== variante);
     const set = notas.get(rutaDeLaVariante(x));
@@ -1115,12 +1121,23 @@ function marcarErroresEnLista() {
 
 $('quitarAnalisis').addEventListener('click', () => {
   if (analizando) { abortarPartida?.abort(); return; }    // si aún se está analizando, la X cancela el análisis
-  $('analisisCard').hidden = true;
+  ocultarAnalisis();
 });
+
+/** Cierra la tarjeta del análisis y deja la planilla como estaba antes de analizar: sin variantes, valoraciones ni marcas de error. El análisis sigue en memoria. */
+function ocultarAnalisis() {
+  if (analisisDatos && !erroresOcultos) {
+    quitarAnalisisDeLaPartida(false);                      // fuera las variantes y valoraciones incrustadas
+    erroresOcultos = errores; errores = new Map();         // fuera las marcas de error
+    reconstruirLista();
+    ir(Math.min(ply, sans.length));
+  }
+  $('analisisCard').hidden = true;
+}
 
 function abrirConclusiones() {
   mostrarConclusiones(`Conclusiones · ${corto(nombreBlancas)} – ${corto(nombreNegras)}`, construirConclusiones({
-    partida, nombreBlancas, nombreNegras, valores: analisisDatos.valores, fens: analisisDatos.fens, sans: analisisDatos.sans, errores, detalle: analisisDatos.detalle,
+    partida, nombreBlancas, nombreNegras, valores: analisisDatos.valores, fens: analisisDatos.fens, sans: analisisDatos.sans, errores: erroresOcultos ?? errores, detalle: analisisDatos.detalle,
     precisionBlancas: analisisDatos.precisionBlancas, precisionNegras: analisisDatos.precisionNegras, mejores: analisisDatos.mejores, casillasP, blancasEmpiezan, numeroInicial
   }));
 }
@@ -1240,4 +1257,4 @@ async function iniciar() {
 addEventListener('beforeunload', () => { cerrando = true; abortAnalisis?.abort(); motor?.cerrar(); });
 iniciar();
 
-window.addEventListener('chessrival-idioma', () => { try { if (partida) { reconstruirLista(); ir(ply); if (analisisDatos) mostrarResultadoAnalisis(); } } catch { /* aún no cargado */ } });
+window.addEventListener('chessrival-idioma', () => { try { if (partida) { reconstruirLista(); ir(ply); if (analisisDatos && !erroresOcultos) mostrarResultadoAnalisis(); } } catch { /* aún no cargado */ } });
