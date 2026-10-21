@@ -31,7 +31,6 @@
 .estudio-resultados > b { display: block; font-size: 13px; }
 .estudio-resultados > span { display: block; }
 .estudio-frecuencia { display: block; margin: 5px 0; font-size: 13px; }
-.estudio-patron { margin-bottom: 16px; }
 .utilidad-panel.panel-estudio { width: 960px; }
 .estudio-entrenamiento { display: flex; align-items: stretch; gap: 24px; }
 .estudio-entrenamiento > div:last-child { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -103,15 +102,6 @@
 /* Preparación */
 .prep-titulo { margin: 0 0 4px; font-size: 16px; font-weight: 600; color: var(--azul); }
 .prep-texto { margin: 2px 0 0; font-size: 13px; color: var(--texto-suave); }
-.prep-seccion { font-size: 13px; font-weight: 600; margin: 14px 0 4px; }
-.prep-azul { color: var(--azul); } .prep-rojo { color: var(--rojo); } .prep-suave { color: var(--texto-suave); }
-.prep-linea { padding: 3px 0 3px 8px; margin: 1px 0; border-left: 3px solid var(--azul); }
-.prep-borde-azul { border-color: var(--azul); } .prep-borde-rojo { border-color: var(--rojo); } .prep-borde-suave { border-color: #B8C3D6; }
-.prep-linea-fila { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
-.prep-linea-fila .suave { font-size: 12px; flex: none; align-self: center; }
-.prep-respuestas { font-size: 12px; color: var(--texto-suave); margin-top: 1px; }
-.prep-pie { margin: 12px 0 0; font-size: 12px; color: var(--texto-suave); }
-.prep-conclusion { margin: 6px 0 0; font-size: 13px; }
 .prep-debilidades { margin-top: 14px; }
 
 /* Árbol de aperturas */
@@ -304,7 +294,6 @@ select:focus-visible, .ia-campos input:focus-visible { outline: none; border-col
 .estudio-evidencia > button:hover { background: var(--b); color: #fff; }
 .tarjeta-blanca h4, .estudio-tarjeta h4 { display: flex; align-items: center; gap: 8px; margin: 16px 0 6px; padding-bottom: 5px; border-bottom: 2px solid color-mix(in srgb, var(--c, var(--azul)) 35%, #fff); color: color-mix(in srgb, var(--c, var(--azul)) 85%, #1F2A44); font-size: 13px; font-weight: 700; letter-spacing: .02em; }
 .tarjeta-blanca h4::before, .estudio-tarjeta h4::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--azul)); flex: none; }
-.estudio-patron > b { display: inline-block; margin-bottom: 4px; padding: 2px 10px; border-radius: 12px; background: color-mix(in srgb, var(--c, var(--azul)) 14%, #fff); color: color-mix(in srgb, var(--c, var(--azul)) 85%, #1F2A44); }
 .deb-fila.completa { background: #fff; border: 1px solid #F3D3CE; border-left: 4px solid var(--c, #F26A5B); border-radius: 9px; padding: 10px 14px 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(31, 42, 68, .08); transition: transform .15s, box-shadow .15s; }
 .deb-fila.completa:hover { transform: translateY(-1px); box-shadow: 0 5px 14px rgba(242, 106, 91, .22); }
 #estudioEntrenamiento:has(> h2) { --c: #7A5AC8; padding: 0 0 14px; border: 1.5px solid var(--c); border-radius: 12px; overflow: hidden; background: linear-gradient(180deg, #fff, color-mix(in srgb, var(--c) 7%, #fff)); box-shadow: 0 4px 12px color-mix(in srgb, var(--c) 26%, transparent); }

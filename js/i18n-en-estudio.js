@@ -20,7 +20,6 @@ export const exactas = {
   'Todos los ejercicios volverán a «Resolver» y se borrarán los intentos. ¿Continuar?': 'All exercises will go back to “Solve” and the attempts will be deleted. Continue?',
   'Reiniciar': 'Reset',
   'No se pudo reiniciar': 'Could not reset',
-  'Permite las ventanas emergentes de ChessRival para abrir la posición en el visor.': 'Allow ChessRival pop-ups to open the position in the viewer.',
   'Revisión de partidas': 'Game review',
   'Los originales y sus anotaciones se conservan. Estas partidas no intervienen en las conclusiones del estudio.': 'The originals and their notes are kept. These games do not take part in the study conclusions.',
   'sin fecha': 'no date',

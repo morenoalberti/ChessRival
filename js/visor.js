@@ -1135,7 +1135,6 @@ function dibujarCurva() {
   $('analisisCurva').hidden = false;
   curva.marcar(varActual ? Math.min(ply, varActual.desvio) : ply);
 }
-const figurasTextoPlano = (t) => t.replace(/[\u2654-\u265F]/g, m => m);
 
 $('erroresLista').addEventListener('click', (e) => {
   const f = e.target.closest('.error-fila');

@@ -5,7 +5,7 @@ import { construir, nombreApertura, calcularLinea, PLIES_MAX, Fuente } from './a
 import * as libro from './libro.js';
 import { Tablero } from './tablero.js';
 import { EvaluadorArbol, simbolo, textoEval } from './motor.js';
-import { svg, svgTrazo, contenidoBoton } from './iconos.js';
+import { svgTrazo, contenidoBoton } from './iconos.js';
 import { convertirFiguras, figurasHtml } from './figuritas.js';
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

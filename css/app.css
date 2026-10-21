@@ -404,7 +404,7 @@ button.candidato:hover, button.candidato:focus-visible { background: #EAF1FF; ou
 
 /* Como una aplicación de escritorio: no se selecciona el texto de la pantalla (los cuadros de escritura y las respuestas de la IA, sí) */
 body { -webkit-user-select: none; user-select: none; }
-input, textarea, [contenteditable="true"], .ia-conversacion, .ia-conversacion *, .permitir-seleccion, .permitir-seleccion * { -webkit-user-select: text; user-select: text; }
+input, textarea, [contenteditable="true"], .ia-conversacion, .ia-conversacion * { -webkit-user-select: text; user-select: text; }
 
 /* Mini-curva del ELO en la tarjeta de jugador */
 .elo-celda { display: flex; align-items: flex-end; gap: 7px; }
