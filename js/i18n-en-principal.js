@@ -173,6 +173,7 @@ export const exactas = {
   "Nuevo": "New",
   "No hay historial de ELO de este jugador": "There is no rating history for this player",
   "Jugador recién entrado en la lista de la FIDE: aún hay muy poco historial para dibujar su evolución": "Player who has only just entered the FIDE list: there is not enough history yet to draw their progress",
+  "Sin datos": "No data",
 };
 
 export const plantillas = {

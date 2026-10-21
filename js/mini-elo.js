@@ -10,7 +10,7 @@ export function valoresDeHistorial(historial) {
 export function svgMiniElo(valores, ancho = 46, alto = 18) {
   if (!Array.isArray(valores)) return '';                // aún no ha llegado: no se pone nada
   // Sin curva: una etiqueta pequeña explica por qué (jugador recién entrado en la lista, o sin historial).
-  if (valores.length === 0) return '<span class="mini-elo-etiqueta" title="No hay historial de ELO de este jugador">Sin historial</span>';
+  if (valores.length === 0) return '<span class="mini-elo-etiqueta" title="No hay historial de ELO de este jugador">Sin datos</span>';
   if (valores.length < 3) return '<span class="mini-elo-etiqueta nuevo" title="Jugador recién entrado en la lista de la FIDE: aún hay muy poco historial para dibujar su evolución">Nuevo</span>';
   const min = Math.min(...valores), max = Math.max(...valores), rango = Math.max(max - min, 12);
   const x = (i) => 1.5 + (i / (valores.length - 1)) * (ancho - 3);
