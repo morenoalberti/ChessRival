@@ -11,14 +11,14 @@ export function datosDelHistorial(titulo, historial) {
   if (!ritmo || serie.length < 2) return [];
   const extras = [];
   const maximo = serie.reduce((m, p) => (p[ritmo] > m[ritmo] ? p : m), serie[0]);
-  extras.push({ etiqueta: 'Máximo', icono: 'copa', valor: `${maximo[ritmo]} en ${maximo.fecha.slice(0, 4)}` });
+  extras.push({ etiqueta: 'Máximo', ayuda: 'El ELO más alto que ha alcanzado en este ritmo y el año en que lo logró', icono: 'copa', valor: `${maximo[ritmo]} en ${maximo.fecha.slice(0, 4)}` });
 
   const ultimo = serie[serie.length - 1];
   const limite = mesesDe(ultimo.fecha) - 12;
   const antes = [...serie].reverse().find(p => mesesDe(p.fecha) <= limite);
   if (antes) {
     const cambio = ultimo[ritmo] - antes[ritmo];
-    extras.push({ etiqueta: 'Último año', icono: 'tendencia', valor: cambio > 0 ? `+${cambio}` : cambio < 0 ? `−${Math.abs(cambio)}` : '0', tendencia: Math.sign(cambio) });
+    extras.push({ etiqueta: 'Último año', ayuda: 'Cuántos puntos de ELO ha ganado (+) o perdido (−) en este ritmo durante los últimos 12 meses', icono: 'tendencia', valor: cambio > 0 ? `+${cambio}` : cambio < 0 ? `−${Math.abs(cambio)}` : '0', tendencia: Math.sign(cambio) });
   }
   return extras;
 }
@@ -27,9 +27,9 @@ export function datosDelHistorial(titulo, historial) {
 export function tarjetaTrayectoria(bloques, historial) {
   const puntos = (historial ?? []).filter(p => p && /^\d{4}-\d{2}$/.test(p.fecha));
   if (puntos.length < 2) return null;
-  const extras = [{ etiqueta: 'En la lista desde', icono: 'calendario', valor: puntos[0].fecha.slice(0, 4) }];
+  const extras = [{ etiqueta: 'En la lista desde', ayuda: 'El primer año en que aparece con ELO en la lista de la FIDE', icono: 'calendario', valor: puntos[0].fecha.slice(0, 4) }];
   const fuerte = bloques.filter(b => RITMOS[b.titulo] && Number(b.elo) > 0).sort((x, y) => Number(y.elo) - Number(x.elo))[0];
-  if (fuerte) extras.push({ etiqueta: 'Ritmo más fuerte', icono: 'grafico', valor: `${fuerte.elo} ${fuerte.titulo}` });
+  if (fuerte) extras.push({ etiqueta: 'Ritmo más fuerte', ayuda: 'El ritmo (Standard, Rapid o Blitz) en el que tiene ahora el ELO más alto', icono: 'grafico', valor: `${fuerte.elo} ${fuerte.titulo}` });
   return { titulo: 'Trayectoria', elo: '', blancas: null, negras: null, extras };
 }
 

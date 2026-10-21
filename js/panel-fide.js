@@ -31,8 +31,21 @@ function valorHtml(valor) {
 /** Sin los resultados de la FIDE: el máximo, la variación del último año y demás datos del historial del Elo; si tampoco hay historial, un aviso. */
 function extrasHtml(b) {
   if (!b.extras?.length) return '<p class="fide-sin-resultados suave">Resultados no disponibles ahora</p>';
-  return `<div class="fide-extras">${b.extras.map(e => `<div class="fide-extra">${icono(e.icono, 16)}<span class="suave">${esc(e.etiqueta)}</span><b class="${e.tendencia > 0 ? 'sube' : e.tendencia < 0 ? 'baja' : ''}">${valorHtml(e.valor)}</b></div>`).join('')}</div>`;
+  return `<div class="fide-extras">${b.extras.map(e => `<div class="fide-extra"${e.ayuda ? ` title="${esc(e.ayuda)}"` : ''}>${icono(e.icono, 16)}<span class="suave">${esc(e.etiqueta)}</span><b class="${e.tendencia > 0 ? 'sube' : e.tendencia < 0 ? 'baja' : ''}">${valorHtml(e.valor)}</b></div>`).join('')}</div>`;
 }
+
+/** La ayuda de cada tarjeta: si trae los resultados de la FIDE, los explica; si no, explica el ELO y lo que se ve. */
+const ayudaTarjeta = (b, arrastrable) => {
+  const arrastrar = arrastrable ? ' Arrástrala para cambiarla de sitio.' : '';
+  if (b.blancas && b.negras) return arrastrable ? 'Resultados en partidas con rating FIDE: victorias (azul), tablas (gris) y derrotas (oscuro). Arrástrala para cambiarla de sitio.' : 'Resultados con blancas y negras';
+  const texto = {
+    Standard: 'ELO de ritmo clásico (partidas largas): su ELO actual, su máximo y cómo ha cambiado en el último año',
+    Rapid: 'ELO de partidas rápidas: su ELO actual, su máximo y cómo ha cambiado en el último año',
+    Blitz: 'ELO de partidas relámpago: su ELO actual, su máximo y cómo ha cambiado en el último año',
+    Trayectoria: 'Un resumen de toda su carrera: desde cuándo tiene ELO y en qué ritmo es más fuerte ahora'
+  }[b.titulo] ?? 'ELO del jugador';
+  return texto + (arrastrar ? '.' + arrastrar : '');
+};
 
 /** El HTML de las tarjetas, en el orden preferido (los títulos separados por comas; los que no estén, al final). */
 export function htmlTarjetasFide(bloques, orden = '', { arrastrable = true } = {}) {
@@ -40,7 +53,7 @@ export function htmlTarjetasFide(bloques, orden = '', { arrastrable = true } = {
   const pos = (b) => { const i = preferido.indexOf(b.titulo); return i >= 0 ? i : 99; };
   return [...bloques].sort((a, b) => pos(a) - pos(b)).map((b, i) => `
     <div class="tarjeta-ficha fide-tarjeta" ${arrastrable ? 'draggable="true"' : ''} data-titulo="${esc(b.titulo)}" style="--i:${i}"
-         title="${arrastrable ? 'Resultados en partidas con rating FIDE: victorias (azul), tablas (gris) y derrotas (oscuro). Arrástrala para cambiarla de sitio.' : 'Resultados con blancas y negras'}">
+         title="${esc(ayudaTarjeta(b, arrastrable))}">
       <div class="fide-cab"><span class="fide-cab-nom">${icono(b.titulo, 17)}<span>${esc(b.titulo)}</span></span>${b.elo ? `<span class="fide-elo" title="ELO">${esc(b.elo)}</span>` : ''}</div>
       <div class="fide-cuerpo">${b.blancas && b.negras ? `<div class="fide-etiqueta">Blancas ${b.blancas.total}</div>${barra(b.blancas)}
       <div class="fide-etiqueta">Negras ${b.negras.total}</div>${barra(b.negras)}` : extrasHtml(b)}</div>
