@@ -2,7 +2,7 @@ import { LOCALE, t as tr } from './i18n.js';
 import { crearInformeEstudio, inspeccionarPartida } from './estudio-datos.js';
 import { nombreConTitulo, textoColoresDeLinea } from './nombre-jugador.js';
 import { abrirPanel } from './panel-utilidad.js';
-import { abrirVentanaVisor } from './ventana-visor.js';
+import { abrirVisorEnPanel } from './ventana-visor.js';
 import { Tablero } from './tablero.js';
 import { Chess } from './vendor/chess.js';
 import { leerAjuste, claveJugador } from './db.js';
@@ -113,7 +113,7 @@ export function montarEstudioUi({ obtenerJugador }) {
   }
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-prueba]');
-    if (b && !abrirVentanaVisor(Number(b.dataset.prueba), window, { ply: Number(b.dataset.ply) })) informar('Ventana bloqueada', 'Permite las ventanas emergentes de ChessRival para abrir la posición en el visor.');
+    if (b) abrirVisorEnPanel(Number(b.dataset.prueba), { ply: Number(b.dataset.ply) });
     const entrenamiento = e.target.closest('[data-ejercicio]');
     if (entrenamiento && ejercicios[Number(entrenamiento.dataset.ejercicio)]) abrirEjercicioNumero(Number(entrenamiento.dataset.ejercicio));
     if (e.target.closest('[data-incidencias-estudio]') && actual) {

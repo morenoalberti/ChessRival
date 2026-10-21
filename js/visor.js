@@ -13,7 +13,6 @@ import { MotorUci, NOMBRE_MOTOR, PARALELO, simbolo as simboloVentaja } from './m
 import { calcularPrecisiones, calcularErrores, resumenErrores, construirConclusiones, corto, PROFUNDIDAD_ANALISIS, TOPE } from './visor-analisis.js';
 import { puntos } from './debilidades.js';
 import { FEN_INICIAL } from './arbol.js';
-import { ajustarVentanaVisor } from './ventana-visor.js';
 import { posicionesDeVariante } from './variantes-motor.js';
 import { nombreConTitulo } from './nombre-jugador.js';
 
@@ -999,8 +998,11 @@ addEventListener('resize', ajustarTablero);
 
 async function iniciar() {
   const parametros = new URLSearchParams(location.search);
-  // Solo las ventanas abiertas desde una ficha: una pestaña normal no se mueve ni cambia de tamaño.
-  if (parametros.get('ventana') === '1' && window.opener) ajustarVentanaVisor(window);
+  // Dentro del panel de la ficha: sin barra superior (la lleva el panel) y Escape lo cierra.
+  if (parametros.get('incrustado') === '1') {
+    document.body.classList.add('visor-incrustado');
+    addEventListener('keydown', (e) => { if (e.key === 'Escape' && !document.querySelector('.velo')) parent.postMessage({ tipo: 'cerrar-visor' }, location.origin); });
+  }
   const id = Number(parametros.get('id'));
   partida = id ? await obtenerPartida(id).catch(() => null) : null;
   if (!partida) {

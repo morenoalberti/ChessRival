@@ -7,7 +7,6 @@ import * as partidasDb from '../../js/db-partidas.js';
 import { analizarPartida, VERSION_ANALISIS } from '../../js/analizador.js';
 import { calcular } from '../../js/debilidades.js';
 import { Chess } from '../../js/vendor/chess.js';
-import { calcularVentanaVisor, abrirVentanaVisor } from '../../js/ventana-visor.js';
 import { posicionesDeVariante } from '../../js/variantes-motor.js';
 import * as copias from '../../js/copias.js';
 import { leerDestinoCopias, nombreDestinoCopias, elegirDestinoCopias, guardarArchivoCopia } from '../../js/copias-destino.js';
@@ -180,46 +179,6 @@ await test('La API conserva el estado de error para una URL inválida', async ()
   const respuesta = await worker.fetch(new Request('https://chessrival.test/api/torneo?url=invalida'), { ORIGENES_PERMITIDOS: '*' });
   assert.equal(respuesta.status, 400);
   assert.equal((await respuesta.json()).error, 'La URL no es válida.');
-});
-
-await test('El visor abre a 1160 × 917, centrado y alineado abajo sobre la barra de tareas', () => {
-  assert.deepEqual(calcularVentanaVisor({ availWidth: 1920, availHeight: 1040, availLeft: 0, availTop: 0 }), {
-    ancho: 1160, alto: 917, izquierda: 380, arriba: 123
-  });
-});
-
-await test('El visor cabe completamente en una pantalla más pequeña', () => {
-  assert.deepEqual(calcularVentanaVisor({ availWidth: 1024, availHeight: 728, availLeft: 0, availTop: 0 }), {
-    ancho: 1024, alto: 728, izquierda: 0, arriba: 0
-  });
-});
-
-await test('El visor respeta la posición de un monitor secundario', () => {
-  assert.deepEqual(calcularVentanaVisor({ availWidth: 1920, availHeight: 1040, availLeft: -1920, availTop: 100 }), {
-    ancho: 1160, alto: 917, izquierda: -1540, arriba: 223
-  });
-});
-
-await test('La apertura reutiliza la partida y fija tamaño exterior y posición', () => {
-  const llamadas = [];
-  const ventana = {
-    resizeTo: (...args) => llamadas.push(['tamano', ...args]),
-    moveTo: (...args) => llamadas.push(['posicion', ...args]),
-    focus: () => llamadas.push(['foco'])
-  };
-  const navegador = {
-    screen: { availWidth: 1920, availHeight: 1040 },
-    open: (...args) => { llamadas.push(['abrir', ...args]); return ventana; }
-  };
-  assert.equal(abrirVentanaVisor(720, navegador), ventana);
-  assert.equal(llamadas[0][1], 'visor.html?id=720&ventana=1');
-  assert.equal(llamadas[0][2], 'visor-ventana-720');
-  assert.match(llamadas[0][3], /popup=yes,width=1160,height=917,left=380,top=123/);
-  assert.deepEqual(llamadas.slice(1), [['tamano', 1160, 917], ['posicion', 380, 123], ['foco']]);
-});
-
-await test('Una ventana bloqueada se devuelve sin intentar moverla', () => {
-  assert.equal(abrirVentanaVisor(720, { screen: {}, open: () => null }), null);
 });
 
 await test('La variante del motor conserva la posición acumulada de cada jugada', () => {

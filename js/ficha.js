@@ -24,7 +24,7 @@ import { ArbolUI } from './arbol-ui.js';
 import { abrirImportar } from './importar-dialogo.js';
 import * as mega from './mega.js';
 import { abrirAnalizar } from './analizar-dialogo.js';
-import { abrirVentanaVisor } from './ventana-visor.js';
+import { abrirVisorEnPanel } from './ventana-visor.js';
 import { abrirConfigIa } from './ia-config-dialogo.js';
 import { cargarAjustes, guardarAjustes, configDe, estaLista, preguntar as preguntarIa, construirResumen, cobertura, paraMostrar } from './asistente.js';
 
@@ -379,8 +379,7 @@ window.addEventListener('scroll', ocultarVistaPrevia, true);
 function abrirVisor(partida) {
   ocultarVistaPrevia();
   if (!partida) return;
-  const ventana = abrirVentanaVisor(partida.id);
-  if (!ventana) informar('Ventana bloqueada', 'El navegador ha bloqueado el visor. Permite las ventanas emergentes para este sitio y vuelve a intentarlo.');
+  abrirVisorEnPanel(partida.id, { titulo: `${(partida.blancas || '').split(',')[0]} – ${(partida.negras || '').split(',')[0]}`.replace(/^ – $/, '') });
 }
 
 document.addEventListener('click', (e) => {
