@@ -47,15 +47,23 @@ export class ArbolUI {
             <span class="insignia" style="--c:#FBE2A6;color:#B97A0B">${svgTrazo('M12,3 L14.6,9 L21,9.6 L16.2,13.9 L17.6,20.2 L12,17 L6.4,20.2 L7.8,13.9 L3,9.6 L9.4,9 Z', 12)}</span>
             <b class="recortar" data-linea-titulo></b>
             <span class="arbol-linea-botones">
-              <button type="button" class="btn btn-secundario btn-chico" data-ir-linea hidden title="Colocar el árbol al final de la línea recomendada"></button>
               <button type="button" class="btn btn-secundario btn-chico" data-buscar-linea title="Busca la línea a partir de la posición que se ve en el árbol"></button>
             </span>
           </div>
+          <div class="arbol-linea-colores" data-linea-colores></div>
           <div class="arbol-linea-texto" data-linea-texto hidden></div>
+          <div class="arbol-linea-ctrl" data-linea-ctrl hidden>
+            <button type="button" class="btn btn-secundario btn-chico" data-paso-ant>‹ Anterior</button>
+            <button type="button" class="btn btn-secundario btn-chico" data-paso-sig>Siguiente ›</button>
+            <button type="button" class="btn btn-primario btn-chico" data-paso-rep>▶ Reproducir</button>
+            <span class="arbol-linea-pos suave" data-linea-pos></span>
+          </div>
+          <div class="arbol-linea-leyenda suave" data-linea-leyenda hidden></div>
+          <div class="arbol-linea-tabla" data-linea-tabla hidden></div>
+          <div class="arbol-linea-resultado" data-linea-resultado hidden></div>
           <div class="arbol-linea-detalle suave" data-linea-detalle hidden></div>
         </div>
         <div class="arbol-nombre"><b data-nombre></b><span class="suave" data-datos></span></div>
-        <div class="arbol-fin-linea" data-fin-linea hidden>El tablero muestra la posición con la que acaba la línea recomendada. Pasa el ratón por la línea para ver cada jugada.</div>
         <div class="arbol-cuerpo">
           <div class="arbol-lista">
             <div class="arbol-cabecera-filas">
@@ -77,15 +85,16 @@ export class ArbolUI {
     const $ = (s) => this.contenedor.querySelector(s);
     this.el = {
       resumen: $('[data-resumen]'), migas: $('[data-migas]'), atras: $('[data-atras]'), partidasBtn: $('[data-partidas]'),
-      lineaTitulo: $('[data-linea-titulo]'), finLinea: $('[data-fin-linea]'), irLinea: $('[data-ir-linea]'), buscarLinea: $('[data-buscar-linea]'),
-      lineaTexto: $('[data-linea-texto]'), lineaDetalle: $('[data-linea-detalle]'),
+      lineaTitulo: $('[data-linea-titulo]'), lineaColores: $('[data-linea-colores]'), buscarLinea: $('[data-buscar-linea]'),
+      lineaTexto: $('[data-linea-texto]'), lineaCtrl: $('[data-linea-ctrl]'), lineaPos: $('[data-linea-pos]'), lineaLeyenda: $('[data-linea-leyenda]'),
+      lineaTabla: $('[data-linea-tabla]'), lineaResultado: $('[data-linea-resultado]'), lineaDetalle: $('[data-linea-detalle]'),
+      pasoAnt: $('[data-paso-ant]'), pasoSig: $('[data-paso-sig]'), pasoRep: $('[data-paso-rep]'),
       nombre: $('[data-nombre]'), datos: $('[data-datos]'), vacio: $('[data-vacio]'), filas: $('[data-filas]'), soloRepetidas: $('[data-solo-repetidas]')
     };
     this.el.atras.innerHTML = contenidoBoton('atras', 'Atrás');
     this.el.partidasBtn.innerHTML = contenidoBoton('lista', 'Ver partidas');
-    this.el.buscarLinea.innerHTML = contenidoBoton('barras', 'Buscar la línea');
-    this.el.irLinea.innerHTML = contenidoBoton('flecha', 'Ir a la línea');
-    this.finalMostrado = null;
+    this.el.buscarLinea.innerHTML = contenidoBoton('barras', 'Calcular mi plan');
+    this.pasoLinea = -1; this.reloj = null;
     this.tablero = new Tablero($('[data-tablero]'), { casilla: 34 });
 
     this.contenedor.querySelector('.arbol-cab .mini-pestanas').addEventListener('click', (e) => {
@@ -101,13 +110,12 @@ export class ArbolUI {
     this.el.partidasBtn.addEventListener('click', () => this._menuPartidas());
     this.el.soloRepetidas.addEventListener('change', () => { if (this.actual) this._pintarFilas(this.actual); });
     this.el.buscarLinea.addEventListener('click', () => this._buscarLinea());
-    this.el.irLinea.addEventListener('click', () => {
-      if (!this.linea?.length) return;
-      // Los pasos de teoría y de Stockfish no están en su árbol: se va hasta la última posición que sí lo está.
-      const destino = [...this.linea].reverse().find(p => p.fuente === Fuente.Partidas)?.nodo ?? this.linea[0].nodo.padre;
-      if (destino) this._ir(destino, true);
-      this._mostrarFinalDeLaLinea();
-    });
+    // La línea se recorre: pulsando una ficha, con Anterior y Siguiente, o reproduciéndola entera.
+    this.el.lineaTexto.addEventListener('click', (e) => { const s = e.target.closest('[data-paso]'); if (s) { this._pararReproduccion(); this._irAPaso(Number(s.dataset.paso)); } });
+    this.el.lineaTabla.addEventListener('click', (e) => { const f = e.target.closest('[data-paso]'); if (f) { this._pararReproduccion(); this._irAPaso(Number(f.dataset.paso)); } });
+    this.el.pasoAnt.addEventListener('click', () => { this._pararReproduccion(); this._irAPaso(this.pasoLinea - 1); });
+    this.el.pasoSig.addEventListener('click', () => { this._pararReproduccion(); this._irAPaso(this.pasoLinea + 1); });
+    this.el.pasoRep.addEventListener('click', () => (this.reloj ? this._pararReproduccion() : this._reproducirLinea()));
     this.el.filas.addEventListener('click', (e) => {
       const f = e.target.closest('[data-san]');
       if (f) { const h = this.actual.hijos.get(f.dataset.san); if (h) this._ir(h); }
@@ -145,15 +153,6 @@ export class ArbolUI {
     this._refrescar();
   }
 
-  /** El tablero enseña la posición con la que acaba la línea recomendada (aunque sus últimas jugadas sean de teoría o de Stockfish y no estén en el árbol). */
-  _mostrarFinalDeLaLinea() {
-    const final = this.linea?.at(-1)?.nodo;
-    if (!final) return;
-    this.finalMostrado = final;
-    this.tablero.mostrar(final.fen, final.desde, final.hasta, this.color === 'N');
-    this.el.finLinea.hidden = false;
-  }
-
   _ir(nodo, conservarLinea = false) {
     if (!conservarLinea) this._borrarLinea();
     this.actual = nodo;
@@ -162,12 +161,15 @@ export class ArbolUI {
 
   _refrescar() {
     if (!this.actual || !this.raiz) return;
-    this.finalMostrado = null; this.el.finLinea.hidden = true;           // cualquier movimiento por el árbol deja de enseñar el final de la línea
+    this._pararReproduccion(); this.pasoLinea = -1; this._marcarPaso();     // al moverse por el árbol, la línea vuelve a su primer paso
     const nodo = this.actual;
     this.el.resumen.textContent = this.raiz.partidas === 0 ? '' : `${this.raiz.partidas} partidas con ${this.color === 'B' ? 'blancas' : 'negras'}`;
     this.el.atras.disabled = !nodo.padre;
     this.el.partidasBtn.disabled = nodo.partidas === 0;
-    this.el.lineaTitulo.textContent = `La línea que te conviene jugarle, con las ${this.color === 'B' ? 'negras' : 'blancas'}`;
+    this.el.lineaTitulo.textContent = this.color === 'B' ? 'Tu plan con las negras' : 'Tu plan con las blancas';
+    // Quién lleva cada color: el jugador estudiado el suyo y tú el otro.
+    const el = esc(this.nombreJugador() || 'El jugador');
+    this.el.lineaColores.innerHTML = this.color === 'B' ? `Blancas: <b>${el}</b> · Negras: <b>la que juegas tú</b>` : `Blancas: <b>la que juegas tú</b> · Negras: <b>${el}</b>`;
     if (!this.linea) this.el.buscarLinea.disabled = false;
     this._pintarMigas(nodo);
     this._pintarPosicion(nodo);
@@ -267,7 +269,8 @@ export class ArbolUI {
     this.busqueda++;
     this.linea = null;
     if (this.nodosLinea.size) { this.nodosLinea.clear(); if (this.actual) this._pintarFilas(this.actual); }
-    this.el.lineaTexto.hidden = this.el.lineaDetalle.hidden = this.el.irLinea.hidden = true;
+    this._pararReproduccion(); this.pasoLinea = -1;
+    for (const e of [this.el.lineaTexto, this.el.lineaCtrl, this.el.lineaLeyenda, this.el.lineaTabla, this.el.lineaResultado, this.el.lineaDetalle]) e.hidden = true;
     this.el.buscarLinea.disabled = false;
   }
 
@@ -295,43 +298,111 @@ export class ArbolUI {
   _mostrarLinea() {
     const linea = this.linea;
     this.nodosLinea = new Set(linea.map(p => p.nodo));
+    const ocultos = [this.el.lineaCtrl, this.el.lineaLeyenda, this.el.lineaTabla, this.el.lineaResultado, this.el.lineaDetalle];
     if (!linea.length) {
       this.el.lineaTexto.textContent = 'No hay jugadas con al menos 2 partidas desde esta posición, así que no se puede recomendar ninguna.';
-      this.el.lineaDetalle.hidden = this.el.irLinea.hidden = true;
+      ocultos.forEach(e => { e.hidden = true; });
       return;
     }
+    const iconoFuente = { [Fuente.Partidas]: 'M12 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM9.5 10h5l1 5h-7l1-5ZM6 20h12M8 15v5m8-5v5',
+                          [Fuente.Libro]: 'M12 6C10 4.5 6.5 4 3 4.5V19c3.5-.5 7 0 9 1.5 2-1.5 5.5-2 9-1.5V4.5C17.5 4 14 4.5 12 6Zm0 0v14.5',
+                          [Fuente.Motor]: 'M13 2 4 14h7l-1 8 9-12h-7l1-8Z' };
+    const nombreFuente = { [Fuente.Partidas]: 'Sus partidas', [Fuente.Libro]: 'Libro', [Fuente.Motor]: 'Stockfish' };
+    const numero = (n, i) => (n.ply % 2 === 1 ? `${(n.ply + 1) / 2 | 0}.` : (i === 0 ? `${n.ply / 2}…` : ''));
 
-    // La línea con sus números; tus jugadas en azul, las que se esperan de él en gris.
+    // La línea, como fichas que se pulsan: azul, tus jugadas; gris, las suyas; y un icono dice de dónde sale cada una.
     this.el.lineaTexto.innerHTML = linea.map((paso, i) => {
       const n = paso.nodo;
-      let t = n.ply % 2 === 1 ? `${(n.ply + 1) / 2 | 0}.${n.san}` : (i === 0 ? `${n.ply / 2}…${n.san}` : n.san);
-      return `<span class="paso ${paso.esMia ? 'mia' : 'suya'} ${paso.fuente === Fuente.Motor ? 'motor' : paso.fuente === Fuente.Libro ? 'libro' : ''}" data-paso="${i}">${figurasHtml(convertirFiguras(t))}</span>`;
-    }).join(' ');
-    const final = linea.at(-1);
-    if (final.evalBlancas !== null) this.el.lineaTexto.insertAdjacentHTML('beforeend', ` <b class="simbolo" title="Stockfish: ${textoEval(final.evalBlancas)}">${simbolo(final.evalBlancas)}</b>`);
+      return `<button type="button" class="paso ${paso.esMia ? 'mia' : 'suya'}" data-paso="${i}" title="${paso.esMia ? 'Tu jugada' : 'Su jugada'} · ${nombreFuente[paso.fuente]}">`
+        + `<span class="paso-num">${numero(n, i)}</span>${figurasHtml(convertirFiguras(n.san))}<i class="paso-fuente">${svgTrazo(iconoFuente[paso.fuente], 10)}</i></button>`;
+    }).join('');
     this.el.lineaTexto.hidden = false;
-    // Al pasar el ratón por una jugada de la línea, el tablero enseña la posición tras esa jugada.
-    this.el.lineaTexto.onmouseover = (e) => { const s = e.target.closest('[data-paso]'); if (s) { const n = linea[Number(s.dataset.paso)].nodo; this.tablero.mostrar(n.fen, n.desde, n.hasta, this.color === 'N'); } };
-    this.el.lineaTexto.onmouseleave = () => { const n = this.finalMostrado ?? this.actual; if (n) this.tablero.mostrar(n.fen, n.desde, n.hasta, this.color === 'N'); };
+    this.el.lineaCtrl.hidden = false;
+    this.el.pasoRep.textContent = '▶ Reproducir';
+    this.el.lineaLeyenda.innerHTML = `<span class="ley mia">Tus jugadas</span><span class="ley suya">Sus jugadas</span>`
+      + Object.keys(nombreFuente).filter(f => linea.some(p => p.fuente === f)).map(f => `<span class="ley fuente">${svgTrazo(iconoFuente[f], 11)}${nombreFuente[f]}</span>`).join('');
+    this.el.lineaLeyenda.hidden = false;
 
-    const mias = linea.filter(p => p.esMia && p.fuente === Fuente.Partidas);
-    const ultimoDePartidas = [...linea].reverse().find(p => p.fuente === Fuente.Partidas)?.nodo ?? linea[0].nodo.padre;
-    const detalle = ['Tus jugadas, en azul; las de él, en gris (son las que más repite).'];
-    if (ultimoDePartidas?.partidas > 0) {
-      const n = ultimoDePartidas;
-      detalle.push(convertirFiguras(`• Con ${n.ply % 2 === 1 ? `${(n.ply + 1) / 2 | 0}.` : `${n.ply / 2}…`}${n.san} tiene ${n.partidas} partidas y saca el ${redondeo(n.porcentaje)}% de los puntos`));
-    }
-    if (mias.length) {
-      const d = [...mias].sort((a, b) => a.nodo.partidas - b.nodo.partidas)[0].nodo;
-      const num = d.ply % 2 === 1 ? `${(d.ply + 1) / 2 | 0}.` : `${d.ply / 2}…`;
-      detalle.push(convertirFiguras(`• Fiabilidad: de tus jugadas, la menos vista es ${num}${d.san}: solo se ha jugado contra él en ${d.partidas} partidas, en las que él ha sacado el ${redondeo(d.porcentaje)} % de los puntos (él ganó ${d.victorias}, empató ${d.tablas} y perdió ${d.derrotas}). Es la parte menos fiable de la línea; con tan pocas partidas, ese resultado puede ser casualidad.`));
-    }
-    if (!libro.conectado()) detalle.push('• Elige un libro de aperturas (Power Book) en la ventana principal para completar la línea con teoría.');
-    if (linea.some(p => p.fuente === Fuente.Motor)) detalle.push('• Subrayadas, jugadas de Stockfish: el libro no tiene esa posición.');
-    if (linea.some(p => p.fuente === Fuente.Libro)) detalle.push(`• En cursiva, jugadas de teoría del libro «${libro.estado.nombre}».`);
-    if (linea.every(p => p.evalBlancas === null)) detalle.push('• Sin Stockfish: la línea se ha elegido solo por los resultados de él.');
-    this.el.lineaDetalle.innerHTML = detalle.map(esc).join('<br>');
-    this.el.lineaDetalle.hidden = false;
-    this.el.irLinea.hidden = false;
+    // Por qué cada jugada: quién la elige, cuántas partidas hay y cómo le va a él.
+    const fila = (paso, i) => {
+      const n = paso.nodo, deSusPartidas = paso.fuente === Fuente.Partidas && n.partidas > 0;
+      return `<button type="button" class="tabla-fila" data-paso="${i}"><span class="tf-jugada">${figurasHtml(convertirFiguras(`${numero(n, i)}${n.san}`))}</span>`
+        + `<span class="tf-quien ${paso.esMia ? 'mia' : 'suya'}">${paso.esMia ? 'Tú' : 'Él'}</span>`
+        + `<span class="tf-n">${deSusPartidas ? n.partidas : '—'}</span>`
+        + `<span class="tf-pts" style="${deSusPartidas ? `color:${colorPuntos(100 - n.porcentaje)}` : ''}">${deSusPartidas ? `${redondeo(n.porcentaje)} %` : '—'}</span>`
+        + `<span class="tf-fuente">${svgTrazo(iconoFuente[paso.fuente], 11)}${nombreFuente[paso.fuente]}</span></button>`;
+    };
+    this.el.lineaTabla.innerHTML = `<div class="tabla-cab"><span>Jugada</span><span>La elige</span><span>Partidas</span><span>Puntos de él</span><span>Fuente</span></div>`
+      + `<div class="tabla-cuerpo">${linea.map(fila).join('')}</div>`;
+    this.el.lineaTabla.hidden = false;
+
+    // El resultado: cómo acaba la línea (según Stockfish) y cuánto se puede fiar uno.
+    const final = linea.at(-1), deLasPartidas = linea.filter(p => p.fuente === Fuente.Partidas && p.nodo.partidas > 0);
+    const menosVista = deLasPartidas.length ? Math.min(...deLasPartidas.map(p => p.nodo.partidas)) : 0;
+    const nivel = menosVista >= 30 ? 'alta' : menosVista >= 15 ? 'media' : menosVista >= 5 ? 'baja' : 'muy baja';
+    let resultado = '';
+    if (final.evalBlancas !== null) {
+      const paraMi = this.color === 'B' ? -final.evalBlancas : final.evalBlancas;       // yo llevo el color contrario al suyo
+      const fuerza = Math.abs(paraMi) < 25 ? '' : Math.abs(paraMi) < 75 ? 'Ligera ventaja' : Math.abs(paraMi) < 175 ? 'Ventaja clara' : 'Ventaja decisiva';
+      const frase = !fuerza ? 'Posición igualada' : `${fuerza} ${paraMi > 0 ? 'para ti' : 'para él'}`;
+      resultado = `<b class="simbolo">${simbolo(final.evalBlancas)}</b><span><b>${frase}</b> al final de la línea <span class="suave">(Stockfish: ${textoEval(final.evalBlancas)})</span></span>`;
+    } else resultado = '<span class="suave">Sin Stockfish: la línea se ha elegido solo por los resultados de él.</span>';
+    this.el.lineaResultado.innerHTML = `<span class="res-cab">Resultado de la línea</span><div class="res-cuerpo-linea">${resultado}</div>`
+      + `<span class="res-fiab">Fiabilidad: <b>${nivel}</b> · la jugada menos vista se ha dado en ${menosVista} ${menosVista === 1 ? 'partida' : 'partidas'}</span>`;
+    this.el.lineaResultado.hidden = false;
+
+    const notas = [];
+    if (!libro.conectado()) notas.push('Elige un libro de aperturas (Power Book) en la ventana principal para completar la línea con teoría.');
+    this.el.lineaDetalle.innerHTML = notas.map(esc).join('<br>');
+    this.el.lineaDetalle.hidden = notas.length === 0;
+    this.pasoLinea = -1; this._marcarPaso();
+  }
+
+  // ---- Recorrer la línea en el tablero ----
+
+  /** Pone el tablero en la posición tras el paso «i» (−1: la posición de partida, antes de la línea). */
+  _irAPaso(i) {
+    const linea = this.linea;
+    if (!linea?.length) return;
+    const anterior = this.pasoLinea;
+    this.pasoLinea = Math.max(-1, Math.min(linea.length - 1, i));
+    const n = this.pasoLinea < 0 ? linea[0].nodo.padre : linea[this.pasoLinea].nodo;
+    if (!n) return;
+    // Un paso adelante o atrás: la pieza se desliza
+    const animacion = this.pasoLinea === anterior + 1 && this.pasoLinea >= 0 ? { de: n.desde, a: n.hasta }
+      : this.pasoLinea === anterior - 1 && anterior >= 0 ? { de: linea[anterior].nodo.hasta, a: linea[anterior].nodo.desde } : null;
+    this.tablero.mostrar(n.fen, n.desde, n.hasta, this.color === 'N', null, null, animacion);
+    // El rótulo de la izquierda dice de qué posición se trata: la del árbol, o la de la línea mientras se recorre
+    if (this.pasoLinea >= 0) { this.el.nombre.textContent = 'Posición de tu plan'; this.el.datos.textContent = ''; }
+    else if (this.actual) { const nombre = nombreApertura(this.actual); this.el.nombre.textContent = nombre || (this.actual.ply === 0 ? 'Posición inicial' : 'Sin nombre de apertura'); this.el.datos.textContent = this.actual.partidas === 0 ? '' : `En esta posición: ${this.actual.partidas} partidas · él saca el ${redondeo(this.actual.porcentaje)} % de los puntos`; }
+    this._marcarPaso();
+    this.tablero.raiz.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  _marcarPaso() {
+    const linea = this.linea, i = this.pasoLinea;
+    this.el.lineaTexto.querySelectorAll('[data-paso]').forEach(f => f.classList.toggle('actual', Number(f.dataset.paso) === i));
+    this.el.lineaTabla.querySelectorAll('[data-paso]').forEach(f => f.classList.toggle('actual', Number(f.dataset.paso) === i));
+    this.el.pasoAnt.disabled = !linea?.length || i < 0;
+    this.el.pasoSig.disabled = !linea?.length || i >= linea.length - 1;
+    if (!linea?.length) { this.el.lineaPos.textContent = ''; return; }
+    if (i < 0) { this.el.lineaPos.textContent = 'Posición de partida, antes de la línea'; return; }
+    const p = linea[i], n = p.nodo;
+    this.el.lineaPos.innerHTML = `<span>Tras</span> ${figurasHtml(convertirFiguras(`${n.ply % 2 === 1 ? `${(n.ply + 1) / 2 | 0}.` : `${n.ply / 2}…`}${n.san}`))} <span>·</span> <span>${p.esMia ? 'tu jugada' : 'su jugada'}</span>`;
+  }
+
+  _reproducirLinea() {
+    if (!this.linea?.length) return;
+    if (this.pasoLinea >= this.linea.length - 1) this._irAPaso(-1);              // si ya estaba al final, empieza de nuevo
+    this.el.pasoRep.textContent = '⏸ Pausa';
+    this.reloj = setInterval(() => {
+      if (this.pasoLinea >= this.linea.length - 1) { this._pararReproduccion(); return; }
+      this._irAPaso(this.pasoLinea + 1);
+    }, 900);
+  }
+
+  _pararReproduccion() {
+    clearInterval(this.reloj); this.reloj = null;
+    if (this.el?.pasoRep) this.el.pasoRep.textContent = '▶ Reproducir';
   }
 }
