@@ -18,7 +18,7 @@
       <section class="visor-izq" id="columnaIzq">
         <div class="visor-jugador"><i class="ficha-color" id="fichaArriba"></i><span id="nombreArriba" class="recortar"></span></div>
         <div class="visor-fila-tablero">
-          <div class="barra-eval" title="Evaluación del motor: la parte blanca crece cuando las blancas están mejor"><i id="barraBlanca"></i></div>
+          <div class="barra-eval" title="Evaluación del motor: la parte blanca crece cuando las blancas están mejor"><i id="barraBlanca"></i><span id="barraNum" class="barra-num" aria-live="off"></span></div>
           <div id="tablero" class="visor-tablero"></div>
         </div>
         <div class="visor-jugador"><i class="ficha-color" id="fichaAbajo"></i><span id="nombreAbajo" class="recortar"></span></div>
@@ -69,7 +69,8 @@
                 <div><b id="resumenBlancasTitulo"></b><div class="suave" id="resumenBlancasTexto"></div></div>
                 <div class="resumen-negras"><div class="resumen-cab"><b id="resumenNegrasTitulo"></b><button type="button" class="analisis-aplicar" id="aplicarAnalisis" aria-pressed="false" hidden><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path data-icono d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg><span data-texto>Quitar variantes</span></button></div><div class="suave" id="resumenNegrasTexto"></div></div>
               </div>
-              <div class="suave" id="erroresTitulo" hidden style="font-size:12px;margin:8px 0 2px">Errores (pulsa uno para verlo en el tablero)</div>
+              <div class="analisis-curva" id="analisisCurva" hidden></div>
+          <div class="suave" id="erroresTitulo" hidden style="font-size:12px;margin:8px 0 2px">Errores (pulsa uno para verlo en el tablero)</div>
               <div class="errores-lista" id="erroresLista" hidden></div>
             </div>
             <div class="planilla-lista" id="listaJugadas"></div>

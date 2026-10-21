@@ -1,5 +1,6 @@
 // Ficha del jugador (equivale a FichaJugadorWindow.xaml.cs): cabecera, estadísticas de la FIDE, gráfico del ELO y pestañas.
 import { pintarVacios } from './ficha-vacios.js';
+import { contarResultados, htmlResultados } from './grafico-resultados.js';
 import { completarConHistorial } from './fide-historial-datos.js';
 import { LOCALE } from './i18n.js';
 import { mostrarCargando, quitarCargando } from './cargando.js';
@@ -326,6 +327,7 @@ function pintar() {
   document.querySelector('[data-pestana="partidas"] .pestana-texto').textContent = `Partidas ${est.total}`;
   $('borrarBtn').title = partidas.length ? `Borra sus ${partidas.length} partidas importadas` : 'Borra todas sus partidas importadas';
 
+  $('resultadosCuerpo').innerHTML = htmlResultados(contarResultados(vis));
   pintarTabla(vis);
   pintarAperturas(vis);
   arbol.cargar(vis);

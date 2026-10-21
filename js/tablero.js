@@ -60,7 +60,7 @@ export class Tablero {
 
   /** «fen»: la posición; «desde» y «hasta»: la última jugada, p. ej. 'e2' y 'e4'; «girado»: mira desde las negras;
    *  «seleccion»: la casilla elegida; «destinos»: a dónde puede ir la pieza elegida. */
-  mostrar(fen, desde = null, hasta = null, girado = false, seleccion = null, destinos = null) {
+  mostrar(fen, desde = null, hasta = null, girado = false, seleccion = null, destinos = null, animacion = null) {
     if (this.casillas.size === 0 || girado !== this.girado) this._construir(girado);
     const piezas = new Map();
     fen.split(' ')[0].split('/').forEach((fila, i) => {
@@ -83,6 +83,17 @@ export class Tablero {
       e.classList.toggle('elegida', nombre === seleccion);
       e.querySelector('.tablero-destino')?.remove();
       if (marcas.has(nombre)) e.insertAdjacentHTML('beforeend', `<i class="tablero-destino ${clave ? 'captura' : ''}"></i>`);
+    }
+
+    // La pieza que se ha movido se desliza desde su casilla anterior (solo si el usuario no tiene activado «reducir movimiento»).
+    if (animacion && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      const origen = this.casillas.get(animacion.de), destino = this.casillas.get(animacion.a);
+      const img = destino?.querySelector('img');
+      if (origen && img && img.animate) {
+        const o = origen.getBoundingClientRect(), d = destino.getBoundingClientRect();
+        img.style.position = 'relative'; img.style.zIndex = '3';
+        img.animate([{ transform: `translate(${o.left - d.left}px, ${o.top - d.top}px)` }, { transform: 'translate(0, 0)' }], { duration: 190, easing: 'cubic-bezier(.22, 1, .36, 1)' });
+      }
     }
 
     // Flecha de la última jugada, como en ChessBase.

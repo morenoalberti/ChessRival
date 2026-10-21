@@ -149,7 +149,7 @@ svg.icono { display: inline-block; vertical-align: middle; fill: none; stroke: c
 .estado-pildora.listo i { background: #1E55B8; }
 .estado-pildora.importando { background: var(--naranja); }
 
-.tarjeta-cuerpo { padding: 9px 12px 10px; display: grid; grid-template-columns: 84px 68px 70px minmax(80px, 1fr); row-gap: 6px; }
+.tarjeta-cuerpo { padding: 9px 12px 10px; display: grid; grid-template-columns: 100px 68px 70px minmax(80px, 1fr); row-gap: 6px; }
 .etiqueta { font-size: 12px; color: var(--texto-suave); }
 .valor { font-size: 14px; font-weight: 600; color: var(--texto); }
 .valor.elo { color: #1E55B8; }
@@ -406,3 +406,25 @@ button.candidato:hover, button.candidato:focus-visible { background: #EAF1FF; ou
 body { -webkit-user-select: none; user-select: none; }
 input, textarea, [contenteditable="true"], .ia-conversacion, .ia-conversacion *, .permitir-seleccion, .permitir-seleccion * { -webkit-user-select: text; user-select: text; }
 
+/* Mini-curva del ELO en la tarjeta de jugador */
+.elo-celda { display: flex; align-items: flex-end; gap: 7px; }
+.mini-elo { flex: none; margin-bottom: 2px; overflow: visible; animation: mini-elo-in .6s ease both; }
+.mini-elo.sube { color: #1E8E4F; } .mini-elo.baja { color: #D8493B; } .mini-elo.igual { color: #7C89A3; }
+.mini-elo polyline { stroke: currentColor; } .mini-elo circle { fill: currentColor; }
+@keyframes mini-elo-in { from { opacity: 0; transform: translateX(-6px); } }
+
+/* Esqueletos de carga: la forma de las tarjetas, en gris y con un brillo que pasa, mientras llegan los datos */
+.estado.con-esqueleto { flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 22px; padding: 26px 14px 0; overflow: hidden; }
+.estado.con-esqueleto .cargando-bloque { align-self: center; }
+.esqueleto-tarjetas { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; text-align: left; }
+.tarjeta-esq { height: 150px; border: 1.5px solid #C9D8F4; border-radius: 12px; overflow: hidden; background: #fff; opacity: .9; animation: entra .5s cubic-bezier(.2, .8, .2, 1) both; }
+.tarjeta-esq:nth-child(2) { animation-delay: .08s; } .tarjeta-esq:nth-child(3) { animation-delay: .16s; } .tarjeta-esq:nth-child(n+4) { animation-delay: .24s; }
+.esq-cab { height: 52px; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: linear-gradient(90deg, #BCD0F2, #D3E0F8); }
+.esq-cuerpo { padding: 14px; display: grid; gap: 11px; }
+.esq-avatar { width: 34px; height: 34px; border-radius: 50%; background: rgba(255, 255, 255, .75); flex: none; }
+.esq-linea { display: block; height: 11px; border-radius: 6px; background: #E3EAF6; width: 80%; position: relative; overflow: hidden; }
+.esq-linea.larga { width: 55%; background: rgba(255, 255, 255, .75); } .esq-linea.corta { width: 45%; }
+.esq-linea::after, .esq-avatar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(100deg, transparent 20%, rgba(255, 255, 255, .85) 50%, transparent 80%); transform: translateX(-100%); animation: esq-brillo 1.4s ease-in-out infinite; }
+.esq-avatar { position: relative; overflow: hidden; }
+@keyframes esq-brillo { to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) { .esq-linea::after, .esq-avatar::after { animation: none; } }

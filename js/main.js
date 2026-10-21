@@ -9,6 +9,7 @@ import * as fuentes from './fuentes.js';
 import * as mega from './mega.js';
 import * as libro from './libro.js';
 import { instalarFichaFide } from './ficha-fide-emergente.js';
+import { svgMiniElo, valoresDeHistorial } from './mini-elo.js';
 import { nombreConTitulo } from './nombre-jugador.js';
 
 const LIMITE_TORNEOS = 6;
@@ -168,6 +169,7 @@ el.pestanas.addEventListener('keydown', (e) => {
 // ---------- Tarjetas ----------
 
 const elementosTarjeta = new Map();   // id → div
+const miniElo = new Map();            // ID FIDE → últimos valores de su ELO (para la mini-curva de la tarjeta)
 
 function plantillaTarjeta(j) {
   const bandera = urlBandera(j.federation);
@@ -181,7 +183,7 @@ function plantillaTarjeta(j) {
       <div class="estado-pildora ${estado[0]}"><i></i><span>${estado[1]}</span></div>
     </div>
     <div class="tarjeta-cuerpo">
-      <div><div class="etiqueta">ELO</div><div class="valor elo">${j.rating || ''}</div></div>
+      <div><div class="etiqueta">ELO</div><div class="elo-celda"><div class="valor elo">${j.rating || ''}</div>${svgMiniElo(miniElo.get(j.fideId))}</div></div>
       <div><div class="etiqueta">Edad</div><div class="valor">${esc(j.age)}</div></div>
       <div><div class="etiqueta">Partidas</div><div class="valor">${j.gamesCount}</div></div>
       <div><div class="etiqueta">ID FIDE</div><div class="valor">${esc(j.fideId || '—')}</div></div>
@@ -226,9 +228,18 @@ function pintarTarjetas(lista) {
   });
 }
 
-function mostrarEstado(texto, cargando = false) {
-  el.estado.classList.remove('bienvenida');
-  if (cargando) ponerCargando(el.estado, texto); else el.estado.textContent = texto;
+/** «esqueletos»: cuántas tarjetas grises animadas se enseñan mientras llegan los datos (así se ve ya la forma de lo que va a salir). */
+function htmlEsqueletoTarjetas(n) {
+  const una = '<div class="tarjeta-esq" aria-hidden="true"><div class="esq-cab"><i class="esq-avatar"></i><i class="esq-linea larga"></i></div><div class="esq-cuerpo"><i class="esq-linea"></i><i class="esq-linea corta"></i><i class="esq-linea"></i></div></div>';
+  return `<div class="esqueleto-tarjetas">${una.repeat(Math.max(1, Math.min(10, n)))}</div>`;
+}
+
+function mostrarEstado(texto, cargando = false, esqueletos = 0) {
+  el.estado.classList.remove('bienvenida', 'con-esqueleto');
+  if (cargando) {
+    ponerCargando(el.estado, texto);
+    if (esqueletos > 0) { el.estado.classList.add('con-esqueleto'); el.estado.insertAdjacentHTML('beforeend', htmlEsqueletoTarjetas(esqueletos)); }
+  } else el.estado.textContent = texto;
   el.estado.classList.remove('oculto');
 }
 const ocultarEstado = () => { el.estado.classList.add('oculto'); el.estado.classList.remove('bienvenida'); };
@@ -330,6 +341,7 @@ async function completarTarjetas(lista) {
     }
     await cargarFotos([j]);
     await cargarTitulos([j]);
+    cargarMiniElo([j]);
   });
 }
 
@@ -355,6 +367,33 @@ async function cargarFotos(lista) {
       for (const t of jugadores) if (t.fideId === j.fideId && t.photo !== foto) { t.photo = foto; repintarFoto(t); }
     } catch { /* la foto es opcional: sin servidor o sin conexión, la tarjeta se queda con las iniciales */ }
   }));
+}
+
+/** La mini-curva del ELO de cada tarjeta: se guarda en este navegador unos días para no pedirla cada vez. */
+const DIAS_MINI_ELO = 3 * 24 * 3600 * 1000;
+async function cargarMiniElo(lista) {
+  await Promise.all(lista.filter(j => /^[1-9]\d*$/.test(j.fideId || '')).map(async (j) => {
+    try {
+      if (!miniElo.has(j.fideId)) {
+        const guardado = await db.leerAjuste('minielo:' + j.fideId);
+        if (guardado && Date.now() - guardado.t < DIAS_MINI_ELO) miniElo.set(j.fideId, guardado.v);
+        else {
+          const v = valoresDeHistorial(await fuentes.historialElo(j.fideId));
+          miniElo.set(j.fideId, v);
+          if (v.length) await db.guardarAjuste('minielo:' + j.fideId, { t: Date.now(), v });
+        }
+      }
+      for (const t of jugadores) if (t.fideId === j.fideId) repintarMiniElo(t);
+    } catch { /* es un adorno: sin servidor o sin datos, la tarjeta se queda sin curva */ }
+  }));
+}
+
+/** Pone o cambia solo la curva (el resto de la tarjeta no se toca, para no perder un arrastre). */
+function repintarMiniElo(j) {
+  const celda = elementosTarjeta.get(j.id)?.querySelector('.elo-celda');
+  if (!celda) return;
+  celda.querySelector('.mini-elo')?.remove();
+  celda.insertAdjacentHTML('beforeend', svgMiniElo(miniElo.get(j.fideId)));
 }
 
 /** Cambia solo el avatar: el resto de la tarjeta no se toca (así no parpadea ni se pierde un arrastre). */
@@ -577,7 +616,7 @@ async function cargar() {
   if (!fuentes.esUrl(texto)) { await anadirJugador(texto); return; }
 
   cargandoURL = true; actualizarBotonCargar();
-  mostrarEstado('Cargando torneo…', true);
+  mostrarEstado('Cargando torneo…', true, Number(el.rango.value) || 5);
   el.pie.textContent = 'Descargando clasificación…';
   try {
     const torneo = await fuentes.cargarTorneo(texto, jugadoresACargar);
@@ -605,7 +644,7 @@ async function cargar() {
 
 async function anadirJugador(texto) {
   cargandoURL = true; actualizarBotonCargar();
-  mostrarEstado(`Buscando «${texto}» en la FIDE…`, true);
+  mostrarEstado(`Buscando «${texto}» en la FIDE…`, true, 1);
   el.pie.textContent = 'Buscando jugador…';
   try {
     const candidatos = await fuentes.buscarFide(texto);

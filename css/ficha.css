@@ -236,3 +236,29 @@
 .pestana-ficha[data-pestana="entrenamiento"] svg { color: #7A5AC8; }
 .pestana-ficha[data-pestana="ia"] svg { color: #E0489A; }
 .pestana-ficha.activa svg, .pestana-ficha[aria-selected="true"] svg { color: #fff !important; }
+
+/* Tarjeta «Resultados» del Resumen: anillo, leyenda y una barra por color */
+#tarjetaResultados { --c: #1E8E4F; grid-column: 1 / -1; }
+.res-cuerpo { display: grid; grid-template-columns: auto minmax(150px, 220px) minmax(0, 1fr); gap: 22px; align-items: center; padding-top: 2px; }
+.anillo { display: block; }
+.anillo-tramo { animation: anillo-in .9s cubic-bezier(.22, 1, .36, 1) both; }
+@keyframes anillo-in { from { stroke-dasharray: 0 var(--largo); } }
+.anillo-num { font-size: 17px; font-weight: 700; fill: var(--texto); }
+.anillo-sub { font-size: 7.5px; fill: var(--texto-suave); }
+.res-leyenda { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.res-leyenda li { display: grid; grid-template-columns: 14px 1fr auto 42px; align-items: center; gap: 8px; }
+.res-leyenda b { font-size: 15px; }
+.res-leyenda .suave { text-align: right; font-size: 12px; }
+.res-punto { width: 11px; height: 11px; border-radius: 50%; display: block; }
+.res-punto.g, .res-trozo.g { background: #0B60B0; } .res-punto.t, .res-trozo.t { background: #A8ADBA; } .res-punto.p, .res-trozo.p { background: #3F4650; }
+.res-colores { display: grid; gap: 12px; }
+.res-etiqueta { display: flex; align-items: center; gap: 7px; font-size: 12.5px; margin-bottom: 4px; color: var(--texto-suave); }
+.res-etiqueta .punto-color { width: 13px; height: 13px; }
+.res-barra { display: flex; height: 18px; border-radius: 9px; overflow: hidden; background: #E3EAF6; }
+.res-barra.vacia { opacity: .6; }
+.res-trozo { display: flex; align-items: center; justify-content: center; min-width: 0; color: #fff; font-size: 11px; font-weight: 600; transform-origin: left; animation: barra-in .8s cubic-bezier(.2, .8, .2, 1) backwards; }
+@media (max-width: 760px) { .res-cuerpo { grid-template-columns: 1fr; justify-items: center; } .res-colores { width: 100%; } }
+
+/* Al cambiar de pestaña, el contenido entra con un movimiento suave */
+.seccion:not([hidden]) { animation: ficha-in .32s cubic-bezier(.22, 1, .36, 1) both; }
+@media (prefers-reduced-motion: reduce) { .seccion:not([hidden]) { animation: none; } }

@@ -10,6 +10,7 @@ import { convertirFiguras, figurasHtml } from './figuritas.js';
 import { informar, preguntarTres } from './dialogos.js';
 import { elegirOpcionJugada, pedirTexto, mostrarConclusiones, abrirMenu, elegirVariante } from './visor-dialogos.js';
 import { MotorUci, NOMBRE_MOTOR, PARALELO, simbolo as simboloVentaja } from './motor.js';
+import { montarCurva } from './curva-evaluacion.js';
 import { calcularPrecisiones, calcularErrores, resumenErrores, construirConclusiones, corto, PROFUNDIDAD_ANALISIS, TOPE } from './visor-analisis.js';
 import { puntos } from './debilidades.js';
 import { FEN_INICIAL } from './arbol.js';
@@ -346,17 +347,31 @@ function volverALaPartida() {
 
 // ---------- Navegación ----------
 
+/** Desplaza solo la lista de jugadas (nunca la tarjeta que la contiene) para que se vea la jugada elegida. */
+function verFicha(ficha) {
+  const lista = $('listaJugadas');
+  if (!ficha || !lista) return;
+  const f = ficha.getBoundingClientRect(), l = lista.getBoundingClientRect();
+  if (f.top < l.top) lista.scrollBy({ top: f.top - l.top - 8, behavior: 'smooth' });
+  else if (f.bottom > l.bottom) lista.scrollBy({ top: f.bottom - l.bottom + 8, behavior: 'smooth' });
+}
+
 function ir(nuevo) {
   cancelarPreviaMotor(false);
   clearTimeout(restaurar);
+  const antes = ply;
   ply = Math.min(Math.max(nuevo, 0), sans.length);
   seleccion = null; destinos = [];
   ponerNombres();
-  mostrarTablero(ply, true);
+  // Un paso adelante o atrás: la pieza se desliza de una casilla a la otra
+  const animacion = ply === antes + 1 && ply > 0 ? { de: casillas[ply - 1][0], a: casillas[ply - 1][1] }
+    : ply === antes - 1 && antes > 0 && casillas[antes - 1] ? { de: casillas[antes - 1][1], a: casillas[antes - 1][0] } : null;
+  mostrarTablero(ply, true, animacion);
 
   if (varActual?.plegada && ply > varActual.desvio + 1) { varActual.plegada = false; reconstruirLista(); }   // se ha llegado a una jugada que estaba oculta
   const elegida = pintarSeleccion();
-  elegida?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  verFicha(elegida);
+  if (analisisDatos && !erroresOcultos) curva?.marcar(varActual ? Math.min(ply, varActual.desvio) : ply);
 
   const texto = $('posicionText');
   if (ply === 0) texto.innerHTML = 'Posición inicial';
@@ -401,13 +416,13 @@ function pintarSeleccion() {
 let plyDibujado = -1, giradoDibujado = false;
 
 /** Dibuja el tablero en la posición tras «p» jugadas, sin fijarla ni mover el motor. */
-function mostrarTablero(p, forzar = false) {
+function mostrarTablero(p, forzar = false, animacion = null) {
   // Si ya se ve esa posición no se redibuja: al mover el ratón por la lista llegan muchos eventos seguidos.
   if (!forzar && p === plyDibujado && girado === giradoDibujado) return;
   plyDibujado = p; giradoDibujado = girado;
   const sel = p === ply ? seleccion : null, dest = p === ply ? destinos : null;
-  if (p > 0) tablero.mostrar(fens[p], casillas[p - 1][0], casillas[p - 1][1], girado, sel, dest);
-  else tablero.mostrar(fens[0], null, null, girado, sel, dest);
+  if (p > 0) tablero.mostrar(fens[p], casillas[p - 1][0], casillas[p - 1][1], girado, sel, dest, animacion);
+  else tablero.mostrar(fens[0], null, null, girado, sel, dest, animacion);
 }
 
 // Al salir de una jugada, el tablero vuelve a la jugada marcada, pero con un pequeño retraso: si el ratón pasa de una jugada a otra, la vuelta se
@@ -808,7 +823,7 @@ function reiniciarAnalisis() {
   const t = new Chess(fen);
   if (t.moves().length === 0) {
     limpiarLineasMotor(t.inCheck() ? 'Jaque mate: la partida ha terminado.' : 'Rey ahogado: tablas.');
-    actualizarBarra(t.inCheck() ? (t.turn() === 'w' ? 0 : 1) : 0.5);
+    actualizarBarra(t.inCheck() ? (t.turn() === 'w' ? 0 : 1) : 0.5, t.inCheck() ? (t.turn() === 'w' ? '0-1' : '1-0') : '½');
     return;
   }
   const ab = abortAnalisis = new AbortController();
@@ -861,14 +876,19 @@ function pintarMotor() {
   });
   // La profundidad y la barra son las de la mejor línea.
   const principal = infos[0];
-  const { fraccion } = textoEvaluacion(principal, mueveBlancas);
+  const { fraccion, texto: textoBarra } = textoEvaluacion(principal, mueveBlancas);
   $('profundidadText').textContent = `profundidad ${principal.profundidad}` + (principal.nps > 0 ? ` · ${decimal(principal.nps / 1e6)} Mn/s` : '');
-  actualizarBarra(fraccion);
+  actualizarBarra(fraccion, textoBarra.replace(/^0,00$/, '0,0'));
   valorarFinalDeVariante();
 }
 
 /** La barra de evaluación: la parte blanca ocupa «fraccion» de la altura (las blancas siempre abajo, aunque se gire el tablero). */
-function actualizarBarra(fraccion) { $('barraBlanca').style.transform = `scaleY(${Math.min(1, Math.max(0, fraccion))})`; }
+function actualizarBarra(fraccion, texto = '') {
+  $('barraBlanca').style.transform = `scaleY(${Math.min(1, Math.max(0, fraccion))})`;
+  const num = $('barraNum');
+  num.textContent = texto.replace('-', '−');             // el número aparece sobre el bando que está mejor: abajo si son las blancas, arriba si son las negras
+  num.className = `barra-num ${fraccion >= 0.5 ? 'blancas' : 'negras'}`;
+}
 
 // ---------- Análisis de la partida ----------
 
@@ -910,7 +930,7 @@ async function analizarPartida() {
   $('analizarBtn').textContent = 'Cancelar análisis';
   $('analizarBtn').title = 'Cancelar análisis';
   $('analisisCard').hidden = false;
-  $('analisisResumen').hidden = true; $('erroresTitulo').hidden = true; $('erroresLista').hidden = true;
+  $('analisisResumen').hidden = true; $('erroresTitulo').hidden = true; $('erroresLista').hidden = true; $('analisisCurva').hidden = true;
   $('analisisBarra').hidden = false; $('analisisProgreso').hidden = false;
   $('analisisRelleno').style.width = '0%';
   $('analisisProgreso').textContent = 'Analizando la partida con Stockfish…';
@@ -1097,8 +1117,25 @@ function mostrarResultadoAnalisis() {
 
   marcarErroresEnLista();
   actualizarBotonAnalisis();
+  dibujarCurva();
   ir(ply);                                               // refresca el texto de la jugada con su calificación
 }
+
+let curva = null;
+/** La evaluación (desde las blancas) en cada posición de la partida analizada. */
+const evaluacionesDelAnalisis = () => analisisDatos.fens.map((fen, i) => analisisDatos.valores[i] * (fen.split(' ')[1] === 'w' ? 1 : -1));
+
+function dibujarCurva() {
+  const ev = evaluacionesDelAnalisis();
+  const texto = (p) => `${p === 0 ? tr('Posición inicial') : `${numeroDe(p)}${blancasMueven(p) ? '.' : '...'}${convertirFiguras(analisisDatos.sans[p - 1])}`} · ${ev[p] > 0 ? '+' : ev[p] < 0 ? '−' : ''}${(Math.min(Math.abs(ev[p]), 9999) / 100).toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  curva = montarCurva($('analisisCurva'), ev, [...errores.values()], {
+    alIr: (p) => { detener(); if (varActual) usarLinea(null); ir(p); },
+    texto
+  });
+  $('analisisCurva').hidden = false;
+  curva.marcar(varActual ? Math.min(ply, varActual.desvio) : ply);
+}
+const figurasTextoPlano = (t) => t.replace(/[\u2654-\u265F]/g, m => m);
 
 $('erroresLista').addEventListener('click', (e) => {
   const f = e.target.closest('.error-fila');
