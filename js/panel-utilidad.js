@@ -1,6 +1,6 @@
 import { svg } from './iconos.js';
 
-export function abrirPanel(titulo, contenido, clase = '') {
+export function abrirPanel(titulo, contenido, clase = '', { antesDeCerrar = null } = {}) {
   const existente = [...document.querySelectorAll('.utilidad-panel')].find(p => p.getAttribute('aria-label') === titulo);
   if (existente) { existente.querySelector('[data-cerrar-panel]')?.focus(); return null; }
   const previo = document.activeElement, velo = document.createElement('div');
@@ -12,8 +12,14 @@ export function abrirPanel(titulo, contenido, clase = '') {
   dialogo.setAttribute('aria-label', titulo);
   velo.querySelector('[data-titulo-panel]').textContent = titulo;
   let ocupado = false;
-  function cerrar() {
+  async function cerrar() {
     if (ocupado) return;
+    if (antesDeCerrar) {                            // p. ej. «¿guardar los cambios?»: si no se confirma, el panel sigue abierto
+      ocupado = true;
+      let seguir = true;
+      try { seguir = await antesDeCerrar(); } finally { ocupado = false; }
+      if (!seguir) return;
+    }
     document.removeEventListener('keydown', teclas, true);
     velo.querySelector('video')?.pause();
     velo.remove(); previo?.focus?.();

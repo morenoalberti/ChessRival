@@ -18,7 +18,7 @@ function iconoDe(texto, peligro) {
   return peligro ? 'papelera' : 'visto';
 }
 
-function abrir({ titulo, mensaje, textoSi, textoNo, peligro = false, foto = null, nombre = null }) {
+function abrir({ titulo, mensaje, textoSi, textoNo, textoTercero = null, peligro = false, foto = null, nombre = null }) {
   return new Promise((resolver) => {
     const previo = document.activeElement;
     const velo = document.createElement('div');
@@ -31,6 +31,7 @@ function abrir({ titulo, mensaje, textoSi, textoNo, peligro = false, foto = null
         <div class="dialogo-botones">
           <button class="btn ${peligro ? 'btn-peligro' : 'btn-primario'}" data-si>${contenidoBoton(iconoDe(textoSi, peligro), esc(textoSi))}</button>
           ${textoNo ? `<button class="btn btn-secundario" data-no>${contenidoBoton('equis', esc(textoNo))}</button>` : ''}
+          ${textoTercero ? `<button class="btn btn-secundario" data-tercero>${contenidoBoton('atras', esc(textoTercero))}</button>` : ''}
         </div>
       </div>`;
 
@@ -41,12 +42,13 @@ function abrir({ titulo, mensaje, textoSi, textoNo, peligro = false, foto = null
       resolver(valor);
     };
     const teclas = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(false); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(textoTercero ? null : false); }
       else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); cerrar(true); }
     };
-    velo.addEventListener('mousedown', (e) => { if (e.target === velo) cerrar(false); });
+    velo.addEventListener('mousedown', (e) => { if (e.target === velo) cerrar(textoTercero ? null : false); });
     velo.querySelector('[data-si]').addEventListener('click', () => cerrar(true));
     velo.querySelector('[data-no]')?.addEventListener('click', () => cerrar(false));
+    velo.querySelector('[data-tercero]')?.addEventListener('click', () => cerrar(null));
     document.addEventListener('keydown', teclas, true);
     document.body.appendChild(velo);
     velo.querySelector('[data-si]').focus();
@@ -56,6 +58,10 @@ function abrir({ titulo, mensaje, textoSi, textoNo, peligro = false, foto = null
 /** Devuelve true si el usuario confirma. */
 export const preguntar = (titulo, mensaje, opciones = {}) =>
   abrir({ titulo, mensaje, textoSi: opciones.textoSi ?? 'Aceptar', textoNo: opciones.textoNo ?? 'Cancelar', ...opciones });
+
+/** Tres opciones: devuelve true (la primera), false (la segunda) o null (la tercera, también con Escape o al pulsar fuera). */
+export const preguntarTres = (titulo, mensaje, { textoSi, textoNo, textoTercero }) =>
+  abrir({ titulo, mensaje, textoSi, textoNo, textoTercero });
 
 /** Aviso con un único botón. */
 export const informar = (titulo, mensaje, textoBoton = 'Entendido') =>

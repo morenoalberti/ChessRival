@@ -50,26 +50,26 @@
       <section class="visor-der">
         <div class="visor-botones-der">
           <span id="guardado" class="visor-guardado suave" aria-live="polite"></span>
+          <button type="button" class="btn btn-primario" id="guardarBtn" title="Guardar los cambios de la partida (Ctrl+S)" hidden>Guardar cambios</button>
           <button type="button" class="btn btn-secundario" id="conclusionesBtn" title="Ver conclusiones">Conclusiones</button>
           <button type="button" class="btn btn-coral" id="analizarBtn" title="Analizar partida">Analizar partida</button>
-        </div>
-
-        <div class="tarjeta-ficha analisis-card" id="analisisCard" hidden>
-          <button type="button" class="analisis-quitar" id="quitarAnalisis" title="Quitar la tarjeta de análisis" aria-label="Quitar la tarjeta de análisis">✕</button>
-          <div class="suave analisis-progreso" id="analisisProgreso"></div>
-          <div class="analisis-barra" id="analisisBarra"><i id="analisisRelleno"></i></div>
-          <div class="analisis-resumen" id="analisisResumen" hidden>
-            <div><b id="resumenBlancasTitulo"></b><div class="suave" id="resumenBlancasTexto"></div></div>
-            <div><b id="resumenNegrasTitulo"></b><div class="suave" id="resumenNegrasTexto"></div></div>
-          </div>
-          <div class="suave" id="erroresTitulo" hidden style="font-size:12px;margin:8px 0 2px">Errores (pulsa uno para verlo en el tablero)</div>
-          <div class="errores-lista" id="erroresLista" hidden></div>
         </div>
 
         <div class="visor-tarjetas" id="tarjetas">
           <div class="tarjeta-ficha planilla-card" id="planillaCard" data-tarjeta="planilla" draggable="true">
             <div class="planilla-jugadores">
               <i class="ficha-color blanca"></i><b id="planillaBlancas"></b><b class="suave"> - </b><i class="ficha-color negra"></i><b id="planillaNegras"></b>
+            </div>
+            <div class="analisis-card" id="analisisCard" hidden>
+              <button type="button" class="analisis-quitar" id="quitarAnalisis" title="Quitar la tarjeta de análisis" aria-label="Quitar la tarjeta de análisis">✕</button>
+              <div class="suave analisis-progreso" id="analisisProgreso"></div>
+              <div class="analisis-barra" id="analisisBarra"><i id="analisisRelleno"></i></div>
+              <div class="analisis-resumen" id="analisisResumen" hidden>
+                <div><b id="resumenBlancasTitulo"></b><div class="suave" id="resumenBlancasTexto"></div></div>
+                <div><b id="resumenNegrasTitulo"></b><div class="suave" id="resumenNegrasTexto"></div></div>
+              </div>
+              <div class="suave" id="erroresTitulo" hidden style="font-size:12px;margin:8px 0 2px">Errores (pulsa uno para verlo en el tablero)</div>
+              <div class="errores-lista" id="erroresLista" hidden></div>
             </div>
             <div class="planilla-lista" id="listaJugadas"></div>
           </div>

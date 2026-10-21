@@ -45,7 +45,7 @@
 
 .planilla-jugadores { display: flex; flex-wrap: wrap; align-items: center; font-size: 13px; padding-bottom: 8px; border-bottom: 1px solid #E4E8EF; margin-bottom: 8px; }
 .planilla-jugadores b { font-weight: inherit; }
-.planilla-lista { flex: 1; overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: #A9C2EE transparent; cursor: default; }
+.planilla-lista { flex: 1; overflow-y: auto; min-height: 120px; scrollbar-width: thin; scrollbar-color: #A9C2EE transparent; cursor: default; }
 .flujo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
 .grupo-jugada { display: inline-flex; align-items: baseline; gap: 2px; padding: 1px 4px; border: 1px solid #E4EBF7; border-radius: 8px; background: #F5F7FC; white-space: nowrap; font-family: Consolas, "Cascadia Mono", ui-monospace, monospace; line-height: 20px; }
 .num-jugada { font-size: 11px; color: var(--texto-suave); margin: 0 2px 0 1px; }
@@ -80,7 +80,8 @@
 .motor-aviso:empty { display: none; }
 
 /* Análisis de la partida */
-.analisis-card { position: relative; padding: 10px 14px; margin-bottom: 12px; }
+/* El resumen del análisis va dentro de la tarjeta de las jugadas, bajo los nombres */
+.analisis-card { position: relative; flex: none; padding: 0 0 10px; margin: 0 0 10px; border-bottom: 1px solid #E4E8EF; }
 .analisis-quitar { position: absolute; right: 6px; top: 6px; width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: var(--texto-suave); font-size: 11px; cursor: pointer; opacity: 0; transition: opacity .15s, background-color .15s; }
 .analisis-card:hover .analisis-quitar { opacity: 1; } .analisis-quitar:hover { background: #FDE4E1; color: var(--rojo); }
 .analisis-progreso { font-size: 12px; }
@@ -88,7 +89,7 @@
 .analisis-barra i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #3D82E8, var(--azul)); transition: width .3s; }
 .analisis-resumen { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 2px; }
 .analisis-resumen b { font-size: 13px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .analisis-resumen .suave { font-size: 12px; white-space: pre-line; }
-.errores-lista { max-height: 130px; overflow-y: auto; scrollbar-width: thin; }
+.errores-lista { max-height: 88px; overflow-y: auto; scrollbar-width: thin; }
 .error-fila { font-size: 13px; padding: 2px 6px; margin: 1px 0; border-left: 3px solid var(--azul); border-radius: 4px; cursor: pointer; transition: background-color .12s; }
 .error-fila:hover { background: #E6EFFF; }
 

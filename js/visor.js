@@ -7,7 +7,7 @@ import { obtenerPartida, cargarEdicion, guardarEdicion } from './db-partidas.js'
 import { leerPgn, jugadasDe } from './pgn.js';
 import { Tablero } from './tablero.js';
 import { convertirFiguras, figurasHtml } from './figuritas.js';
-import { informar } from './dialogos.js';
+import { informar, preguntarTres } from './dialogos.js';
 import { elegirOpcionJugada, pedirTexto, mostrarConclusiones, abrirMenu } from './visor-dialogos.js';
 import { MotorUci, NOMBRE_MOTOR, PARALELO, simbolo as simboloVentaja } from './motor.js';
 import { calcularPrecisiones, calcularErrores, resumenErrores, construirConclusiones, corto, PROFUNDIDAD_ANALISIS, TOPE } from './visor-analisis.js';
@@ -617,19 +617,17 @@ function actualizarSimbolos() {
   for (const [s, b] of botonesSimbolo) { b.classList.toggle('puesto', !!nota?.has(s)); b.classList.toggle('apagado', ply === 0); }
 }
 
-// ---------- Guardar los cambios (se guardan solos) ----------
+// ---------- Guardar los cambios (al cerrar, si hay cambios, se pregunta) ----------
 
-let temporizadorGuardado = null, sinGuardar = false;
+let sinGuardar = false;
 
 function modificado() {
   sinGuardar = true;
-  clearTimeout(temporizadorGuardado);
-  temporizadorGuardado = setTimeout(guardar, 500);
+  $('guardarBtn').hidden = false;
 }
 
 async function guardar() {
-  if (!sinGuardar) return;
-  sinGuardar = false;
+  if (!sinGuardar) return true;
   const principal = ucisP.join(' ');
   try {
     await guardarEdicion(partida.id, {
@@ -642,14 +640,29 @@ async function guardar() {
         ...[...diagramas].map(d => ({ ruta: '@D ' + d, simbolos: '1' }))
       ]
     });
+    sinGuardar = false;
+    $('guardarBtn').hidden = true;
     const g = $('guardado');
     g.textContent = 'Cambios guardados';
     g.classList.add('visible');
     setTimeout(() => g.classList.remove('visible'), 1800);
-  } catch (ex) { sinGuardar = true; await informar('No se pudo guardar', ex.message); }
+    return true;
+  } catch (ex) { await informar('No se pudo guardar', ex.message); return false; }
 }
-addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') guardar(); });
-addEventListener('pagehide', guardar);
+
+/** Lo llama el panel que contiene el visor antes de cerrarse: true = se puede cerrar; false = el usuario quiere seguir en la partida. */
+window.confirmarCierreVisor = async () => {
+  if (!sinGuardar) return true;
+  const r = await preguntarTres('Guardar cambios', 'Has modificado la partida. ¿Quieres guardar los cambios?', { textoSi: 'Guardar', textoNo: 'No guardar', textoTercero: 'Cancelar' });
+  if (r === null) return false;
+  if (r === true) return guardar();
+  sinGuardar = false;                                    // «No guardar»: se descartan
+  return true;
+};
+
+$('guardarBtn').addEventListener('click', guardar);
+addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); guardar(); } });
+addEventListener('beforeunload', (e) => { if (sinGuardar) { e.preventDefault(); e.returnValue = ''; } });   // si la página se cierra o recarga con cambios sin guardar, avisa el navegador
 
 /** Recupera lo guardado: la línea principal cambiada (si la hay) y las variantes. */
 function cargarEdicionGuardada(e) {

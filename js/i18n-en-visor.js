@@ -95,6 +95,10 @@ export const exactas = {
   'Rojo': 'Red',
   'Aceptar': 'OK',
   'Cancelar': 'Cancel',
+  "Guardar cambios": "Save changes",
+  "Has modificado la partida. ¿Quieres guardar los cambios?": "You have modified the game. Do you want to save the changes?",
+  "No guardar": "Don’t save",
+  "Guardar los cambios de la partida (Ctrl+S)": "Save the changes to the game (Ctrl+S)",
 };
 
 export const plantillas = {
