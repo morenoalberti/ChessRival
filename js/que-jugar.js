@@ -143,8 +143,8 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
       : delta >= 5 ? `Es su punto flojo: aquí rinde ${delta} puntos por debajo de su media.`
       : delta > -5 ? 'Es una línea que conoce, pero sin ventaja clara para él: la más fiable por número de partidas.'
       : 'Aquí rinde mejor que su media; es la más segura entre las que conoce menos.';
-    return `<button type="button" class="qj-rec ${i === 0 ? 'prin' : 'alt'}" data-qj-ver="${color}:${i}">
-      <span class="qj-tag">${g.n < MINIMO ? 'POCOS DATOS' : i === 0 ? '★ RECOMENDADA' : 'ALTERNATIVA'}</span>
+    return `<button type="button" class="qj-rec ${i === 0 ? 'prin' : 'alt'}" data-qj-ver="${color}:${i}" title="Pulsa para ver por qué se recomienda y cómo jugarla">
+      <div class="qj-rec-cab"><span class="qj-tag">${g.n < MINIMO ? 'POCOS DATOS' : i === 0 ? '★ RECOMENDADA' : 'ALTERNATIVA'}</span><span class="qj-ver">Ver por qué y cómo jugarla ›</span></div>
       <h3>${tituloHtml(g)}</h3>
       ${chips(g)}
       <div class="qj-datos"><div><div class="qj-barra"><i style="width:${pct(g.tasa)}%"></i><u style="left:${pct(media)}%"></u></div>

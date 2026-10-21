@@ -1,5 +1,6 @@
 // Inglés de «¿Qué debemos jugar?».
 export const exactas = {
+  'Ver por qué y cómo jugarla ›': 'See why and how to play it ›', 'Pulsa para ver por qué se recomienda y cómo jugarla': 'Click to see why it is recommended and how to play it',
   'Con blancas, juega': 'With White, play', 'Con negras, responde con': 'With Black, answer with',
   'él lleva las negras': 'they play Black', 'él lleva las blancas': 'they play White', ' se recomienda.': ' it is recommended.', 'por qué': 'why',
   '¿Qué debemos jugar?': 'What should we play?',
