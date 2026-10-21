@@ -13,6 +13,14 @@ import { numerar } from './pgn.js';
 import { contenidoBoton, svg } from './iconos.js';
 import { analizarRespuestaEjercicio } from './explicacion-ejercicio.js';
 
+/** Cada patrón de errores, con su color y su icono. */
+const ESTILO_PATRON = {
+  'apertura': ['#2F6FE0', 'apertura'], 'medio juego': ['#34507F', 'ajedrez'], 'final': ['#7A5AC8', 'bandera'],
+  'decisiones estando en jaque': ['#D8493B', 'aviso'], 'errores al capturar': ['#E38B1D', 'captura'], 'movimientos de peón': ['#1E8E4F', 'peon'],
+  'finales de torres': ['#12A5A5', 'torre'], 'ventajas desaprovechadas': ['#F26A5B', 'caida']
+};
+const mayuscula = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+
 /** Icono de trazo (18 px) para la cabecera de las tarjetas del informe. */
 const ico = (d) => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 const ICO = {
@@ -23,6 +31,12 @@ const ICO = {
   patrones: 'M4 6h16M4 12h16M4 18h10',
   repertorio: 'M4 4v6h6M20 20v-6h-6M5.6 15A8 8 0 0 0 20 14M18.4 9A8 8 0 0 0 4 10',
   entrenar: 'm12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9L12 3Z',
+  ajedrez: 'M4 4h16v16H4zM4 12h16M12 4v16',
+  captura: 'M5 5l14 14M19 5L5 19',
+  peon: 'M12 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM9.5 10h5l1 5h-7l1-5ZM6 20h12M8 15v5m8-5v5',
+  torre: 'M6 20h12M7 20V9h10v11M7 9V5h2v2h2V5h2v2h2V5h2v4',
+  caida: 'M3 7l6 6 4-4 8 8m0 0v-5m0 5h-5',
+  bandera: 'M6 21V4m0 0h11l-2 4 2 4H6',
   aviso: 'M12 3 22 20H2L12 3Zm0 6.5V14m0 3h.01',
   info: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-11v6m0-9.5h.01'
 };
@@ -49,6 +63,19 @@ const resultadosHtml = m => `<span class="estudio-resultados"><b>Jugador estudia
 const frecuenciaHtml = g => `<span class="estudio-frecuencia"><b>Frecuencia de uso: ${pct(g.frecuencia)} (${g.partidas.length} de ${g.totalPosicion} partidas con ${g.color === 'B' ? 'blancas' : 'negras'})</b></span>`;
 
 /** Solo enlaza referencias presentes en la muestra; el HTML de entrada ya debe estar escapado. */
+/** Un patrón de errores = una tarjeta, con su resumen y hasta tres ejemplos de partidas distintas. */
+function tarjetasPatrones(patrones) {
+  if (!patrones.length) return `<section class="tarjeta-ficha estudio-tarjeta" style="--c:#34507F"><h3>${ico(ICO.patrones)}Patrones con ejemplos</h3><p class="suave">Todavía no hay errores con posición y alternativa legales suficientes para mostrar ejemplos.</p></section>`;
+  return `<div class="estudio-patrones">${patrones.map(g => {
+    const [color, icono] = ESTILO_PATRON[g.nombre.toLowerCase()] ?? ['#34507F', 'patrones'];
+    const ejemplos = g.ejemplos.filter((x, i, l) => l.findIndex(y => y.partidaId === x.partidaId) === i).slice(0, 3);
+    return `<section class="tarjeta-ficha estudio-tarjeta" style="--c:${color}"><h3>${ico(ICO[icono])}${esc(mayuscula(g.nombre))}</h3>
+      <p class="estudio-patron-res"><span>${g.ejemplos.length} ${g.ejemplos.length === 1 ? 'error' : 'errores'} en ${g.partidas} ${g.partidas === 1 ? 'partida' : 'partidas'}</span><span class="patron-estado ${g.recurrente ? 'rep' : 'poca'}">${g.recurrente ? 'repetido' : 'muestra insuficiente para generalizar'}</span></p>
+      ${ejemplos.map(x => `<div class="estudio-evidencia"><span>${esc(referencia(x.partida, x.ply))}<br>Jugó ${jugadaHtml(x.san)}; propuesta ${jugadaHtml(x.sanMejor)} · pérdida ${puntos(x.perdida)} · ${x.confirmada ? 'confirmada a profundidad ' + x.profundidad : 'pendiente de confirmación'}</span>${evidencia(x.partida, x.ply - 1, 'Ver')}</div>`).join('')}
+    </section>`;
+  }).join('')}</div>`;
+}
+
 export function enlazarReferenciasEstudio(html, partidas, evidencias) {
   let verificadas = 0, fuera = 0;
   const enlazado = html.replace(/\[Partida #(\d+), jugada (\d+)[.…]*\]/g, (ref, id, numero) => {
@@ -143,8 +170,7 @@ export function montarEstudioUi({ obtenerJugador }) {
         <section class="tarjeta-ficha estudio-tarjeta" style="--c:#1E8E4F"><h3>${ico(ICO.resultados)}Resultados y actualidad</h3><p>Puntuación: <b>${pct(m.puntuacion)}</b>. Con mayor peso a lo reciente: <b>${pct(m.reciente)}</b>.</p><p class="suave">${m.fechadas} partidas con fecha completa. El peso se reduce a la mitad por cada año de antigüedad; las fechas desconocidas no se ponderan.</p></section>
         <section class="tarjeta-ficha estudio-tarjeta" style="--c:#F26A5B"><h3>${ico(ICO.rivales)}Fuerza de los rivales</h3><p>En ${m.conElo} partidas con ambos ELO históricos: <b>${pct(m.realComparable)}</b> obtenido frente a <b>${pct(m.esperada)}</b> esperado.</p><p class="suave">Se comparan exactamente las mismas partidas. Modelo logístico orientativo (escala 400); no calcula el ELO oficial ni utiliza el ELO actual para rellenar ausencias.</p></section>
         <section class="tarjeta-ficha estudio-tarjeta" style="--c:#D9A21B"><h3>${ico(ICO.apertura)}Apertura y resultado final</h3><p>${informe.salidas.length} ${informe.salidas.length === 1 ? 'partida' : 'partidas'} con evaluación tras 12 jugadas completas.</p><p class="suave">Un mal resultado no demuestra una mala apertura. Estas posiciones permiten comprobar dónde empezó el problema.</p>${informe.salidas.slice(0, 4).map(a => `<div class="estudio-evidencia"><span>${puntos(a.valor)} al salir de la apertura · resultado ${esc(a.partida.resultado)}</span>${evidencia(a.partida, a.ply, 'Ver posición')}</div>`).join('') || '<p class="suave">Actualiza el análisis de la muestra para obtener esta comparación.</p>'}</section></div>
-        <section class="tarjeta-ficha estudio-tarjeta" style="--c:#34507F"><h3>${ico(ICO.patrones)}Patrones con ejemplos</h3>${informe.patrones.slice(0, 8).map(g => `<div class="estudio-patron"><b>${esc(g.nombre)}</b> · ${g.ejemplos.length} errores en ${g.partidas} partidas · ${g.recurrente ? 'repetido' : 'muestra insuficiente para generalizar'}
-          ${g.ejemplos.filter((e, i, l) => l.findIndex(x => x.partidaId === e.partidaId) === i).slice(0, 3).map(e => `<div class="estudio-evidencia"><span>${esc(referencia(e.partida, e.ply))}<br>Jugó ${jugadaHtml(e.san)}; propuesta ${jugadaHtml(e.sanMejor)} · pérdida ${puntos(e.perdida)} · ${e.confirmada ? 'confirmada a profundidad ' + e.profundidad : 'pendiente de confirmación'}</span>${evidencia(e.partida, e.ply - 1, 'Comprobar')}</div>`).join('')}</div>`).join('') || '<p class="suave">Todavía no hay errores con posición y alternativa legales suficientes para mostrar ejemplos.</p>'}</section>
+        ${tarjetasPatrones(informe.patrones.slice(0, 8))}
         <section class="tarjeta-ficha estudio-tarjeta" style="--c:#7A5AC8"><h3>${ico(ICO.repertorio)}Cambios de repertorio</h3><p class="suave">Últimos 12 meses frente a los 24 anteriores, dentro de la muestra filtrada. Exige 5 partidas en cada periodo para la misma posición.</p>
         ${informe.repertorio.filter(g => g.cambio !== null && Math.abs(g.cambio) >= .2).slice(0, 8).map(g => `<div class="estudio-evidencia"><span>${g.color === 'B' ? 'Blancas' : 'Negras'} · ${jugadaHtml(g.jugada)}: ${pct(g.anteriores.length / g.totalAnterior)} antes → ${pct(g.recientes.length / g.totalReciente)} reciente. ${g.transposiciones} órdenes de jugadas.</span>${evidencia(g.partidas[0], g.plyPosicion, 'Ver posición')}</div>`).join('') || '<p class="suave">Sin cambios respaldados por muestras suficientes en ambos periodos.</p>'}</section>`;
       queueMicrotask(() => setTimeout(marcarResueltos));
