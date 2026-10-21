@@ -82,9 +82,15 @@ export function calcular(partidas, nuestro) {
   return { nuestro, total: suyas.length, media, candidatas, todas };
 }
 
-function titulo(g) {
-  const [jug, fam = ''] = g.clave.split(' · ');
-  return g.nuestro === 'B' && Ap.ladoQueLaJuega(g.clave) === 'N' ? `${jug} (contra su ${fam})` : g.clave;
+/** El nombre con las figuras solo en las jugadas: convertir también el nombre de la apertura estropearía palabras («Defensa de la Plata»). */
+function tituloHtml(g) {
+  const [jug, fam] = g.clave.split(' · ');
+  if (fam === undefined) return jugadaHtml(jug);
+  return g.nuestro === 'B' && Ap.ladoQueLaJuega(g.clave) === 'N' ? `${jugadaHtml(jug)} (contra su ${esc(fam)})` : `${jugadaHtml(jug)} · ${esc(fam)}`;
+}
+function tituloTexto(g) {
+  const [jug, fam] = g.clave.split(' · ');
+  return fam === undefined ? convertirFiguras(jug) : `${convertirFiguras(jug)} · ${fam}`;
 }
 const SIMBOLOS_TEXTO = [[175, 'gran ventaja para ti'], [75, 'ventaja para ti'], [25, 'ligera ventaja para ti']];
 function textoEval(cpTuyo) {
@@ -139,7 +145,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
       : 'Aquí rinde mejor que su media; es la más segura entre las que conoce menos.';
     return `<button type="button" class="qj-rec ${i === 0 ? 'prin' : 'alt'}" data-qj-ver="${color}:${i}">
       <span class="qj-tag">${g.n < MINIMO ? 'POCOS DATOS' : i === 0 ? '★ RECOMENDADA' : 'ALTERNATIVA'}</span>
-      <h3>${jugadaHtml(titulo(g))}</h3>
+      <h3>${tituloHtml(g)}</h3>
       ${chips(g)}
       <div class="qj-datos"><div><div class="qj-barra"><i style="width:${pct(g.tasa)}%"></i><u style="left:${pct(media)}%"></u></div>
         ${i === 0 ? `<small>Él puntúa contra esto · la raya es su media con ${color === 'B' ? 'negras' : 'blancas'} (${pct(media)} %)</small>` : ''}</div>
@@ -151,15 +157,15 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
 
   function columna(color) {
     const c = datos[color], quien = color === 'B' ? 'blancas' : 'negras';
-    const cab = `<div class="qj-col-tit">${fichaColor(color)}CUANDO LLEVAS LAS ${quien.toUpperCase()} <small>él lleva las ${color === 'B' ? 'negras' : 'blancas'}</small></div>`;
+    const cab = `<div class="qj-col-tit">${fichaColor(color)}CUANDO LLEVAS LAS ${quien.toUpperCase()}</div>`;
     if (!c.total) return `<div>${cab}<p class="vacio-texto">Todavía no hay partidas suyas con ${color === 'B' ? 'negras' : 'blancas'}: importa más para poder recomendarte algo.</p></div>`;
     return `<div>${cab}${elegidas(c).map((g, i) => tarjeta(g, i, color)).join('')}</div>`;
   }
 
   function respuesta() {
     const b = elegidas(datos.B)[0], n = elegidas(datos.N)[0];
-    const l1 = b ? `Con blancas, juega <b>${jugadaHtml(titulo(b))}</b>.` : '';
-    const l2 = n ? `Con negras, responde con <b>${jugadaHtml(titulo(n))}</b>.` : '';
+    const l1 = b ? `Con blancas, juega <b>${tituloHtml(b)}</b>.` : '';
+    const l2 = n ? `Con negras, responde con <b>${tituloHtml(n)}</b>.` : '';
     return `<div class="qj-respuesta"><span class="qj-sello">RESPUESTA</span><div class="qj-txt">${[l1, l2].filter(Boolean).join('<br>')}
       <small>Son las opciones donde ${esc(apellido())} puntúa menos y que Stockfish considera sólidas para ti.</small></div></div>`;
   }
@@ -182,7 +188,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
     const c = datos[color];
     const filas = (c.todas ?? []).filter(x => x.n >= 2).sort((a, b) => a.ajustada - b.ajustada).slice(0, 6);
     if (!filas.includes(g)) filas.push(g);
-    return filas.map(x => `<div class="qj-fila ${x === g ? 'sel' : ''}"><span class="lab">${jugadaHtml(titulo(x))}${x === g ? ' ★' : ''}</span>
+    return filas.map(x => `<div class="qj-fila ${x === g ? 'sel' : ''}"><span class="lab">${tituloHtml(x)}${x === g ? ' ★' : ''}</span>
       <div class="bar"><i style="width:${pct(x.tasa)}%"></i><u style="left:${pct(c.media)}%"></u></div><span class="val">${pct(x.tasa)} % <small>${x.n} p.${x.n < MINIMO ? ' · pocas' : ''}</small></span></div>`).join('');
   }
 
@@ -212,7 +218,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
     if (debilidades[0]) items.push(`Su debilidad principal, <b>«${esc(debilidades[0].titulo)}»</b>, es un buen motivo para llevarle a un juego largo y posicional.`);
     const primera = g.clave.split(' ')[0];
     const peligro = (c.todas ?? []).filter(x => x !== g && x.n >= MINIMO && x.tasa >= 0.6 && x.clave.split(' ')[0] === primera).sort((a, b) => b.tasa - a.tasa)[0];
-    return `<ul class="qj-lista">${items.map(i => `<li>${i}</li>`).join('')}</ul>${peligro ? `<div class="qj-aviso">⚠ <b>Cuidado:</b> en ${jugadaHtml(peligro.clave)} sí puntúa ${pct(peligro.tasa)} % (${peligro.n} partidas). Evítalo.</div>` : ''}`;
+    return `<ul class="qj-lista">${items.map(i => `<li>${i}</li>`).join('')}</ul>${peligro ? `<div class="qj-aviso">⚠ <b>Cuidado:</b> en ${tituloHtml(peligro)} sí puntúa ${pct(peligro.tasa)} % (${peligro.n} partidas). Evítalo.</div>` : ''}`;
   }
 
   function pintarDetalle(color, i) {
@@ -221,7 +227,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
     actual = { color, i, g };
     ({ fens, mov: movs } = fensDe(g));
     paso = fens.length - 1;
-    contenedor.innerHTML = `<div class="qj-panel"><div class="qj-cab"><span>${color === 'B' ? 'Con blancas' : 'Con negras'}: ${jugadaHtml(titulo(g))}</span></div><div class="qj-cuerpo">
+    contenedor.innerHTML = `<div class="qj-panel"><div class="qj-cab"><span>${color === 'B' ? 'Con blancas' : 'Con negras'}: ${tituloHtml(g)}</span></div><div class="qj-cuerpo">
       <div class="qj-migas"><button type="button" class="btn" data-qj-volver>${'Volver a la respuesta'}</button><span>Contra ${esc(nombreJugador())} · tú llevas las <b>${color === 'B' ? 'blancas' : 'negras'}</b>, él las <b>${color === 'B' ? 'negras' : 'blancas'}</b></span></div>
       <div class="qj-grid"><div class="qj-izq"><div data-qj-tablero></div>${chips(g)}
         <div class="qj-ctrl"><button type="button" class="btn" data-qj-ant>‹ Anterior</button><button type="button" class="btn" data-qj-sig>Siguiente ›</button><button type="button" class="btn btn-primario" data-qj-rep>▶ Reproducir</button></div>
@@ -263,7 +269,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
   function htmlHoja() {
     const filas = filasHoja();
     const tabla = `<table class="qj-plan"><tr><th>Tu color</th><th>Qué jugar</th><th>Línea</th><th>Él puntúa</th><th>Fiabilidad</th></tr>${filas.map(({ color, g, principal }) =>
-      `<tr class="${principal ? 'prin' : ''}"><td class="col">${fichaColor(color)}${color === 'B' ? 'Blancas' : 'Negras'}</td><td><div class="nom">${principal ? '★ ' : ''}${jugadaHtml(titulo(g))}</div></td>
+      `<tr class="${principal ? 'prin' : ''}"><td class="col">${fichaColor(color)}${color === 'B' ? 'Blancas' : 'Negras'}</td><td><div class="nom">${principal ? '★ ' : ''}${tituloHtml(g)}</div></td>
       <td class="lin">${esc(textoLinea(g))}</td><td><b>${pct(g.tasa)} %</b> · ${g.n} p.</td><td>${fiabilidad(g.n).texto}</td></tr>`).join('')}</table>`;
     const d = debilidades.slice(0, 3);
     return `<div class="qj-hoja"><h2>Preparación contra ${esc(nombreJugador())}</h2>
@@ -274,7 +280,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
   }
 
   function textoPlano() {
-    return [`Preparación contra ${nombreJugador()}`, ...filasHoja().map(({ color, g, principal }) => `${color === 'B' ? 'Blancas' : 'Negras'}${principal ? ' ★' : ''}: ${convertirFiguras(titulo(g))} — ${textoLinea(g)} (él puntúa ${pct(g.tasa)} % en ${g.n} partidas)`)].join('\n');
+    return [`Preparación contra ${nombreJugador()}`, ...filasHoja().map(({ color, g, principal }) => `${color === 'B' ? 'Blancas' : 'Negras'}${principal ? ' ★' : ''}: ${tituloTexto(g)} — ${textoLinea(g)} (él puntúa ${pct(g.tasa)} % en ${g.n} partidas)`)].join('\n');
   }
 
   function abrirHoja() {
