@@ -874,10 +874,20 @@ function actualizarBarra(fraccion) { $('barraBlanca').style.transform = `scaleY(
 
 let analizando = false, abortarPartida = null;
 let analisisDatos = null;            // { valores, mejores, fens, sans, precisiones… } del último análisis completo
+let analisisUcis = null;             // las jugadas de la partida cuando se analizó: si cambian, el análisis ya no vale
 let conclusionesPendientes = false;
 
 async function analizarPartida() {
   if (analizando) { abortarPartida?.abort(); return; }
+  // Ya analizada y la partida sigue igual: solo se vuelve a enseñar el resultado (por ejemplo, tras cerrar la tarjeta con la ✕), sin analizar otra vez.
+  if (analisisDatos && analisisUcis === ucisP.join(' ')) {
+    $('analisisCard').hidden = false;
+    mostrarResultadoAnalisis();
+    const abrir = conclusionesPendientes;
+    conclusionesPendientes = false;
+    if (abrir) abrirConclusiones();
+    return;
+  }
   volverALaPartida();                                    // el análisis es de la partida, no de la variante que se esté probando
   if (!sans.length) { conclusionesPendientes = false; return; }
 
@@ -885,7 +895,7 @@ async function analizarPartida() {
   if (analisisDatos) {
     quitarAnalisisDeLaPartida(false);
     errores.clear();
-    analisisDatos = null;
+    analisisDatos = null; analisisUcis = null;
     reconstruirLista();
   }
   analizando = true;
@@ -930,6 +940,7 @@ async function analizarPartida() {
     errores = calcularErrores(valores, sans.length, mejorEnSan, blancasEmpiezan);
     const pr = calcularPrecisiones(valores, fens, blancasEmpiezan);
     analisisDatos = { valores, mejores, fens: [...fens], sans: [...sans], precisionBlancas: pr.blancas, precisionNegras: pr.negras, detalle: pr.detalle };
+    analisisUcis = ucisP.join(' ');
     aplicarAnalisisALaPartida();
     mostrarResultadoAnalisis();
   } catch (ex) {
