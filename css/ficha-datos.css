@@ -175,8 +175,9 @@
 .vp-pie { margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--azul); }
 
 /* Diálogos de importar, analizar y configurar la IA */
-.dialogo-importar { width: 620px; } .dialogo-analizar { width: 560px; }
-.importar-cuerpo { padding: 18px 22px 20px; }
+.dialogo-importar { width: 620px; max-height: calc(100dvh - 28px); display: flex; flex-direction: column; } .dialogo-analizar { width: 560px; }
+.dialogo-importar .dialogo-cab { flex: none; }
+.importar-cuerpo { padding: 18px 22px 20px; overflow-y: auto; min-height: 0; }
 .importar-intro { margin: 0 0 14px; font-size: 14px; }
 .importar-caja { background: var(--panel-interior); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
 .importar-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -184,6 +185,11 @@
 .importar-zona { margin-top: 10px; padding: 10px 12px; min-height: 52px; border: 2px dashed #B9CDEE; border-radius: 8px; background: #fff; font-size: 13px; transition: border-color .15s, background-color .15s; }
 .importar-zona.encima { border-color: var(--azul); background: #EAF1FF; }
 .importar-archivo { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; } .importar-archivo.sin-suyas { opacity: .55; }
+.importar-archivo > .recortar { min-width: 0; }
+.importar-archivo > .suave { flex: none; }
+.importar-recuento { margin-top: 7px; font-size: 12px; font-weight: 700; color: var(--azul); }
+.importar-nota { margin: 10px 0 0; font-size: 12px; }
+.importar-zona[aria-disabled="true"] { opacity: .65; }
 .importar-progreso { margin: 10px 0 0; font-size: 13px; font-weight: 600; color: var(--azul); }
 .importar-botones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; } .importar-botones .btn { min-width: 100px; }
 .analizar-seleccion { background: var(--panel-interior); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }

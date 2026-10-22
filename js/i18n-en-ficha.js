@@ -165,6 +165,11 @@ export const exactas = {
   // Importar partidas
   'Se importan las partidas de este jugador de los archivos PGN que elijas (YottaChess, ChessBase, Lichess…). Las que ya estén guardadas no se repiten.': 'This player’s games are imported from the PGN files you choose (YottaChess, ChessBase, Lichess…). Games already saved are not repeated.',
   'Archivos PGN': 'PGN files',
+  'Elige uno o varios PGN de otras fuentes.': 'Select one or more PGNs from other sources.',
+  'Elige el PGN descargado de YottaChess.': 'Select the PGN downloaded from YottaChess.',
+  'Elige el PGN descargado de AhoraAjedrez.': 'Select the PGN downloaded from AhoraAjedrez.',
+  '1 partida del jugador cargada': '1 game for this player loaded',
+  'Al importar, las partidas repetidas entre PGN y MegaDatabase se guardan una sola vez.': 'When importing, duplicate games across PGNs and MegaDatabase are saved only once.',
   'Elige uno o varios, o suéltalos aquí.': 'Choose one or more, or drop them here.',
   'Ningún archivo todavía': 'No file yet',
   'Copia su ID FIDE y abre YottaChess: descarga allí el PGN y elígelo arriba.': 'Copies their FIDE ID and opens YottaChess: download the PGN there and choose it above.',
@@ -354,6 +359,10 @@ export const exactas = {
 };
 
 export const plantillas = {
+  '{} partidas del jugador cargadas': '{} games for this player loaded',
+  'Elegir PGN de {}': 'Select PGN from {}',
+  '{} estaba repetida entre los archivos seleccionados.': '{} was duplicated across the selected files.',
+  '{} estaban repetidas entre los archivos seleccionados.': '{} were duplicated across the selected files.',
   'Evaluación basada en las {} partidas más recientes del jugador ({} terminadas, desde {}): en los últimos {} años hay menos de {}, así que se amplía hacia atrás.': 'Evaluation based on the {} most recent games of the player ({} finished, since {}): in the last {} years there are fewer than {}, so it is extended further back.',
   'Evaluación basada en las {} partidas jugadas en los últimos {} años, desde {} ({} terminadas) de las {} del jugador.': 'Evaluation based on the {} games played in the last {} years, since {} ({} finished) of the player’s {}.',
   '{} (rápida, menos fiable)': '{} (fast, less reliable)',

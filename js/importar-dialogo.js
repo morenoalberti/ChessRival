@@ -5,16 +5,20 @@ import { informar } from './dialogos.js';
 import { leerArchivo, importar, mensaje } from './importador.js';
 import * as mega from './mega.js';
 import { nombreConTitulo } from './nombre-jugador.js';
-import { montarAccesoAhoraAjedrez } from './ahora-ajedrez.js';
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const tam = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+const FUENTES_PGN = [
+  { id: 'pgn', nombre: 'Archivos PGN', fuente: 'PGN', ayuda: 'Elige uno o varios PGN de otras fuentes.' },
+  { id: 'yotta', nombre: 'YottaChess', fuente: 'YottaChess', ayuda: 'Elige el PGN descargado de YottaChess.' },
+  { id: 'ahora', nombre: 'AhoraAjedrez', fuente: 'AhoraAjedrez', ayuda: 'Elige el PGN descargado de AhoraAjedrez.' }
+];
 
 /** Devuelve el resultado de la importación, o null si se cierra sin importar. */
-export function abrirImportar(jugador, { alAbrirYotta } = {}) {
+export function abrirImportar(jugador) {
   return new Promise((resolver) => {
     const previo = document.activeElement;
-    let lecturas = [], ocupado = false, resultado = null;
+    let lecturas = [], ocupado = false, leyendo = false, resultado = null;
 
     const velo = document.createElement('div');
     velo.className = 'velo';
@@ -24,29 +28,17 @@ export function abrirImportar(jugador, { alAbrirYotta } = {}) {
         <div class="importar-cuerpo">
           <p class="importar-intro">Se importan las partidas de este jugador de los archivos PGN que elijas (YottaChess, ChessBase, Lichess…). Las que ya estén guardadas no se repiten.</p>
 
-          <div class="importar-caja">
+          ${FUENTES_PGN.map(f => `<div class="importar-caja" data-fuente="${f.id}">
             <div class="importar-fila">
-              <div class="importar-texto"><b>Archivos PGN</b><span class="suave">Elige uno o varios, o suéltalos aquí.</span></div>
-              <button type="button" class="btn btn-secundario btn-chico" data-elegir></button>
+              <div class="importar-texto"><b>${f.nombre}</b><span class="suave">${f.ayuda}</span></div>
+              <button type="button" class="btn btn-secundario btn-chico" data-elegir="${f.id}"></button>
             </div>
-            <div class="importar-zona" data-zona tabindex="0">
-              <span data-lista class="suave">Ningún archivo todavía</span>
+            <div class="importar-zona" data-zona="${f.id}" tabindex="0" role="button" aria-label="Elegir PGN de ${f.nombre}">
+              <span data-lista="${f.id}" class="suave">Ningún archivo todavía</span>
             </div>
-          </div>
-
-          <div class="importar-caja">
-            <div class="importar-fila">
-              <div class="importar-texto"><b>YottaChess</b><span class="suave">Copia su ID FIDE y abre YottaChess: descarga allí el PGN y elígelo arriba.</span></div>
-              <button type="button" class="btn btn-secundario btn-chico" data-yotta></button>
-            </div>
-          </div>
-
-          <div class="importar-caja">
-            <div class="importar-fila">
-              <div class="importar-texto"><b>AhoraAjedrez</b><span class="suave">Baja el PGN de sus partidas</span></div>
-              <a class="btn btn-secundario btn-chico" data-ahora href="https://ahoraajedrez.com/" target="_blank" rel="noopener noreferrer"></a>
-            </div>
-          </div>
+            <div class="importar-recuento" data-recuento="${f.id}" aria-live="polite" hidden></div>
+            <input type="file" accept=".pgn,.txt,text/plain" multiple hidden data-entrada="${f.id}">
+          </div>`).join('')}
 
           <div class="importar-caja">
             <div class="importar-fila">
@@ -55,24 +47,22 @@ export function abrirImportar(jugador, { alAbrirYotta } = {}) {
             </div>
           </div>
 
+          <p class="importar-nota suave">Al importar, las partidas repetidas entre PGN y MegaDatabase se guardan una sola vez.</p>
           <p class="importar-progreso" data-progreso hidden></p>
           <div class="importar-botones">
             <button type="button" class="btn btn-primario" data-importar disabled></button>
             <button type="button" class="btn btn-secundario" data-cerrar></button>
           </div>
         </div>
-      </div>
-      <input type="file" accept=".pgn,.txt,text/plain" multiple hidden data-entrada>`;
+      </div>`;
 
     const $ = (s) => velo.querySelector(s);
-    $('[data-elegir]').innerHTML = contenidoBoton('carpeta', 'Elegir archivos');
-    $('[data-yotta]').innerHTML = contenidoBoton('enlace', 'Abrir YottaChess');
-    montarAccesoAhoraAjedrez($('[data-ahora]'), jugador);
+    for (const f of FUENTES_PGN) $(`[data-elegir="${f.id}"]`).innerHTML = contenidoBoton('carpeta', 'Elegir archivos');
     $('[data-importar]').innerHTML = contenidoBoton('descargar', 'Importar');
     $('[data-cerrar]').innerHTML = contenidoBoton('equis', 'Cerrar');
 
     const cerrar = () => {
-      if (ocupado) return;
+      if (ocupado || leyendo) return;
       document.removeEventListener('keydown', teclas, true);
       velo.classList.add('saliendo');
       setTimeout(() => { velo.remove(); previo?.focus?.(); }, 160);
@@ -81,15 +71,24 @@ export function abrirImportar(jugador, { alAbrirYotta } = {}) {
     const teclas = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(); } };
 
     const pintarLista = () => {
-      const lista = $('[data-lista]');
-      if (!lecturas.length) { lista.className = 'suave'; lista.textContent = 'Ningún archivo todavía'; }
-      else {
-        lista.className = '';
-        lista.innerHTML = lecturas.map(l => `<div class="importar-archivo ${l.suyas ? '' : 'sin-suyas'}">
-          <span class="recortar" title="${esc(l.archivo.name)}">${esc(l.archivo.name)}</span>
-          <span class="suave">${l.suyas} suyas de ${l.total} · ${tam(l.archivo.size)}</span></div>`).join('');
+      for (const f of FUENTES_PGN) {
+        const propias = lecturas.filter(l => l.fuente === f.fuente);
+        const lista = $(`[data-lista="${f.id}"]`), recuento = $(`[data-recuento="${f.id}"]`);
+        if (!propias.length) { lista.className = 'suave'; lista.textContent = 'Ningún archivo todavía'; }
+        else {
+          lista.className = '';
+          lista.innerHTML = propias.map(l => `<div class="importar-archivo ${l.suyas ? '' : 'sin-suyas'}">
+            <span class="recortar" title="${esc(l.archivo.name)}">${esc(l.archivo.name)}</span>
+            <span class="suave">${l.suyas} suyas de ${l.total} · ${tam(l.archivo.size)}</span></div>`).join('');
+        }
+        const n = propias.reduce((s, l) => s + l.suyas, 0);
+        recuento.hidden = !propias.length;
+        recuento.textContent = n === 1 ? '1 partida del jugador cargada' : `${n} partidas del jugador cargadas`;
+        $(`[data-elegir="${f.id}"]`).disabled = ocupado || leyendo;
+        $(`[data-zona="${f.id}"]`).setAttribute('aria-disabled', String(ocupado || leyendo));
       }
-      $('[data-importar]').disabled = ocupado || !(lecturas.some(l => l.suyas > 0) || mega.estado.base || mega.estado.pendiente);
+      $('[data-cerrar]').disabled = ocupado || leyendo;
+      $('[data-importar]').disabled = ocupado || leyendo || !(lecturas.some(l => l.suyas > 0) || mega.estado.base || mega.estado.pendiente);
     };
 
     // Estado de la MegaDatabase: conectada, a la espera del permiso del navegador o sin elegir.
@@ -103,43 +102,50 @@ export function abrirImportar(jugador, { alAbrirYotta } = {}) {
       pintarLista();
     };
 
-    const anadir = async (archivos) => {
+    const anadir = async (archivos, fuente) => {
+      if (ocupado || leyendo || !archivos.length) return;
+      leyendo = true;
+      pintarLista();
       const progreso = $('[data-progreso]');
       progreso.hidden = false;
       progreso.textContent = 'Leyendo archivos…';
       try {
         for (const a of archivos) {
-          if (lecturas.some(l => l.archivo.name === a.name && l.archivo.size === a.size)) continue;
-          lecturas.push(await leerArchivo(a, jugador));
+          if (lecturas.some(l => l.fuente === fuente && l.archivo.name === a.name && l.archivo.size === a.size && l.archivo.lastModified === a.lastModified)) continue;
+          lecturas.push({ ...await leerArchivo(a, jugador), fuente });
           pintarLista();
         }
         progreso.hidden = true;
-        const sin = lecturas.filter(l => !l.suyas);
-        if (lecturas.length && lecturas.every(l => !l.suyas)) {
+        const deFuente = lecturas.filter(l => l.fuente === fuente), sin = deFuente.filter(l => !l.suyas);
+        if (deFuente.length && deFuente.every(l => !l.suyas)) {
           progreso.hidden = false;
           progreso.textContent = 'Ninguno de los archivos tiene partidas de este jugador. Comprueba que su nombre aparece igual en las cabeceras White y Black.';
         } else if (sin.length) {
           progreso.hidden = false;
           progreso.textContent = `${sin.length === 1 ? 'Un archivo no tiene' : `${sin.length} archivos no tienen`} partidas suyas y se ignorará${sin.length === 1 ? '' : 'n'}.`;
         }
-      } catch (ex) { progreso.textContent = `No se pudo leer el archivo: ${ex.message}`; }
+      } catch (ex) { progreso.hidden = false; progreso.textContent = `No se pudo leer el archivo: ${ex.message}`; }
+      finally { leyendo = false; pintarLista(); }
     };
 
-    $('[data-elegir]').addEventListener('click', () => $('[data-entrada]').click());
-    $('[data-entrada]').addEventListener('change', (e) => { anadir([...e.target.files]); e.target.value = ''; });
-    const zona = $('[data-zona]');
-    zona.addEventListener('click', () => { if (!lecturas.length) $('[data-entrada]').click(); });
-    zona.addEventListener('dragover', (e) => { e.preventDefault(); zona.classList.add('encima'); });
-    zona.addEventListener('dragleave', () => zona.classList.remove('encima'));
-    zona.addEventListener('drop', (e) => { e.preventDefault(); zona.classList.remove('encima'); anadir([...e.dataTransfer.files].filter(f => /\.(pgn|txt)$/i.test(f.name))); });
-
-    $('[data-yotta]').addEventListener('click', () => alAbrirYotta?.());
+    for (const f of FUENTES_PGN) {
+      const entrada = $(`[data-entrada="${f.id}"]`), zona = $(`[data-zona="${f.id}"]`);
+      const elegir = () => { if (!ocupado && !leyendo) entrada.click(); };
+      $(`[data-elegir="${f.id}"]`).addEventListener('click', elegir);
+      entrada.addEventListener('change', e => { anadir([...e.target.files], f.fuente); e.target.value = ''; });
+      zona.addEventListener('click', elegir);
+      zona.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegir(); } });
+      zona.addEventListener('dragover', e => { e.preventDefault(); if (!ocupado && !leyendo) zona.classList.add('encima'); });
+      zona.addEventListener('dragleave', () => zona.classList.remove('encima'));
+      zona.addEventListener('drop', e => { e.preventDefault(); zona.classList.remove('encima'); anadir([...e.dataTransfer.files].filter(a => /\.(pgn|txt)$/i.test(a.name)), f.fuente); });
+    }
     $('[data-cerrar]').addEventListener('click', cerrar);
     velo.addEventListener('mousedown', (e) => { if (e.target === velo) cerrar(); });
 
     $('[data-importar]').addEventListener('click', async () => {
+      if (ocupado || leyendo) return;
       ocupado = true;
-      $('[data-importar]').disabled = true;
+      pintarLista();
       const progreso = $('[data-progreso]');
       progreso.hidden = false;
       progreso.textContent = 'Importando…';

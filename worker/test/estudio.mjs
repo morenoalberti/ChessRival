@@ -12,6 +12,7 @@ import { textoInformeEstudio, enlazarReferenciasEstudio } from '../../js/estudio
 import { registrarIntentoEjercicio } from '../../js/estudio-progreso.js';
 import { textoColoresDeLinea } from '../../js/nombre-jugador.js';
 import { analizarRespuestaEjercicio } from '../../js/explicacion-ejercicio.js';
+import { leerArchivo, importar } from '../../js/importador.js';
 import * as db from '../../js/db.js';
 import { guardarPartidas, listarPartidas, guardarEdicion, cargarEdicion } from '../../js/db-partidas.js';
 
@@ -23,11 +24,73 @@ try {
 
 const hoy = new Date('2026-10-15T12:00:00Z');
 const fenInicialEjercicio = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+const jugadorFuentes = { name: 'Estudiado, Uno Segundo', fideId: '8812345' };
+const pgnFuentes = (abreviado = false, fecha = '2026.10.01') =>
+  `${abreviado ? '' : '[Event "Torneo"]\n'}[White "Estudiado, Uno ${abreviado ? 'S.' : 'Segundo'}"]\n[Black "Rival, Dos"]\n[Date "${fecha}"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0`;
+const archivoFuentes = texto => ({ name: 'partidas.pgn', size: texto.length, arrayBuffer: async () => new TextEncoder().encode(texto).buffer });
 function partida({ id = 1, fecha = '2026.10.01', evento = 'Prueba', movimientos = '1. f3 e5 2. g4 Qh4#', resultado = '0-1', color = 'B', elo = '2000', eloRival = '2000', control = '5400+30', extra = '' } = {}) {
   const blancas = color === 'B' ? 'Estudiado, Uno' : 'Rival, Dos', negras = color === 'N' ? 'Estudiado, Uno' : 'Rival, Dos';
   return new PartidaGuardada({ id, fecha, evento, blancas, negras, resultado, colorJugador: color, ritmo: 1,
     pgn: `[Event "${evento}"]\n[Date "${fecha}"]\n[White "${blancas}"]\n[Black "${negras}"]\n[WhiteElo "${color === 'B' ? elo : eloRival}"]\n[BlackElo "${color === 'N' ? elo : eloRival}"]\n[TimeControl "${control}"]\n[Result "${resultado}"]\n${extra}\n${movimientos} ${resultado}` });
 }
+
+test('Se leen los PGN de AhoraAjedrez sin Event y con cierres escapados, sin cambiar las jugadas', async () => {
+  const original = pgnFuentes(true).replaceAll('"]', '"\\]');
+  const leidas = leerPgn(`${original}\n\n${original.replace('2026.10.01', '2026.10.02')}`);
+  assert.equal(leidas.length, 2);
+  assert.equal(leidas[0].cab('White'), 'Estudiado, Uno S.');
+  assert.equal(leidas[0].jugadas, '1. e4 e5 2. Nf3 Nc6 1-0');
+  assert.equal(leidas[1].cab('Date'), '2026.10.02');
+  const lectura = await leerArchivo(archivoFuentes(original), jugadorFuentes);
+  assert.equal(lectura.total, 1); assert.equal(lectura.suyas, 1);
+});
+
+test('Una inicial adicional requiere mismos apellidos y primer nombre completo; un ID contradictorio sigue excluido', () => {
+  const p = leerPgn(pgnFuentes(true))[0];
+  assert.equal(colorDelJugador(jugadorFuentes, p), 'B');
+  assert.equal(colorDelJugador({ name: 'Estudiado, Otro Segundo' }, p), null);
+  assert.equal(colorDelJugador({ name: 'Diferente, Uno Segundo' }, p), null);
+  assert.equal(colorDelJugador(jugadorFuentes, leerPgn(pgnFuentes(true).replace('Uno S.', 'U. S.'))[0]), null);
+  assert.equal(colorDelJugador(jugadorFuentes, leerPgn(pgnFuentes(true).replace('[White ', '[WhiteFideId "999"]\n[White '))[0]), null);
+});
+
+test('YottaChess y AhoraAjedrez se importan juntos sin duplicar; MegaDatabase une su fuente y conserva análisis y anotaciones', async () => {
+  const clave = 'f:8812345';
+  const yotta = { ...await leerArchivo(archivoFuentes(pgnFuentes()), jugadorFuentes), fuente: 'YottaChess' };
+  const ahora = { ...await leerArchivo(archivoFuentes(pgnFuentes(true)), jugadorFuentes), fuente: 'AhoraAjedrez' };
+  const resultado = await importar(jugadorFuentes, [yotta, ahora]);
+  assert.equal(resultado.nuevas, 1); assert.equal(resultado.enLote, 1);
+  const [p] = await listarPartidas(clave);
+  assert.equal((await listarPartidas(clave)).length, 1);
+  assert.equal(p.origen, 'YottaChess;AhoraAjedrez');
+  await guardarEdicion(p.id, { notas: [{ ruta: 'e2e4', texto: 'Conservar nota' }], variantes: [] });
+  await db.tx('analisis', 'readwrite', a => db.prom(a.put({ partidaId: p.id, jugadorClave: clave, prueba: 'Conservar análisis' })));
+  const mega = await guardarPartidas(clave, [{ partida: leerPgn(pgnFuentes())[0], color: 'B', ritmo: 1 }], 'MegaDatabase');
+  assert.equal(mega.nuevas, 0); assert.equal(mega.repetidas, 1);
+  const [conservada] = await listarPartidas(clave);
+  assert.equal(conservada.id, p.id); assert.equal(conservada.pgn, p.pgn);
+  assert.equal(conservada.origen, 'YottaChess;AhoraAjedrez;MegaDatabase');
+  assert.equal((await cargarEdicion(p.id)).notas[0].texto, 'Conservar nota');
+  assert.equal((await db.tx('analisis', 'readonly', a => db.prom(a.get(p.id)))).prueba, 'Conservar análisis');
+});
+
+test('Los dos PGN tampoco duplican una partida que ya estaba en MegaDatabase', async () => {
+  const j = { ...jugadorFuentes, fideId: '8812346' }, clave = 'f:8812346';
+  await guardarPartidas(clave, [{ partida: leerPgn(pgnFuentes())[0], color: 'B', ritmo: 1 }], 'MegaDatabase');
+  const lecturas = await Promise.all([['YottaChess', false], ['AhoraAjedrez', true]].map(async ([fuente, abreviado]) => ({ ...await leerArchivo(archivoFuentes(pgnFuentes(abreviado)), j), fuente })));
+  const r = await importar(j, lecturas);
+  assert.equal(r.nuevas, 0); assert.equal(r.repetidas, 2);
+  const lista = await listarPartidas(clave);
+  assert.equal(lista.length, 1); assert.equal(lista[0].origen, 'MegaDatabase;YottaChess;AhoraAjedrez');
+});
+
+test('La deduplicación entre fuentes conserva encuentros de fechas distintas y no presume duplicados sin fecha completa', async () => {
+  const j = { ...jugadorFuentes, fideId: '8812347' }, clave = 'f:8812347';
+  const textos = [pgnFuentes(), pgnFuentes(true, '2026.10.02'), pgnFuentes(true, '2026.10.??'), pgnFuentes(false, '2026.10.??')];
+  const lecturas = await Promise.all(textos.map(async (texto, i) => ({ ...await leerArchivo(archivoFuentes(texto), j), fuente: i % 2 ? 'AhoraAjedrez' : 'YottaChess' })));
+  await importar(j, lecturas);
+  assert.equal((await listarPartidas(clave)).length, 4);
+});
 
 test('La calidad detecta PGN ilegales y resultados incompatibles sin modificar originales', () => {
   assert.equal(inspeccionarPartida({ id: 99 }).valida, false);

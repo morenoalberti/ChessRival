@@ -16,28 +16,38 @@ function unirFuentes(anterior, nueva) {
 }
 
 /** Guarda las partidas del jugador. Una partida que ya estaba (misma fecha, ronda, evento, jugadores y resultado) no se duplica.
- *  «items»: [{ partida (PartidaPgn), color, eco, apertura, ritmo }]. Devuelve cuántas eran nuevas, repetidas o repetidas en el propio lote. */
+ *  «items»: [{ partida (PartidaPgn), color, eco, apertura, ritmo, fuente? }]. La fuente de cada archivo tiene prioridad sobre la general.
+ *  Devuelve cuántas eran nuevas, repetidas o repetidas en el propio lote. */
 export async function guardarPartidas(jugadorClave, items, fuente = 'PGN') {
   return tx('partidas', 'readwrite', async (store) => {
     const existentes = await prom(store.index('jugador').getAll(jugadorClave));
     const porClave = new Map(existentes.map(p => [claveDePartida(p), p]));
-    const porHuella = new Map(existentes.map(p => [inspeccionarPartida(p).huella, p]).filter(([h]) => h));
+    // El jugador ya se ha identificado al importar: su nombre abreviado en otra
+    // fuente no convierte el mismo encuentro en una partida diferente.
+    const huellaDe = p => {
+      const huella = inspeccionarPartida(p).huella;
+      if (!huella) return '';
+      const datos = JSON.parse(huella);
+      datos[p.colorJugador === 'N' ? 2 : 1] = jugadorClave;
+      return JSON.stringify(datos);
+    };
+    const porHuella = new Map(existentes.map(p => [huellaDe(p), p]).filter(([h]) => h));
     const delLote = new Set();
     let nuevas = 0, repetidas = 0, enLote = 0;
 
-    for (const { partida, color, eco, apertura, ritmo } of items) {
+    for (const { partida, color, eco, apertura, ritmo, fuente: origen = fuente } of items) {
       const dato = {
         jugadorClave, evento: partida.cab('Event'), sitio: partida.cab('Site'), fecha: partida.cab('Date'), ronda: partida.cab('Round'),
         blancas: partida.cab('White'), negras: partida.cab('Black'), resultado: partida.resultado, eco, apertura, colorJugador: color,
-        pgn: partida.pgn, primerMovimiento: partida.primerMovimiento, ritmo, origen: fuente
+        pgn: partida.pgn, primerMovimiento: partida.primerMovimiento, ritmo, origen
       };
       const k = claveDePartida(dato);
-      const huella = inspeccionarPartida(dato).huella;
+      const huella = huellaDe(dato);
       const cabeceraIgual = porClave.get(k);
       const ya = (huella && porHuella.get(huella)) || (cabeceraIgual?.pgn === dato.pgn ? cabeceraIgual : null);
       if (ya) {
         // La partida ya estaba: si ahora llega de otra fuente, se anota también esa.
-        const unidas = unirFuentes(ya.origen, fuente);
+        const unidas = unirFuentes(ya.origen, origen);
         if (unidas !== ya.origen) { ya.origen = unidas; await prom(store.put(ya)); }
         if (delLote.has(ya.id)) enLote++; else repetidas++;
         continue;

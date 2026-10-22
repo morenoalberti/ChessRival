@@ -587,7 +587,7 @@ function montarAcciones() {
   $('importarBtn').innerHTML = contenidoBoton('descargar', 'Importar partidas');
   $('analizarBtn').innerHTML = contenidoBoton('barras', 'Analizar');
   $('yottaBtn').addEventListener('click', yottaChess);
-  $('importarBtn').addEventListener('click', async () => { await megaListo; if (await abrirImportar(jugador, { alAbrirYotta: yottaChess })) await recargar(); });
+  $('importarBtn').addEventListener('click', async () => { await megaListo; if (await abrirImportar(jugador)) await recargar(); });
   $('analizarBtn').addEventListener('click', async () => { if (await abrirAnalizar(jugador, { muestra: visibles() })) await recargar(); });
 }
 

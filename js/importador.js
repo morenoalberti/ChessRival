@@ -15,13 +15,13 @@ export async function importar(jugador, lecturas, fuente = 'PGN', progreso = () 
   await cargarLibroAperturas();
   let leidas = 0, ajenas = 0;
   const aGuardar = [];
-  for (const { partidas } of lecturas) {
+  for (const { partidas, fuente: fuenteArchivo = fuente } of lecturas) {
     for (const partida of partidas) {
       leidas++;
       const color = colorDelJugador(jugador, partida);
       if (!color) { ajenas++; continue; }
       const { eco, apertura } = clasificarApertura(partida);
-      aGuardar.push({ partida, color, eco, apertura, ritmo: detectarRitmo(partida) });
+      aGuardar.push({ partida, color, eco, apertura, ritmo: detectarRitmo(partida), fuente: fuenteArchivo });
       if (aGuardar.length % 200 === 0) { progreso(`Leyendo partidas… ${aGuardar.length}`); await new Promise(r => setTimeout(r)); }
     }
   }
@@ -38,7 +38,7 @@ export function mensaje(nombre, r) {
     return `Los archivos tienen ${r.leidas} partidas, pero ninguna de ${nombre}. Comprueba que su nombre aparece igual en las cabeceras White y Black.`;
   let m = r.nuevas === 0 ? 'No hay partidas nuevas.' : r.nuevas === 1 ? 'Se ha importado 1 partida nueva.' : `Se han importado ${r.nuevas} partidas nuevas.`;
   if (r.repetidas > 0) m += ` ${r.repetidas} ya estaban guardadas.`;
-  if (r.enLote > 0) m += ` ${r.enLote} venían repetidas en el propio archivo.`;
+  if (r.enLote > 0) m += ` ${r.enLote} ${r.enLote === 1 ? 'estaba repetida' : 'estaban repetidas'} entre los archivos seleccionados.`;
   if (r.ajenas > 0) m += ` ${r.ajenas} eran de otros jugadores y se han ignorado.`;
   return m;
 }

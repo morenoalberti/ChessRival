@@ -1,6 +1,5 @@
 // Lectura de PGN, ritmo de juego y reconocimiento del jugador en una partida (PgnParser.cs, RitmoPartida.cs, ImportadorPartidas.cs).
 
-const RE_INICIO = /^\s*\[Event\s/gm;
 const RE_CABECERA = /^\s*\[(\w+)\s+"((?:[^"\\]|\\.)*)"\s*\]\s*$/gm;
 const RESULTADOS = new Set(['1-0', '0-1', '1/2-1/2', '½-½', '*']);
 
@@ -29,19 +28,24 @@ export function decodificar(bytes) {
 }
 
 export function leerPgn(texto) {
-  const partidas = [];
-  const inicios = [...texto.matchAll(RE_INICIO)].map(m => m.index);
-  for (let i = 0; i < inicios.length; i++) {
-    const trozo = texto.slice(inicios[i], i + 1 < inicios.length ? inicios[i + 1] : texto.length).trim();
-    const cabeceras = {};
-    let ultima = 0;
-    for (const m of trozo.matchAll(RE_CABECERA)) {
-      cabeceras[m[1].toLowerCase()] = m[2].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-      ultima = m.index + m[0].length;
+  // Algunas exportaciones de AhoraAjedrez escapan el corchete final y omiten Event.
+  // Solo se repara el cierre de etiquetas; las jugadas y los datos se conservan.
+  texto = texto.replace(/^([ \t]*\[\w+[ \t]+"(?:[^"\\]|\\.)*")[ \t]*\\\]([ \t]*\r?)$/gm, '$1]$2');
+  const bloques = [];
+  for (const m of texto.matchAll(RE_CABECERA)) {
+    let bloque = bloques.at(-1);
+    const clave = m[1].toLowerCase();
+    if (!bloque || texto.slice(bloque.fin, m.index).trim() || (clave === 'event' && bloque.cabeceras.event !== undefined)) {
+      bloque = { inicio: m.index, fin: 0, cabeceras: {} };
+      bloques.push(bloque);
     }
-    partidas.push(new PartidaPgn(cabeceras, trozo.slice(ultima).trim(), trozo));
+    bloque.cabeceras[clave] = m[2].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+    bloque.fin = m.index + m[0].length;
   }
-  return partidas;
+  return bloques.map((b, i) => {
+    const fin = bloques[i + 1]?.inicio ?? texto.length;
+    return new PartidaPgn(b.cabeceras, texto.slice(b.fin, fin).trim(), texto.slice(b.inicio, fin).trim());
+  });
 }
 
 /** Jugadas en notación algebraica, sin números, comentarios, variantes ni resultado. */
@@ -123,7 +127,16 @@ function nombreCoincide(nombre, enPgn) {
   if (!a.size || !b.size) return false;
   if (a.size === b.size && [...a].every(x => b.has(x))) return true;
   const [menor, mayor] = a.size <= b.size ? [a, b] : [b, a];
-  return menor.size >= 2 && [...menor].every(x => mayor.has(x));
+  if (menor.size >= 2 && [...menor].every(x => mayor.has(x))) return true;
+  // «Terron Elena, Francisco M.»: mismos apellidos y primer nombre completo;
+  // una inicial solo puede abreviar un nombre adicional, nunca decidir por sí sola la identidad.
+  const partesA = nombre.split(','), partesB = enPgn.split(',');
+  if (partesA.length !== 2 || partesB.length !== 2) return false;
+  const apA = palabras(partesA[0]), apB = palabras(partesB[0]);
+  if (apA.size !== apB.size || ![...apA].every(x => apB.has(x))) return false;
+  const na = [...palabras(partesA[1])], nb = [...palabras(partesB[1])];
+  return na.length > 1 && na.length === nb.length && na[0].length > 1 && na[0] === nb[0]
+    && na.every((x, i) => x === nb[i] || (x.length === 1 && nb[i].startsWith(x)) || (nb[i].length === 1 && x.startsWith(nb[i])));
 }
 
 /** «B» o «N» según el color con el que juega el jugador; null si la partida no es suya. Si el PGN trae el ID FIDE, manda sobre el nombre. */

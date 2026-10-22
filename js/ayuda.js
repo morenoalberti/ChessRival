@@ -71,6 +71,7 @@ const SECCIONES = [
   ]],
   ['importar', 'Importar partidas y MegaDatabase', 'Estudiar al rival', [
     p('Añade las partidas del jugador desde archivos PGN o desde tu MegaDatabase de ChessBase.'),
+    p('Cada tarjeta de archivos tiene su propio botón «Elegir archivos» y muestra los PGN cargados y las partidas del jugador. Elige el PGN de YottaChess o AhoraAjedrez en su tarjeta; usa «Archivos PGN» para otras fuentes. Pulsa «Importar» para guardarlas. Las repetidas entre fuentes se unen y conservan sus análisis y anotaciones.'),
     h('Importar paso a paso'),
     pasos('Conecta la MegaDatabase con «Elegir» en la pantalla principal, si quieres utilizarla.',
       'Abre la ficha y pulsa «Importar partidas». Elige o arrastra los archivos PGN, o utiliza la base conectada.',
