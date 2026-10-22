@@ -169,7 +169,7 @@ export const exactas = {
   'Buscando PGN del jugador…': 'Looking for this player’s PGNs…',
   'Pulsa «Permitir» para buscar en esta carpeta.': 'Press “Allow” to search this folder.',
   'No se pudo completar la búsqueda.': 'The search could not be completed.',
-  'No se encontraron PGN de este jugador.': 'No PGNs for this player were found.',
+  'No existen PGN de este jugador': 'There are no PGNs for this player',
   'Selecciona una carpeta con «Cambiar».': 'Select a folder with “Change”.',
   'No se pudo leer la carpeta. Selecciónala de nuevo con «Cambiar».': 'Could not read the folder. Select it again with “Change”.',
   'No se pudo autorizar la carpeta. Selecciónala de nuevo con «Cambiar».': 'Could not authorise the folder. Select it again with “Change”.',

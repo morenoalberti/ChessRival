@@ -89,7 +89,7 @@ export function abrirImportar(jugador) {
         if (!propias.length) {
           lista.className = 'suave';
           lista.textContent = estado.buscando ? 'Buscando PGN del jugador…' : estado.pendiente ? 'Pulsa «Permitir» para buscar en esta carpeta.'
-            : estado.error ? 'No se pudo completar la búsqueda.' : estado.carpeta ? 'No se encontraron PGN de este jugador.' : 'Selecciona una carpeta con «Cambiar».';
+            : estado.error ? 'No se pudo completar la búsqueda.' : estado.carpeta ? 'No existen PGN de este jugador' : 'Selecciona una carpeta con «Cambiar».';
         }
         else {
           lista.className = '';
@@ -143,7 +143,7 @@ export function abrirImportar(jugador) {
               carpetas[id].pendiente = encontrados.pendiente;
               carpetas[id].errores = encontrados.errores;
             }
-            lecturas.push(...repartirPgn(encontrados.lecturas, grupo.fuentes));
+            lecturas.push(...repartirPgn(encontrados.lecturas, grupo.fuentes, jugador));
           } catch (e) {
             if (e.name !== 'AbortError') for (const id of grupo.fuentes) carpetas[id].error = 'No se pudo leer la carpeta. Selecciónala de nuevo con «Cambiar».';
           }

@@ -97,16 +97,16 @@ test('Una carpeta compartida se lee una vez y reparte los PGN entre las webs sin
   const otraReferencia = { name: 'Descargas' }, distinta = { name: 'Otros PGN' };
   const grupos = await agruparCarpetasPgn([{ id: 'yotta', carpeta }, { id: 'ahora', carpeta: otraReferencia }, { id: 'pgn', carpeta: distinta }]);
   assert.deepEqual(grupos.map(g => g.fuentes), [['yotta', 'ahora'], ['pgn']]);
-  const archivos = [archivoCarpeta('estudiado, uno segundo.pgn', pgnFuentes().replace('[White ', '[Source "YottaBase"]\n[White ')), archivoCarpeta('Estudiado__Uno_Segundo_todas_1 (2).pgn', pgnFuentes(true)), archivoCarpeta('renombrado.pgn', pgnFuentes())];
+  const archivos = [archivoCarpeta('estudiado, uno segundo.pgn', pgnFuentes().replace('[White ', '[Source "YottaBase"]\n[White ')), archivoCarpeta('Estudiado__Uno_Segundo_todas_1 (2).pgn', pgnFuentes(true)), archivoCarpeta('Estudiado Uno Segundo.pgn', pgnFuentes())];
   const { lecturas } = await buscarPgnEnCarpeta(carpetaPrueba(archivos), jugadorFuentes);
   assert.deepEqual(lecturas.map(fuenteDePgn), ['yotta', 'ahora', null]);
-  const repartidas = repartirPgn(lecturas, grupos[0].fuentes);
+  const repartidas = repartirPgn(lecturas, grupos[0].fuentes, jugadorFuentes);
   assert.deepEqual(repartidas.map(l => [l.tarjeta, l.fuente, l.sinOrigen]), [['yotta', 'YottaChess', false], ['ahora', 'AhoraAjedrez', false], ['yotta', 'PGN', true]]);
   assert.equal(new Set(repartidas.map(l => l.archivo.name)).size, 3);
-  assert.equal(repartirPgn([lecturas[2]], ['yotta', 'ahora', 'pgn'])[0].tarjeta, 'pgn');
-  assert.equal(repartirPgn([lecturas[2]], ['ahora'])[0].fuente, 'AhoraAjedrez');
-  assert.deepEqual(repartirPgn(lecturas.slice(0, 2), ['ahora']).map(l => l.archivo.name), ['Estudiado__Uno_Segundo_todas_1 (2).pgn']);
-  assert.equal(repartirPgn(lecturas, ['pgn']).length, 3);
+  assert.equal(repartirPgn([lecturas[2]], ['yotta', 'ahora', 'pgn'], jugadorFuentes)[0].tarjeta, 'pgn');
+  assert.equal(repartirPgn([lecturas[2]], ['ahora'], jugadorFuentes)[0].fuente, 'AhoraAjedrez');
+  assert.deepEqual(repartirPgn(lecturas.slice(0, 2), ['ahora'], jugadorFuentes).map(l => l.archivo.name), ['Estudiado__Uno_Segundo_todas_1 (2).pgn']);
+  assert.equal(repartirPgn(lecturas, ['pgn'], jugadorFuentes).length, 3);
   // Las etiquetas prevalecen incluso si el archivo se renombra como una descarga de otra web.
   assert.equal(fuenteDePgn({ ...lecturas[0], archivo: { name: 'nombre_todas_1.pgn' } }), 'yotta');
 });
@@ -117,6 +117,35 @@ test('Los formatos reales descargados de ambas webs permiten distinguir su proce
   const lecturas = await Promise.all(textos.map(t => leerArchivo(archivoFuentes(t), jugadorFuentes)));
   lecturas[0].archivo.name = 'estudiado, uno segundo.pgn'; lecturas[1].archivo.name = 'Estudiado__Uno_Segundo_todas_1.pgn';
   assert.deepEqual(lecturas.map(fuenteDePgn), ['yotta', 'ahora']);
+});
+
+test('Terron Elena no toma los PGN de Cardoso o Garcia Claros aunque figure como rival en sus partidas', async () => {
+  const jugador = { name: 'Terron Elena, Francisco Miguel', fideId: '2210576' };
+  const pgn = pgnFuentes().replace('Estudiado, Uno Segundo', jugador.name);
+  const contraTerron = nombre => pgnFuentes().replace('Estudiado, Uno Segundo', nombre)
+    .replace('Rival, Dos', jugador.name).replace('[White ', '[Source "YottaBase"]\n[White ');
+  const archivos = [archivoCarpeta('cardoso garcia, sergio.pgn', contraTerron('Cardoso Garcia, Sergio')),
+    archivoCarpeta('garcia claros, salvador.pgn', contraTerron('Garcia Claros, Salvador')),
+    archivoCarpeta('Terron_Elena__Francisco_Miguel_todas_131 (1).pgn', pgn)];
+  const r = await buscarPgnEnCarpeta(carpetaPrueba(archivos), jugador);
+  assert.equal(r.lecturas.length, 3); // Los tres contienen una partida suya, pero solo uno es su descarga.
+  const repartidas = repartirPgn(r.lecturas, ['yotta', 'ahora'], jugador);
+  assert.equal(repartidas.filter(l => l.tarjeta === 'yotta').length, 0);
+  assert.deepEqual(repartidas.map(l => l.archivo.name), ['Terron_Elena__Francisco_Miguel_todas_131 (1).pgn']);
+  assert.equal(repartirPgn(r.lecturas, ['yotta'], jugador).length, 0);
+  // «Archivos PGN» sigue admitiendo colecciones generales y extrae sus partidas.
+  assert.equal(repartirPgn(r.lecturas, ['pgn'], jugador).length, 3);
+  archivos.push(archivoCarpeta('TERRÓN ELENA, FRANCISCO MIGUEL (2).PGN', pgn.replace('[White ', '[Source "YottaBase"]\n[White ')));
+  const conDescarga = await buscarPgnEnCarpeta(carpetaPrueba(archivos), jugador);
+  assert.equal(repartirPgn(conDescarga.lecturas, ['yotta', 'ahora'], jugador).filter(l => l.tarjeta === 'yotta').length, 1);
+});
+
+test('El nombre del archivo de la web debe identificar al jugador completo y su contenido también debe coincidir', async () => {
+  const nombres = ['Estudiado__Uno_Segundo_todas_2.pgn', 'uno segundo estudiado (1).pgn', 'Estudiado, Uno.pgn', 'Estudiado, Uno S.pgn', 'Otro Estudiado Uno Segundo.pgn'];
+  const { lecturas } = await buscarPgnEnCarpeta(carpetaPrueba(nombres.map(n => archivoCarpeta(n, pgnFuentes()))), jugadorFuentes);
+  assert.deepEqual(repartirPgn(lecturas, ['yotta', 'ahora'], jugadorFuentes).map(l => l.archivo.name), nombres.slice(0, 2));
+  const falso = await buscarPgnEnCarpeta(carpetaPrueba([archivoCarpeta(nombres[0], pgnFuentes().replace('Estudiado, Uno Segundo', 'Otro, Jugador'))]), jugadorFuentes);
+  assert.equal(falso.lecturas.length, 0);
 });
 function partida({ id = 1, fecha = '2026.10.01', evento = 'Prueba', movimientos = '1. f3 e5 2. g4 Qh4#', resultado = '0-1', color = 'B', elo = '2000', eloRival = '2000', control = '5400+30', extra = '' } = {}) {
   const blancas = color === 'B' ? 'Estudiado, Uno' : 'Rival, Dos', negras = color === 'N' ? 'Estudiado, Uno' : 'Rival, Dos';

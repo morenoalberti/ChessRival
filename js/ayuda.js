@@ -73,6 +73,7 @@ const SECCIONES = [
     p('Añade las partidas del jugador desde archivos PGN o desde tu MegaDatabase de ChessBase.'),
     p('Cada tarjeta recuerda una carpeta elegida con «Cambiar» y muestra solo su nombre. Al abrir el cuadro se buscan sus archivos PGN, sin entrar en subcarpetas. El jugador se reconoce por el ID FIDE o el nombre dentro del PGN. Se muestran los archivos encontrados y sus partidas; pulsa «Importar» para guardarlas. Las repetidas entre fuentes se unen y conservan sus análisis y anotaciones.'),
     p('YottaChess y AhoraAjedrez pueden compartir carpeta: sus PGN se distinguen por las etiquetas de origen y el nombre de descarga. Cada archivo se muestra una sola vez. Si no se reconoce su procedencia, se indica y se importa como PGN genérico.'),
+    p('En YottaChess y AhoraAjedrez, el archivo debe llevar el nombre completo del jugador. No se incluyen descargas de otros jugadores aunque contengan partidas contra él. Usa «Archivos PGN» para colecciones generales.'),
     h('Importar paso a paso'),
     pasos('Conecta la MegaDatabase con «Elegir» en la pantalla principal, si quieres utilizarla.',
       'Abre la ficha y pulsa «Importar partidas». En Edge o Chrome, elige una carpeta con «Cambiar» en cada fuente que quieras usar. Si aparece «Permitir», púlsalo para renovar el acceso.',

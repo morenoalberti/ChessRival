@@ -59,13 +59,24 @@ export async function agruparCarpetasPgn(entradas) {
   return grupos;
 }
 
+/** Las webs nombran sus descargas por el jugador. Contener alguna partida suya
+ * como rival de otra persona no convierte ese archivo en su descarga. */
+function archivoDelJugador(nombre, jugador) {
+  const palabras = texto => String(texto ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ').trim().split(/\s+/).filter(Boolean).sort().join(' ');
+  const base = nombre.replace(/\.pgn$/i, '').replace(/\s*\(\d+\)$/, '').replace(/_todas_\d+$/i, '');
+  const buscado = palabras(jugador?.name);
+  return !!buscado && palabras(base) === buscado;
+}
+
 /** En carpetas compartidas, cada archivo aparece una vez en la tarjeta de su web.
  * Si no se reconoce su origen, queda indicado y se conserva como PGN genérico. */
-export function repartirPgn(lecturas, fuentes) {
+export function repartirPgn(lecturas, fuentes, jugador) {
   return lecturas.flatMap(l => {
     const detectada = fuenteDePgn(l);
     if (detectada && !fuentes.includes(detectada) && !fuentes.includes('pgn')) return [];
     const tarjeta = fuentes.includes(detectada) ? detectada : fuentes.includes('pgn') ? 'pgn' : fuentes[0];
+    if (tarjeta !== 'pgn' && !archivoDelJugador(l.archivo.name, jugador)) return [];
     const sinOrigen = !detectada && fuentes.length > 1;
     return { ...l, tarjeta, sinOrigen, fuente: detectada === 'yotta' ? 'YottaChess' : detectada === 'ahora' ? 'AhoraAjedrez'
       : sinOrigen ? 'PGN' : tarjeta === 'yotta' ? 'YottaChess' : tarjeta === 'ahora' ? 'AhoraAjedrez' : 'PGN' };
