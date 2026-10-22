@@ -40,7 +40,8 @@ const pausa = (ms) => new Promise(r => setTimeout(r, ms));
 const sinCache = (url) => `${url}${url.includes('?') ? '&' : '?'}_=${Date.now()}`;
 
 async function descargarHtml(url, cabeceras = {}, intento = 0) {
-  const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'es,en;q=0.8', ...cabeceras }, redirect: 'follow' });
+  const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'es,en;q=0.8', ...cabeceras }, redirect: 'follow',
+    signal: new URL(url).hostname === 'ratings.fide.com' ? AbortSignal.timeout(8000) : undefined });
   if (!r.ok) throw new ErrorUsuario(`${new URL(url).hostname} respondió con el error ${r.status}.`, 502);
   const bytes = await r.arrayBuffer();
   if (bytes.byteLength <= 8 && intento < REINTENTOS_FIDE) { await pausa(700 * (intento + 1)); return descargarHtml(sinCache(url), cabeceras, intento + 1); }   // vacía (solo el BOM): se vuelve a pedir
@@ -232,13 +233,20 @@ async function buscarFide(q) {
   if (partes.length > 2) intentos.push(partes.slice(0, 2), partes.slice(-2));
 
   let candidatos = [];
+  let fallo = null;
   for (const intento of intentos) {
-    candidatos = await consultarFide(intento);
+    try { candidatos = await consultarFide(intento); }
+    catch (ex) { fallo = ex; break; }
     if (!/^\d+$/.test(q)) {
       const palabras = sinTildes(q).split(/\s+/).filter(Boolean);
       candidatos = candidatos.filter(c => { const n = sinTildes(c.nombre); return palabras.every(p => n.includes(p)); });
     }
     if (candidatos.length > 0) break;
+  }
+  if (!candidatos.length) {
+    const respaldo = await buscarLichess(q);
+    if (respaldo.length) candidatos = respaldo;
+    else if (fallo) throw fallo;
   }
   return candidatos.sort((a, b) => b.elo - a.elo || a.nombre.localeCompare(b.nombre)).slice(0, 60);
 }
@@ -263,7 +271,7 @@ async function verificarJugador(j) {
   let c = null;
 
   if (/^\d+$/.test(j.fideId)) {
-    const porId = (await consultarFide([j.fideId])).find(x => x.fideId === j.fideId);
+    const porId = (await buscarFide(j.fideId)).find(x => x.fideId === j.fideId);
     if (porId && coincideNombre(nombre, porId.nombre)) c = porId;
   }
   if (!c) {
@@ -306,18 +314,11 @@ function abreviarTitulo(t) {
 /** Título(s) y edad del jugador, de su perfil público. */
 async function fichaFide(id) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
-  const l = await jugadorLichess(id);              // Lichess primero: responde siempre y rápido; la FIDE solo si Lichess no conoce al jugador
-  if (l) return { titulo: l.title ?? '', edad: perfilDeLichess(l).edad };
-  const html = await descargarHtml(`https://ratings.fide.com/profile/${id}/statistics`, {}, REINTENTOS_FIDE).catch(() => '');
-  if (html.length < 100) return { titulo: '', edad: '' };
-  const titulos = [];
-  for (const m of html.matchAll(/<h5>([^<]*title[^<]*)<\/h5>\s*<div class="profile-info-title\s*">.*?<p>([^<]*)<\/p>/gis)) {
-    const abreviado = abreviarTitulo(m[2].trim());
-    if (abreviado && !titulos.includes(abreviado)) titulos.push(abreviado);
-  }
-  const anio = entero(/class="profile-info-byear\s*"[^>]*>([^<]*)</i.exec(html)?.[1] ?? '');
-  const actual = new Date().getFullYear();
-  return { titulo: titulos.join(' · '), edad: anio > 1900 && anio <= actual ? `${actual - anio} años` : '' };
+  const html = await descargarHtml(sinCache(`https://ratings.fide.com/profile/${id}/statistics`), {}, REINTENTOS_FIDE).catch(() => '');
+  const perfil = datosDePerfil(html);
+  if (perfilValido(perfil)) return { titulo: perfil.titulo, edad: perfil.edad };
+  const l = await jugadorLichess(id);
+  return l ? { titulo: l.title ?? '', edad: perfilDeLichess(l).edad } : { titulo: '', edad: '' };
 }
 
 
@@ -329,10 +330,31 @@ async function fichaFide(id) {
 
 async function jugadorLichess(id) {
   try {
-    const r = await fetch(`https://lichess.org/api/fide/player/${id}`, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
-    return r.ok ? await r.json() : null;
+    const r = await fetch(`https://lichess.org/api/fide/player/${id}`, { headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+    const l = r.ok ? await r.json() : null;
+    return l && String(l.id) === String(id) && typeof l.name === 'string' && l.name.trim() ? l : null;
   } catch { return null; }
 }
+
+async function buscarLichess(q) {
+  try {
+    const lista = /^\d+$/.test(q) ? [await jugadorLichess(q)] : await (async () => {
+      const r = await fetch(`https://lichess.org/api/fide/player/search?q=${encodeURIComponent(q)}`, {
+        headers: { 'User-Agent': UA, Accept: 'application/json' }, signal: AbortSignal.timeout(8000)
+      });
+      return r.ok ? await r.json() : [];
+    })();
+    const palabras = sinTildes(q).split(/\s+/).filter(Boolean);
+    return (Array.isArray(lista) ? lista : []).filter(l => l && /^\d+$/.test(String(l.id)) && typeof l.name === 'string'
+      && (/^\d+$/.test(q) ? String(l.id) === q : palabras.every(p => sinTildes(l.name).includes(p)))).map(l => ({
+      fideId: String(l.id), nombre: l.name, titulo: l.title ?? '', federacion: l.federation ?? '',
+      eloStandard: entero(l.standard), eloRapid: entero(l.rapid), eloBlitz: entero(l.blitz),
+      elo: entero(l.standard) || entero(l.rapid) || entero(l.blitz), nacimiento: l.year ? String(l.year) : ''
+    }));
+  } catch { return []; }
+}
+
+const perfilValido = p => !!(p.nombre || p.nacimiento || p.titulo || Object.values(p.elos).some(Boolean));
 
 function perfilDeLichess(l) {
   const actual = new Date().getFullYear();
@@ -368,7 +390,7 @@ async function fotoWikidata(id) {
 
 async function historialLichess(id) {
   try {
-    const r = await fetch(`https://lichess.org/fide/${id}/x`, { headers: { 'User-Agent': UA }, redirect: 'follow' });
+    const r = await fetch(`https://lichess.org/fide/${id}/x`, { headers: { 'User-Agent': UA }, redirect: 'follow', signal: AbortSignal.timeout(8000) });
     if (!r.ok) return [];
     const m = /fideRatingChart',\{init:(\{.*?\])\}/s.exec(await r.text());
     if (!m) return [];
@@ -395,7 +417,7 @@ async function historialLichess(id) {
 const CAB_AJAX = (id, pagina) => ({ 'Referer': `https://ratings.fide.com/profile/${id}/${pagina}`, 'X-Requested-With': 'XMLHttpRequest' });
 
 async function jsonFide(url, cabeceras, intento = 0) {
-  const r = await fetch(url, { headers: { 'User-Agent': UA, ...cabeceras } });
+  const r = await fetch(url, { headers: { 'User-Agent': UA, ...cabeceras }, signal: AbortSignal.timeout(8000) });
   if (!r.ok) throw new ErrorUsuario(`La FIDE respondió con el error ${r.status}.`, 502);
   const t = (await r.text()).replace(/^\uFEFF/, '').trim();
   if (!t && intento < REINTENTOS_FIDE) { await pausa(700 * (intento + 1)); return jsonFide(sinCache(url), cabeceras, intento + 1); }   // vacía: se vuelve a pedir
@@ -411,15 +433,19 @@ function ratingDePerfil(html, clase) {
 /** Título(s), edad, Elo por ritmo y resultados con blancas y negras: lo que enseña la franja de la ficha. */
 async function estadisticasFide(id) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
-  // Lichess primero: no hay que esperar a la FIDE (que a menudo no responde). Da el Elo por ritmo, el título y la edad; la FIDE solo se consulta si Lichess no conoce al jugador.
-  const l = await jugadorLichess(id);
-  if (l) { const perfil = perfilDeLichess(l); return { bloques: bloquesSoloElo(perfil.elos), parcial: true, ...perfil }; }
+  // FIDE primero; Lichess solo si no se consigue un perfil válido de la fuente oficial.
   const [html, datos] = await Promise.all([
-    descargarHtml(`https://ratings.fide.com/profile/${id}/statistics`, {}, REINTENTOS_FIDE).catch(() => ''),
-    jsonFide(`https://ratings.fide.com/a_data_stats.php?id1=${id}&id2=0`, CAB_AJAX(id, 'statistics'), REINTENTOS_FIDE).catch(() => null)
+    descargarHtml(sinCache(`https://ratings.fide.com/profile/${id}/statistics`), {}, REINTENTOS_FIDE).catch(() => ''),
+    jsonFide(sinCache(`https://ratings.fide.com/a_data_stats.php?id1=${id}&id2=0`), CAB_AJAX(id, 'statistics'), REINTENTOS_FIDE).catch(() => null)
   ]);
-  const fila = Array.isArray(datos) ? datos[0] : null;
-  if (!fila || html.length < 100) return { bloques: [], ...(html.length >= 100 ? datosDePerfil(html) : {}) };
+  const perfil = datosDePerfil(html);
+  if (!perfilValido(perfil)) {
+    const l = await jugadorLichess(id);
+    if (l) { const respaldo = perfilDeLichess(l); return { bloques: bloquesSoloElo(respaldo.elos), parcial: true, ...respaldo }; }
+    return { bloques: [] };
+  }
+  const fila = Array.isArray(datos) && datos[0] && typeof datos[0] === 'object' && ('white_total' in datos[0] || 'black_total' in datos[0]) ? datos[0] : null;
+  if (!fila) return { bloques: bloquesSoloElo(perfil.elos), parcial: true, ...perfil };
 
   const v = (campo) => entero(String(fila[campo] ?? '0'));
   const elos = { Standard: ratingDePerfil(html, 'profile-standart'), Rapid: ratingDePerfil(html, 'profile-rapid'), Blitz: ratingDePerfil(html, 'profile-blitz') };
@@ -434,7 +460,7 @@ async function estadisticasFide(id) {
   };
   return {
     bloques: [bloque('Total', ''), bloque('Standard', '_std'), bloque('Rapid', '_rpd'), bloque('Blitz', '_blz')],
-    ...datosDePerfil(html)
+    ...perfil
   };
 }
 
@@ -469,47 +495,53 @@ const MESES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'o
 /** La evolución del Elo mes a mes (Standard, Rapid y Blitz; null si ese mes no tenía). */
 async function historialElo(id) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
-  const deLichess = await historialLichess(id);       // Lichess primero; la FIDE solo si Lichess no tiene el historial
-  if (deLichess.length) return deLichess;
-  const datos = await jsonFide(`https://ratings.fide.com/a_chart_data.phtml?event=${id}&period=0`, CAB_AJAX(id, 'chart'), REINTENTOS_FIDE).catch(() => null);
-  if (!Array.isArray(datos) || !datos.length) return [];
+  const datos = await jsonFide(sinCache(`https://ratings.fide.com/a_chart_data.phtml?event=${id}&period=0`), CAB_AJAX(id, 'chart'), REINTENTOS_FIDE).catch(() => null);
   const num = (fila, campo) => { const n = entero(String(fila[campo] ?? '')); return n > 0 ? n : null; };
   const puntos = [];
-  for (const fila of datos) {
+  for (const fila of Array.isArray(datos) ? datos : []) {
+    if (!fila || typeof fila !== 'object') continue;
     const [anio, mes] = String(fila.date_2 ?? '').split('-');
     const m = MESES.indexOf((mes ?? '').toLowerCase());
     if (!entero(anio) || m < 0) continue;
-    puntos.push({ fecha: `${anio}-${String(m + 1).padStart(2, '0')}`, standard: num(fila, 'rating'), rapid: num(fila, 'rapid_rtng'), blitz: num(fila, 'blitz_rtng') });
+    const punto = { fecha: `${anio}-${String(m + 1).padStart(2, '0')}`, standard: num(fila, 'rating'), rapid: num(fila, 'rapid_rtng'), blitz: num(fila, 'blitz_rtng') };
+    if ([punto.standard, punto.rapid, punto.blitz].some(v => v !== null)) puntos.push(punto);
   }
-  return puntos.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  return puntos.length ? puntos.sort((a, b) => a.fecha.localeCompare(b.fecha)) : historialLichess(id);
 }
 
 async function fotoFide(id, cors) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
   const cabeceras = { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=86400', ...cors };
-  // 1.º Lichess, 2.º Wikimedia Commons (por ID FIDE), 3.º la FIDE (una sola vez: casi nunca responde a los servidores)
+  // FIDE primero. Una página vacía o una descarga fallida permiten probar las fuentes de respaldo.
+  let falloOficial = false;
+  try {
+    const html = await descargarHtml(sinCache(`https://ratings.fide.com/profile/${id}`), {}, REINTENTOS_FIDE);
+    if (html.trim().length < 100) throw new Error('Perfil vacío');
+    const src = parse(html).querySelector('img.profile-top__photo')?.getAttribute('src');
+    if (src?.startsWith('data:')) {
+      const coma = src.indexOf(',');
+      const tipo = /data:(image\/[^;,]+)/.exec(src)?.[1];
+      if (!tipo || !src.slice(0, coma).includes(';base64')) throw new Error('Foto no válida');
+      const bytes = Uint8Array.from(atob(src.slice(coma + 1)), c => c.charCodeAt(0));
+      if (!bytes.length) throw new Error('Foto vacía');
+      return new Response(bytes, { headers: { ...cabeceras, 'Content-Type': tipo } });
+    }
+    if (src) {
+      const rf = await fetch(new URL(src.replace(/&amp;/g, '&'), 'https://ratings.fide.com/'), { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000) });
+      if (!rf.ok || !rf.headers.get('content-type')?.startsWith('image/')) throw new Error('Foto no disponible');
+      return new Response(rf.body, { headers: { ...cabeceras, 'Content-Type': rf.headers.get('content-type') } });
+    }
+    if (!perfilValido(datosDePerfil(html))) throw new Error('Perfil no válido');
+  } catch { falloOficial = true; }
+
+  // Lichess después de FIDE; Wikimedia Commons queda como última alternativa por ID exacto.
   const l = await jugadorLichess(id);
   const url = l?.photo?.medium;
-  let r = url ? await fetch(url, { headers: { 'User-Agent': UA } }).catch(() => null) : null;
-  if (!r?.ok) r = await fotoWikidata(id);
-  if (r?.ok) return new Response(r.body, { headers: { ...cabeceras, 'Content-Type': r.headers.get('content-type') ?? 'image/jpeg' } });
-
-  // La dirección habitual puede quedar almacenada como HTTP 200 sin contenido.
-  // Consulta fresca: una página vacía es un fallo temporal, nunca «no tiene foto».
-  const htmlPerfil = await descargarHtml(sinCache(`https://ratings.fide.com/profile/${id}`));
-  if (htmlPerfil.trim().length < 100) throw new ErrorUsuario('La FIDE no ha devuelto el perfil. Inténtalo de nuevo en un momento.', 503);
-  const src = parse(htmlPerfil).querySelector('img.profile-top__photo')?.getAttribute('src');
-  if (!src) return new Response('Sin foto', { status: 404, headers: { ...cors, 'Cache-Control': 'no-store' } });
-
-  if (src.startsWith('data:')) {
-    const coma = src.indexOf(',');
-    const tipo = /data:([^;,]+)/.exec(src)?.[1] ?? 'image/jpeg';
-    const bytes = Uint8Array.from(atob(src.slice(coma + 1)), c => c.charCodeAt(0));
-    return new Response(bytes, { headers: { 'Content-Type': tipo, 'Cache-Control': 'public, max-age=86400', ...cors } });
-  }
-  const rf = await fetch(new URL(src.replace(/&amp;/g, '&'), 'https://ratings.fide.com/'), { headers: { 'User-Agent': UA } });
-  if (!rf.ok) return new Response('Sin foto', { status: 404, headers: cors });
-  return new Response(rf.body, { headers: { 'Content-Type': rf.headers.get('content-type') ?? 'image/jpeg', 'Cache-Control': 'public, max-age=86400', ...cors } });
+  let r = url ? await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(8000) }).catch(() => null) : null;
+  if (!r?.ok || !r.headers.get('content-type')?.startsWith('image/')) r = await fotoWikidata(id);
+  if (r?.ok && r.headers.get('content-type')?.startsWith('image/')) return new Response(r.body, { headers: { ...cabeceras, 'Content-Type': r.headers.get('content-type') } });
+  if (falloOficial) throw new ErrorUsuario('La FIDE no ha devuelto el perfil ni se ha encontrado una foto de respaldo. Inténtalo de nuevo en un momento.', 503);
+  return new Response('Sin foto', { status: 404, headers: { ...cors, 'Cache-Control': 'no-store' } });
 }
 
 

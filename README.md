@@ -79,6 +79,8 @@ Las banderas de la barra superior cambian el idioma (español o inglés) al inst
 
 ## Datos y borrado
 
+FIDE es la fuente prioritaria para búsquedas, títulos, edad, estadísticas, historial y fotos. Lichess se consulta si FIDE falla, responde vacío o no proporciona datos válidos para esa consulta. Un perfil oficial válido conserva sus datos aunque falten campos opcionales; Lichess no sustituye sus valores ni inventa estadísticas por color. Las consultas a FIDE y Lichess tienen un tiempo límite para que el respaldo pueda entrar si FIDE deja de responder. En fotos, Wikimedia Commons queda como última alternativa después de Lichess; las copias FIDE verificadas siguen disponibles sin conexión a la fuente.
+
 Las fotos se consultan primero en `/api/fide/foto` del servidor Python de la web (Render o equipo local) y, si falla, en el Worker. Así la descarga FIDE no depende exclusivamente de Cloudflare. Solo se guardan imágenes válidas: una respuesta vacía no se conserva como ausencia permanente de foto. Al publicar cambios en esta ruta hay que usar `python servidor.py` como comando de inicio de Render.
 
 `assets/fotos-fide/` contiene copias FIDE verificadas de Diego Borrego Gil, Sergio Cardoso García y Francisco Miguel Terrón Elena, identificadas por su ID y con su procedencia en `fuentes.json`. El servidor entrega estas imágenes sin consultar la red. Este respaldo cubre esos tres jugadores; los demás siguen utilizando las fuentes externas. Si una descarga falla en Render, el registro del servidor identifica el ID y la causa de conexión para distinguirla de un perfil sin foto.
