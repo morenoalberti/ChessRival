@@ -129,4 +129,6 @@ La versión 2 del cálculo de análisis distingue mate de tablas. Los análisis 
 
 ## Publicación
 
+Cloudflare Web Analytics se carga con `js/analitica.js` en la página principal, las fichas y el visor independiente, solo para `chessrival.net` y `www.chessrival.net`. El uso local y los visores incrustados no envían mediciones. El token del sitio es público y permite enviar métricas, no acceder al panel de estadísticas. Las visitas y páginas vistas se consultan en Cloudflare → Web Analytics → chessrival.net, desde la publicación del medidor.
+
 `js/config.js` usa el Worker local en `localhost` y `127.0.0.1`. Para otro alojamiento hay que configurar la URL del Worker desplegado y ajustar `ORIGENES_PERMITIDOS` en `worker/wrangler.toml` al origen de la web. La selección local de MegaDatabase mediante `servidor.py` es específica de la ejecución local.
