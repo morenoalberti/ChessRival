@@ -30,6 +30,38 @@ const jugadorFuentes = { name: 'Estudiado, Uno Segundo', fideId: '8812345' };
 const pgnFuentes = (abreviado = false, fecha = '2026.10.01') =>
   `${abreviado ? '' : '[Event "Torneo"]\n'}[White "Estudiado, Uno ${abreviado ? 'S.' : 'Segundo'}"]\n[Black "Rival, Dos"]\n[Date "${fecha}"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0`;
 const archivoFuentes = texto => ({ name: 'partidas.pgn', size: texto.length, arrayBuffer: async () => new TextEncoder().encode(texto).buffer });
+
+test('El asistente prepara el resumen con ambos colores y lo envía sin confundir la API con las funciones de aperturas', async () => {
+  const locationAnterior = globalThis.location, fetchPrevio = globalThis.fetch;
+  globalThis.location = { hostname: 'localhost' };
+  try {
+    const { construirResumen, preguntar } = await import('../../js/asistente.js');
+    const blancas = partida({ id: 9101, color: 'B', movimientos: '1. e4 c5 2. Nf3 d6 3. d4 cxd4' });
+    const negras = partida({ id: 9102, color: 'N', movimientos: '1. e4 c5 2. Nf3 d6 3. d4 cxd4' });
+    for (const p of [blancas, negras]) { p.primerMovimiento = '1.e4'; p.eco = 'B90'; p.apertura = 'Sicilian Defense: Najdorf Variation'; }
+    const resumen = construirResumen({ name: 'Estudiado, Uno' }, [blancas, negras], []);
+    assert.match(resumen, /ÉL JUEGA CON BLANCAS/); assert.match(resumen, /ÉL JUEGA CON NEGRAS/);
+    assert.match(resumen, /Najdorf/); assert.match(resumen, /Partida #9101/); assert.match(resumen, /Partida #9102/);
+    let llamadas = 0;
+    globalThis.fetch = async (url, init) => {
+      llamadas++;
+      assert.equal(new URL(url).pathname, '/api/ia/preguntar'); assert.equal(init.method, 'POST');
+      assert.equal(init.headers['X-Clave-Ia'], 'clave-ficticia-de-prueba');
+      const cuerpo = JSON.parse(init.body);
+      assert.equal(cuerpo.modelo, 'gpt-4o-mini'); assert.match(cuerpo.sistema, /Najdorf/);
+      assert.deepEqual(cuerpo.mensajes, [{ rol: 'user', texto: '¿Qué juega con negras?' }]);
+      return { ok: true, json: async () => ({ texto: 'Respuesta de prueba' }) };
+    };
+    assert.equal(await preguntar({ proveedor: 'openai', modelo: 'gpt-4o-mini', clave: 'clave-ficticia-de-prueba' }, resumen, [['user', '¿Qué juega con negras?']]), 'Respuesta de prueba');
+    assert.equal(llamadas, 1);
+    blancas.apertura = '';
+    assert.match(construirResumen({ name: 'Estudiado, Uno' }, [blancas], []), /Siciliana/);
+    assert.match(construirResumen({ name: 'Sin partidas' }, [], []), /Partidas consideradas:.*0 partidas/);
+  } finally {
+    globalThis.fetch = fetchPrevio;
+    if (locationAnterior === undefined) delete globalThis.location; else globalThis.location = locationAnterior;
+  }
+});
 const archivoCarpeta = (nombre, texto) => [nombre, { kind: 'file', getFile: async () => ({ ...archivoFuentes(texto), name: nombre }) }];
 const carpetaPrueba = archivos => ({ queryPermission: async () => 'granted', async *entries() { yield* archivos; } });
 

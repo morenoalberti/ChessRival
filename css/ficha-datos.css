@@ -212,7 +212,7 @@ select:focus-visible, .ia-campos input:focus-visible { outline: none; border-col
 .analizar-barra i { display: block; height: 100%; width: 0; border-radius: 5px; background: linear-gradient(90deg, #3D82E8, var(--azul)); transition: width .4s ease; }
 .analizar-estado { margin: 8px 0 0; font-size: 13px; font-weight: 600; color: var(--azul); min-height: 1.2em; }
 .ia-campos { display: grid; grid-template-columns: 130px 1fr; align-items: center; gap: 10px 12px; } .ia-campos label { font-size: 14px; font-weight: 600; }
-.ia-modelo { display: flex; gap: 8px; } .ia-modelo input { flex: 1; min-width: 0; } .ia-ayuda { margin: 10px 0 0; font-size: 12px; min-height: 1.2em; }
+.ia-modelo { display: flex; gap: 8px; } .ia-modelo input, .ia-modelo select { flex: 1; min-width: 0; width: 0; } .ia-ayuda { margin: 10px 0 0; font-size: 12px; min-height: 1.2em; }
 
 /* Asistente de IA */
 .ia-mensaje.pensando { color: var(--texto-suave); font-style: italic; }

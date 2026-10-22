@@ -9,6 +9,8 @@ export function abrirConfigIa(actual) {
   return new Promise((resolver) => {
     const previo = document.activeElement;
     const vivos = {};
+    const OTRO_MODELO = '__otro_modelo__';
+    let cerrado = false;
     const velo = document.createElement('div');
     velo.className = 'velo';
     velo.innerHTML = `
@@ -21,11 +23,13 @@ export function abrirConfigIa(actual) {
             <select data-proveedor><option value="${Proveedor.OpenAI}">ChatGPT (OpenAI)</option><option value="${Proveedor.Anthropic}">Claude (Anthropic)</option></select>
             <label>Clave de ChatGPT</label><input type="password" data-clave-openai autocomplete="off" spellcheck="false" placeholder="sk-…">
             <label>Clave de Claude</label><input type="password" data-clave-anthropic autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
-            <label>Modelo</label>
-            <div class="ia-modelo"><input type="text" data-modelo list="iaModelos" autocomplete="off" spellcheck="false"><datalist id="iaModelos"></datalist>
+            <label for="iaModelo">Modelo</label>
+            <div class="ia-modelo"><select id="iaModelo" data-modelo></select>
               <button type="button" class="btn btn-secundario btn-chico" data-actualizar title="Pide al proveedor la lista de modelos que tiene tu clave"></button></div>
+            <label for="iaModeloManual" data-modelo-manual-label hidden>Otro modelo</label>
+            <input id="iaModeloManual" type="text" data-modelo-manual autocomplete="off" spellcheck="false" aria-label="Nombre de otro modelo" hidden>
           </div>
-          <p class="suave ia-ayuda" data-ayuda>Elige uno de la lista o escribe el nombre de otro modelo del mismo proveedor.</p>
+          <p class="suave ia-ayuda" data-ayuda>Abre la lista para ver todos los modelos. Para escribir otro, elige «Otro modelo…».</p>
           <div class="importar-botones">
             <button type="button" class="btn btn-primario" data-guardar></button>
             <button type="button" class="btn btn-secundario" data-cancelar></button>
@@ -39,19 +43,35 @@ export function abrirConfigIa(actual) {
     $('[data-proveedor]').value = actual.proveedor;
     $('[data-clave-openai]').value = actual.claveOpenAI;
     $('[data-clave-anthropic]').value = actual.claveAnthropic;
-    $('[data-modelo]').value = actual.modelo;
 
     const proveedor = () => $('[data-proveedor]').value;
     const claveActual = () => (proveedor() === Proveedor.OpenAI ? $('[data-clave-openai]') : $('[data-clave-anthropic]')).value.trim();
-    const llenar = () => { $('#iaModelos').innerHTML = (vivos[proveedor()] ?? modelosConocidos(proveedor())).map(m => `<option value="${esc(m)}">`).join(''); };
+    const modeloActual = () => $('[data-modelo]').value === OTRO_MODELO ? $('[data-modelo-manual]').value.trim() : $('[data-modelo]').value;
+    const mostrarManual = () => {
+      const manual = $('[data-modelo]').value === OTRO_MODELO;
+      $('[data-modelo-manual]').hidden = !manual;
+      $('[data-modelo-manual-label]').hidden = !manual;
+    };
+    const llenar = (modelo = modeloActual()) => {
+      const modelos = vivos[proveedor()] ?? modelosConocidos(proveedor());
+      $('[data-modelo]').innerHTML = modelos.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('')
+        + `<option value="${OTRO_MODELO}">Otro modelo…</option>`;
+      $('[data-modelo]').value = modelos.includes(modelo) ? modelo : OTRO_MODELO;
+      $('[data-modelo-manual]').value = modelo;
+      mostrarManual();
+    };
     const ayuda = (t) => { $('[data-ayuda]').textContent = t; };
-    llenar();
+    llenar(actual.modelo || modeloPorDefecto(proveedor()));
+
+    $('[data-modelo]').addEventListener('change', () => {
+      mostrarManual();
+      if ($('[data-modelo]').value === OTRO_MODELO) $('[data-modelo-manual]').focus();
+    });
 
     $('[data-proveedor]').addEventListener('change', () => {
-      const m = $('[data-modelo]').value, de = proveedorDe(m);
-      if ((de && de !== proveedor()) || !m.trim()) $('[data-modelo]').value = modeloPorDefecto(proveedor());   // el modelo que había era del otro proveedor
-      llenar();
-      ayuda('Elige uno de la lista o escribe el nombre de otro modelo del mismo proveedor.');
+      const m = modeloActual(), de = proveedorDe(m);
+      llenar((de && de !== proveedor()) || !m.trim() ? modeloPorDefecto(proveedor()) : m);
+      ayuda('Abre la lista para ver todos los modelos. Para escribir otro, elige «Otro modelo…».');
     });
 
     $('[data-actualizar]').addEventListener('click', async () => {
@@ -61,14 +81,19 @@ export function abrirConfigIa(actual) {
       ayuda('Consultando los modelos disponibles…');
       try {
         const modelos = await listarModelos(p, clave);
-        if (!modelos.length) { ayuda('El proveedor no devolvió ningún modelo de chat; se mantiene la lista habitual.'); return; }
+        if (cerrado) return;
+        if (!modelos.length) { if (p === proveedor()) ayuda('El proveedor no devolvió ningún modelo de chat; se mantiene la lista habitual.'); return; }
         vivos[p] = modelos;
-        if (p === proveedor()) llenar();
-        ayuda(`${modelos.length} modelos de ${nombreProveedor(p)} disponibles con tu clave. Escribe o elige uno en «Modelo».`);
-      } catch (ex) { ayuda(ex.message); } finally { $('[data-actualizar]').disabled = false; }
+        if (p === proveedor()) {
+          llenar();
+          ayuda(`${modelos.length} modelos de ${nombreProveedor(p)} disponibles con tu clave. Abre «Modelo» para verlos todos.`);
+        }
+      } catch (ex) { if (!cerrado && p === proveedor()) ayuda(ex.message); } finally { $('[data-actualizar]').disabled = false; }
     });
 
     const cerrar = (valor) => {
+      if (cerrado) return;
+      cerrado = true;
       document.removeEventListener('keydown', teclas, true);
       velo.classList.add('saliendo');
       setTimeout(() => { velo.remove(); previo?.focus?.(); }, 160);
@@ -78,7 +103,7 @@ export function abrirConfigIa(actual) {
 
     $('[data-guardar]').addEventListener('click', () => {
       const p = proveedor();
-      const modelo = $('[data-modelo]').value.trim() || modeloPorDefecto(p);
+      const modelo = modeloActual().trim() || modeloPorDefecto(p);
       const de = proveedorDe(modelo);
       if (de && de !== p) { ayuda(`Ese modelo es de ${nombreProveedor(de)}. Cambia «Usar» o elige un modelo de ${nombreProveedor(p)}.`); return; }
       if (!claveActual()) { ayuda(`Falta la clave de API de ${nombreProveedor(p)}.`); return; }

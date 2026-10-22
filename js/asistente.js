@@ -158,6 +158,8 @@ export function cobertura(partidas) {
 
 const dato = (nombre, lista) => `${nombre}: ${lista.length} partidas, él puntúa ${pctDe(lista)} %`;
 const agrupar = (lista, clave) => { const m = new Map(); for (const p of lista) { const k = clave(p); (m.get(k) ?? m.set(k, []).get(k)).push(p); } return [...m].map(([k, v]) => ({ key: k, lista: v })); };
+const nombreVariante = p => Ap.nombreCompleto(p.apertura) || Ap.familia(p.eco, p.apertura);
+const etiquetaVariante = p => [p.primerMovimiento, nombreVariante(p)].filter(Boolean).join(' · ');
 
 function repertorio(t, terminadas, color, titulo) {
   const suyas = terminadas.filter(p => p.colorJugador === color && p.primerMovimiento);
@@ -173,7 +175,7 @@ function repertorio(t, terminadas, color, titulo) {
 
   for (const primera of porPrimera.slice(0, 8)) {
     t.push(`- ${dato(primera.key, primera.lista)}`);
-    const lineas = agrupar(primera.lista, Ap.variante).sort((a, b) => b.lista.length - a.lista.length || a.key.localeCompare(b.key)).slice(0, MAX_LINEAS_POR_JUGADA);
+    const lineas = agrupar(primera.lista, nombreVariante).sort((a, b) => b.lista.length - a.lista.length || a.key.localeCompare(b.key)).slice(0, MAX_LINEAS_POR_JUGADA);
     for (const l of lineas) {
       const jugadas = agrupar(l.lista, p => plano(p.comienzo)).sort((a, b) => b.lista.length - a.lista.length)[0].key;
       t.push(`    · línea ${dato(l.key, l.lista)} — típicamente ${jugadas}`);
@@ -241,7 +243,7 @@ export function construirResumen(jugador, partidas, jugadasAnalizadas) {
   t.push('', `PARTIDAS (hasta ${ULTIMAS_PARTIDAS}, de la más reciente a la más antigua; la columna final son sus primeras jugadas):`);
   for (const p of [...partidas].sort((a, b) => claveFecha(b).localeCompare(claveFecha(a))).slice(0, ULTIMAS_PARTIDAS)) {
     const elo = p.colorJugador === 'B' ? p.eloNegras : p.eloBlancas;
-    t.push(`- Partida #${p.id} | ${p.fechaMostrada || 'sin fecha'} | ${p.colorJugador === 'B' ? 'blancas' : 'negras'} | contra ${p.rivalConTitulo}${elo ? ` (${elo})` : ''} | ${p.resultadoJugador} | ${Ap.etiquetaVariante(p)} | ${plano(p.comienzo)} | ${p.evento}`);
+    t.push(`- Partida #${p.id} | ${p.fechaMostrada || 'sin fecha'} | ${p.colorJugador === 'B' ? 'blancas' : 'negras'} | contra ${p.rivalConTitulo}${elo ? ` (${elo})` : ''} | ${p.resultadoJugador} | ${etiquetaVariante(p)} | ${plano(p.comienzo)} | ${p.evento}`);
   }
 
   const analisis = calcularDebilidades(partidas, jugadasAnalizadas);
