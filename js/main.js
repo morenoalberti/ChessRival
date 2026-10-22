@@ -6,6 +6,7 @@ import { svg, contenidoBoton, pintarIconosFijos } from './iconos.js';
 import { preguntar, informar, elegirJugador, iniciales } from './dialogos.js';
 import { urlBandera } from './banderas.js';
 import * as fuentes from './fuentes.js';
+import { fotoJugador } from './foto-jugador.js';
 import * as mega from './mega.js';
 import * as libro from './libro.js';
 import { instalarFichaFide } from './ficha-fide-emergente.js';
@@ -307,7 +308,7 @@ async function cargarVista() {
 
 // ---------- Fotos, títulos y edades (de la FIDE, por el servidor intermedio) ----------
 
-const fotos = new Map();   // ID FIDE → data URL de la foto ('' = la FIDE no tiene foto)
+const fotos = new Map();   // ID FIDE → data URL; una ausencia no se guarda para siempre.
 
 /** Ejecuta fn sobre cada elemento con, como mucho, `n` a la vez (no se satura el servidor con torneos grandes). */
 async function enParalelo(items, n, fn) {
@@ -355,12 +356,8 @@ async function cargarFotos(lista) {
     try {
       let foto = fotos.get(j.fideId);
       if (foto === undefined) {
-        foto = await db.leerAjuste('foto:' + j.fideId);                    // caché en este navegador
-        if (foto === null) {
-          foto = await fuentes.descargarFoto(j.fideId);
-          await db.guardarAjuste('foto:' + j.fideId, foto);
-        }
-        fotos.set(j.fideId, foto);
+        foto = await fotoJugador(j.fideId, fuentes.descargarFoto);
+        if (foto) fotos.set(j.fideId, foto);
       }
       if (!foto) return;
       // la lista en pantalla puede haber cambiado mientras se descargaba: se aplica a las tarjetas actuales

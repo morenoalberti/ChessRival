@@ -494,9 +494,12 @@ async function fotoFide(id, cors) {
   if (!r?.ok) r = await fotoWikidata(id);
   if (r?.ok) return new Response(r.body, { headers: { ...cabeceras, 'Content-Type': r.headers.get('content-type') ?? 'image/jpeg' } });
 
-  const htmlPerfil = await descargarHtml(`https://ratings.fide.com/profile/${id}`, {}, REINTENTOS_FIDE).catch(() => '');
-  const src = htmlPerfil.length < 100 ? null : parse(htmlPerfil).querySelector('img.profile-top__photo')?.getAttribute('src');
-  if (!src) return new Response('Sin foto', { status: 404, headers: cors });
+  // La dirección habitual puede quedar almacenada como HTTP 200 sin contenido.
+  // Consulta fresca: una página vacía es un fallo temporal, nunca «no tiene foto».
+  const htmlPerfil = await descargarHtml(sinCache(`https://ratings.fide.com/profile/${id}`));
+  if (htmlPerfil.trim().length < 100) throw new ErrorUsuario('La FIDE no ha devuelto el perfil. Inténtalo de nuevo en un momento.', 503);
+  const src = parse(htmlPerfil).querySelector('img.profile-top__photo')?.getAttribute('src');
+  if (!src) return new Response('Sin foto', { status: 404, headers: { ...cors, 'Cache-Control': 'no-store' } });
 
   if (src.startsWith('data:')) {
     const coma = src.indexOf(',');

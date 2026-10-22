@@ -6,6 +6,7 @@ import { LOCALE } from './i18n.js';
 import { mostrarCargando, quitarCargando } from './cargando.js';
 import * as db from './db.js';
 import * as fuentes from './fuentes.js';
+import { fotoJugador } from './foto-jugador.js';
 import { svg, svgTrazo, contenidoBoton, pintarTrazosFijos } from './iconos.js';
 import { preguntar, informar, iniciales } from './dialogos.js';
 import { urlBandera } from './banderas.js';
@@ -137,8 +138,7 @@ function montarCabecera() {
 async function cargarFoto() {
   if (!jugador.fideId) return;
   try {
-    let foto = await db.leerAjuste('foto:' + jugador.fideId);
-    if (foto === null) { foto = await fuentes.descargarFoto(jugador.fideId); await db.guardarAjuste('foto:' + jugador.fideId, foto); }
+    const foto = await fotoJugador(jugador.fideId, fuentes.descargarFoto);
     if (foto) $('avatar').insertAdjacentHTML('beforeend', `<img src="${esc(foto)}" alt="">`);
   } catch { /* la foto es opcional: sin servidor o sin conexión se quedan las iniciales */ }
 }

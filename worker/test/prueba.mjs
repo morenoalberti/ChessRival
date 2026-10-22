@@ -11,8 +11,61 @@ import { posicionesDeVariante } from '../../js/variantes-motor.js';
 import * as copias from '../../js/copias.js';
 import { leerDestinoCopias, nombreDestinoCopias, elegirDestinoCopias, guardarArchivoCopia } from '../../js/copias-destino.js';
 import { posicionFichaFide, htmlFichaFide } from '../../js/ficha-fide-datos.js';
+import { fotoJugador } from '../../js/foto-jugador.js';
 
 const almacenes = ['torneos', 'tarjetas', 'partidas', 'analisis', 'ediciones', 'ajustes'];
+await test('La foto vuelve a consultarse tras un antiguo sin foto y conserva la descarga válida', async () => {
+  await db.guardarAjuste('foto:990001', '');
+  let consultas = 0;
+  const descargar = async id => { assert.equal(id, '990001'); consultas++; return 'data:image/jpeg;base64,Zm90bw=='; };
+  assert.equal(await fotoJugador('990001', descargar), 'data:image/jpeg;base64,Zm90bw==');
+  assert.equal(await fotoJugador('990001', descargar), 'data:image/jpeg;base64,Zm90bw==');
+  assert.equal(consultas, 1);
+});
+
+await test('Un fallo o una ausencia de foto no impiden encontrarla en la siguiente consulta', async () => {
+  assert.equal(await fotoJugador('990002', async () => ''), '');
+  assert.equal(await db.leerAjuste('foto:990002'), null);
+  await assert.rejects(fotoJugador('990002', async () => { throw new Error('FIDE no responde'); }), /FIDE no responde/);
+  assert.equal(await db.leerAjuste('foto:990002'), null);
+  assert.equal(await fotoJugador('990002', async () => 'data:image/jpeg;base64,Zm90bw=='), 'data:image/jpeg;base64,Zm90bw==');
+});
+
+await test('La foto FIDE evita la página vacía almacenada en caché y devuelve la imagen', async () => {
+  const original = globalThis.fetch, consultas = [];
+  globalThis.fetch = async url => {
+    const u = new URL(url); consultas.push(u);
+    if (u.hostname === 'lichess.org') return new Response('{}');
+    if (u.hostname === 'www.wikidata.org') return new Response('{"query":{"search":[]}}');
+    assert.equal(u.hostname, 'ratings.fide.com');
+    return new Response(u.searchParams.has('_')
+      ? `<html><body>${' '.repeat(100)}<img class="profile-top__photo" src="data:image/jpeg;base64,Zm90bw=="></body></html>`
+      : '');
+  };
+  try {
+    const r = await worker.fetch(new Request('https://chessrival.test/api/fide/foto?id=2220156'), { ORIGENES_PERMITIDOS: '*' });
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('content-type'), 'image/jpeg');
+    assert.equal(await r.text(), 'foto');
+    assert.ok(consultas.find(u => u.hostname === 'ratings.fide.com' && u.searchParams.has('_')));
+  } finally { globalThis.fetch = original; }
+});
+
+await test('Una página FIDE vacía es un fallo temporal, no un jugador sin foto', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async url => {
+    const u = new URL(url);
+    if (u.hostname === 'lichess.org') return new Response('{}');
+    if (u.hostname === 'www.wikidata.org') return new Response('{"query":{"search":[]}}');
+    return new Response('');
+  };
+  try {
+    const r = await worker.fetch(new Request('https://chessrival.test/api/fide/foto?id=2220156'), { ORIGENES_PERMITIDOS: '*' });
+    assert.equal(r.status, 503);
+    assert.match((await r.json()).error, /no ha devuelto el perfil/);
+  } finally { globalThis.fetch = original; }
+});
+
 async function limpiar() {
   await db.tx(almacenes, 'readwrite', (...stores) => Promise.all(stores.map(s => db.prom(s.clear()))));
 }

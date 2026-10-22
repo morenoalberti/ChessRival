@@ -63,7 +63,7 @@ export const fichaFide = (id) => pedir('/api/fide/ficha', { id });
 /** La foto de su perfil de la FIDE, reducida a 160×160 y en forma de data URL. '' si no tiene foto. */
 export async function descargarFoto(id) {
   if (!PROXY_URL) throw new SinServidor('Sin servidor intermedio.');
-  const r = await fetch(`${PROXY_URL}/api/fide/foto?id=${encodeURIComponent(id)}`);
+  const r = await fetch(`${PROXY_URL}/api/fide/foto?id=${encodeURIComponent(id)}`, { cache: 'no-cache', signal: AbortSignal.timeout(45000) });
   if (r.status === 404) return '';
   if (!r.ok) throw new Error(`Error ${r.status} al descargar la foto`);
   const imagen = await createImageBitmap(await r.blob());
