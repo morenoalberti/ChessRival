@@ -5,6 +5,7 @@ import { informar } from './dialogos.js';
 import { leerArchivo, importar, mensaje } from './importador.js';
 import * as mega from './mega.js';
 import { nombreConTitulo } from './nombre-jugador.js';
+import { montarAccesoAhoraAjedrez } from './ahora-ajedrez.js';
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const tam = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
@@ -42,6 +43,13 @@ export function abrirImportar(jugador, { alAbrirYotta } = {}) {
 
           <div class="importar-caja">
             <div class="importar-fila">
+              <div class="importar-texto"><b>AhoraAjedrez</b><span class="suave">Busca su ficha automáticamente y copia su ID FIDE. Descarga allí el PGN y elígelo arriba.</span></div>
+              <a class="btn btn-secundario btn-chico" data-ahora href="https://ahoraajedrez.com/" target="_blank" rel="noopener noreferrer"></a>
+            </div>
+          </div>
+
+          <div class="importar-caja">
+            <div class="importar-fila">
               <div class="importar-texto"><b>MegaDatabase de ChessBase</b><span class="suave" data-mega-estado></span></div>
               <button type="button" class="btn btn-secundario btn-chico" data-mega-permiso hidden></button>
             </div>
@@ -59,6 +67,7 @@ export function abrirImportar(jugador, { alAbrirYotta } = {}) {
     const $ = (s) => velo.querySelector(s);
     $('[data-elegir]').innerHTML = contenidoBoton('carpeta', 'Elegir archivos');
     $('[data-yotta]').innerHTML = contenidoBoton('enlace', 'Abrir YottaChess');
+    montarAccesoAhoraAjedrez($('[data-ahora]'), jugador);
     $('[data-importar]').innerHTML = contenidoBoton('descargar', 'Importar');
     $('[data-cerrar]').innerHTML = contenidoBoton('equis', 'Cerrar');
 

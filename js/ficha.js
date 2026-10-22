@@ -24,6 +24,7 @@ import { mostrarVistaPrevia, ocultarVistaPrevia } from './vista-previa.js';
 import { ArbolUI } from './arbol-ui.js';
 import { montarQueJugar } from './que-jugar.js';
 import { abrirImportar } from './importar-dialogo.js';
+import { montarAccesoAhoraAjedrez } from './ahora-ajedrez.js';
 import * as mega from './mega.js';
 import { abrirAnalizar } from './analizar-dialogo.js';
 import { abrirVisorEnPanel } from './ventana-visor.js';
@@ -582,6 +583,7 @@ async function yottaChess() {
 
 function montarAcciones() {
   $('yottaBtn').innerHTML = contenidoBoton('enlace', '<span id="yottaTexto">YottaChess o PGN</span>');
+  montarAccesoAhoraAjedrez($('ahoraBtn'), jugador);
   $('importarBtn').innerHTML = contenidoBoton('descargar', 'Importar partidas');
   $('analizarBtn').innerHTML = contenidoBoton('barras', 'Analizar');
   $('yottaBtn').addEventListener('click', yottaChess);

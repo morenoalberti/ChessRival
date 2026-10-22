@@ -157,6 +157,10 @@ export const exactas = {
   "Para conseguir un PGN con sus partidas: copia su ID FIDE y abre YottaChess para descargarlas. Después, elige ese PGN en «Importar partidas»": "To get a PGN with their games: copies their FIDE ID and opens YottaChess to download them. Then choose that PGN in “Import games”",
   'YottaChess o PGN': 'YottaChess or PGN',
   'YottaChess': 'YottaChess',
+  'AhoraAjedrez': 'AhoraAjedrez',
+  'Nombre copiado': 'Name copied',
+  'Busca su ficha en AhoraAjedrez y copia su ID FIDE. Descarga allí el PGN y elígelo en «Importar partidas».': 'Finds their profile on AhoraAjedrez and copies their FIDE ID. Download the PGN there and select it in “Import games”.',
+  'Busca su ficha automáticamente y copia su ID FIDE. Descarga allí el PGN y elígelo arriba.': 'Finds their profile automatically and copies their FIDE ID. Download the PGN there and select it above.',
   'Ventana bloqueada': 'Window blocked',
 
   // Importar partidas
@@ -382,6 +386,7 @@ export const plantillas = {
   'Stockfish ha revisado {} partidas suyas ({} jugadas, {}) y compara cada jugada con la mejor que veía el motor.': 'Stockfish has reviewed {} of their games ({} moves, {}) and compares each move with the best one the engine saw.',
   'Preparación contra {} con {} partidas válidas y únicas. Se agrupan posiciones iguales aunque procedan de órdenes distintos y se exige un mínimo de 5 partidas para sugerir una revisión.': 'Preparation against {} with {} valid and unique games. Identical positions are grouped even if they come from different move orders, and a minimum of 5 games is required to suggest a review.',
   'ID {} copiado': 'ID {} copied',
+  'ID FIDE: {}': 'FIDE ID: {}',
   '¿Borrar las {} partidas de {}? Se perderán también sus análisis.': 'Delete the {} games of {}? Their analyses will also be lost.',
   'Modelo: {}': 'Model: {}',
   '{} Referencias comprobadas: {}.{}': '{} Verified references: {}.{}',
