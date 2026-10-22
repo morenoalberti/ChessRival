@@ -74,7 +74,7 @@ const SECCIONES = [
     h('Importar paso a paso'),
     pasos('Conecta la MegaDatabase con «Elegir» en la pantalla principal, si quieres utilizarla.',
       'Abre la ficha y pulsa «Importar partidas». Elige o arrastra los archivos PGN, o utiliza la base conectada.',
-      'Si aún no tienes un PGN con sus partidas, pulsa «YottaChess o PGN»: copia el ID FIDE del jugador y abre YottaChess, donde puedes descargarlas. Vuelve a ChessRival, pulsa «Importar partidas» y elige ese archivo. Sirve cualquier PGN: de YottaChess, ChessBase, Lichess…'),
+      'Si aún no tienes un PGN con sus partidas, pulsa «YottaChess»: copia el ID FIDE del jugador y abre YottaChess, donde puedes descargarlas. Vuelve a ChessRival, pulsa «Importar partidas» y elige ese archivo. Sirve cualquier PGN: de YottaChess, ChessBase, Lichess…'),
     p('«AhoraAjedrez» abre su ficha si encuentra una coincidencia exacta; si no, abre la búsqueda por nombre. También copia su ID FIDE al portapapeles, o su nombre si no tiene ID. Descarga el PGN y selecciónalo en «Importar partidas».'),
     nota('Las partidas repetidas no se duplican y se conservan sus distintas fuentes. La MegaDatabase se lee sin modificar sus archivos.'),
     h('Herramientas incluidas'),

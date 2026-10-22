@@ -578,11 +578,11 @@ async function yottaChess() {
   try { await navigator.clipboard.writeText(jugador.fideId); } catch { /* sin permiso para el portapapeles: se abre igualmente */ }
   window.open('https://www.yottachess.com/', '_blank', 'noopener');
   const t = $('yottaTexto');
-  if (t) { t.textContent = `ID ${jugador.fideId} copiado`; setTimeout(() => { t.textContent = 'YottaChess o PGN'; }, 3500); }
+  if (t) { t.textContent = `ID ${jugador.fideId} copiado`; setTimeout(() => { t.textContent = 'YottaChess'; }, 3500); }
 }
 
 function montarAcciones() {
-  $('yottaBtn').innerHTML = contenidoBoton('enlace', '<span id="yottaTexto">YottaChess o PGN</span>');
+  $('yottaBtn').innerHTML = contenidoBoton('enlace', '<span id="yottaTexto">YottaChess</span>');
   montarAccesoAhoraAjedrez($('ahoraBtn'), jugador);
   $('importarBtn').innerHTML = contenidoBoton('descargar', 'Importar partidas');
   $('analizarBtn').innerHTML = contenidoBoton('barras', 'Analizar');

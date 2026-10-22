@@ -155,7 +155,7 @@ export const exactas = {
 
   // Borrar / YottaChess
   "Para conseguir un PGN con sus partidas: copia su ID FIDE y abre YottaChess para descargarlas. Después, elige ese PGN en «Importar partidas»": "To get a PGN with their games: copies their FIDE ID and opens YottaChess to download them. Then choose that PGN in “Import games”",
-  'YottaChess o PGN': 'YottaChess or PGN',
+  'Conseguir e importar partidas': 'Get and import games',
   'YottaChess': 'YottaChess',
   'AhoraAjedrez': 'AhoraAjedrez',
   'Nombre copiado': 'Name copied',

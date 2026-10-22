@@ -26,8 +26,11 @@
 .ficha-id h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -.3px; color: var(--azul); line-height: 1.2; }
 .ficha-datos { font-size: 13px; margin-top: 2px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .ficha-datos img { width: 20px; height: 14px; object-fit: contain; }
-.ficha-acciones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; flex: 0 1 auto; }
+.ficha-acciones { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; flex: 0 1 auto; }
 .ficha-acciones a.btn, .dialogo-importar a.btn { text-decoration: none; }
+.ficha-fuentes { min-width: 0; max-width: 100%; padding: 9px 12px 12px; border: 1.5px solid #B7CEF5; border-radius: 14px; background: #F8FBFF; box-shadow: 0 3px 12px rgba(47, 111, 217, .12); }
+.ficha-fuentes-titulo { display: block; margin-bottom: 7px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #34507F; }
+.ficha-fuentes-botones { display: flex; flex-wrap: wrap; gap: 8px; }
 .btn-ficha { padding: 8px 16px; }
 
 /* ---------- Estadísticas de la FIDE ---------- */
