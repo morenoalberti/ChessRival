@@ -2,6 +2,7 @@
 import { LOCALE } from './i18n.js';
 import { contenidoBoton } from './iconos.js';
 import { informar } from './dialogos.js';
+import { mostrarCargando, quitarCargando } from './cargando.js';
 import { leerArchivo, importar, mensaje } from './importador.js';
 import { leerCarpetaPgn, elegirCarpetaPgn, permitirCarpetaPgn, buscarPgnEnCarpeta, agruparCarpetasPgn, repartirPgn } from './importar-carpetas.js';
 import * as mega from './mega.js';
@@ -75,6 +76,17 @@ export function abrirImportar(jugador) {
       </div>`;
 
     const $ = (s) => velo.querySelector(s);
+    const pintarCargando = () => {
+      const panel = $('.dialogo-importar');
+      const activo = !cerrado && (ocupado || leyendo() || megaBuscando);
+      panel.setAttribute('aria-busy', String(activo));
+      if (!activo) { quitarCargando(panel); return; }
+      const texto = ocupado ? ($('[data-progreso]').textContent || 'Importando…')
+        : megaBuscando ? (megaProgreso || 'Buscando partidas en la MegaDatabase…')
+        : leyendoPgn || iniciando ? 'Leyendo archivos…' : 'Buscando PGN del jugador…';
+      mostrarCargando(panel, texto);
+    };
+    const ponerProgreso = texto => { $('[data-progreso]').textContent = texto; pintarCargando(); };
     $('[data-elegir-pgn]').innerHTML = contenidoBoton('carpeta', 'Elegir archivos');
     $('[data-mega-reintentar]').innerHTML = contenidoBoton('reiniciar', 'Reintentar');
     for (const f of FUENTES_PGN) {
@@ -131,6 +143,7 @@ export function abrirImportar(jugador) {
       $('[data-mega-permiso]').disabled = ocupado || megaBuscando;
       $('[data-mega-reintentar]').disabled = ocupado || megaBuscando;
       $('[data-importar]').disabled = ocupado || leyendo() || megaBuscando || !(lecturas.some(l => l.suyas > 0) || megaResultado?.partidas.length);
+      pintarCargando();
     };
 
     // Estado de la MegaDatabase: conectada, a la espera del permiso del navegador o sin elegir.
@@ -254,21 +267,21 @@ export function abrirImportar(jugador) {
       pintarLista();
       const progreso = $('[data-progreso]');
       progreso.hidden = false;
-      progreso.textContent = 'Importando…';
+      ponerProgreso('Importando…');
       try {
         pintarMega();
 
         let textoMega = null, textoPgn = null;
         const aImportar = lecturas.filter(l => l.suyas > 0);
         if (aImportar.length) {
-          progreso.textContent = 'Importando de los archivos PGN…';
-          const r = await importar(jugador, aImportar, 'PGN', (t) => { progreso.textContent = t; });
+          ponerProgreso('Importando de los archivos PGN…');
+          const r = await importar(jugador, aImportar, 'PGN', ponerProgreso);
           textoPgn = mensaje(nombreConTitulo(jugador), r);
           resultado = { ...(resultado ?? {}), pgn: r };
         }
         if (megaResultado) {
           try {
-            progreso.textContent = 'Importando de la MegaDatabase…';
+            ponerProgreso('Importando de la MegaDatabase…');
             const m = await mega.importarEncontradas(jugador, megaResultado);
             const ya = m.yaEstaban > 0 ? ` y ${m.yaEstaban} que ${m.yaEstaban === 1 ? 'ya estaba guardada' : 'ya estaban guardadas'}` : '';
             textoMega = m.candidatas === 0 ? 'no hay partidas suyas en la base.'
@@ -291,7 +304,7 @@ export function abrirImportar(jugador) {
         resolver(resultado);
       } catch (ex) {
         ocupado = false;
-        progreso.textContent = `No se pudo importar: ${ex.message}`;
+        ponerProgreso(`No se pudo importar: ${ex.message}`);
         pintarLista();
       }
     });

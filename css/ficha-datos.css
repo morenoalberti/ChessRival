@@ -175,7 +175,8 @@
 .vp-pie { margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--azul); }
 
 /* Diálogos de importar, analizar y configurar la IA */
-.dialogo-importar { width: 620px; max-height: calc(100dvh - 28px); display: flex; flex-direction: column; } .dialogo-analizar { width: 560px; }
+.dialogo-importar { position: relative; width: 620px; max-height: calc(100dvh - 28px); display: flex; flex-direction: column; } .dialogo-analizar { width: 560px; }
+.dialogo-importar > .cargando { pointer-events: none; }
 .dialogo-importar .dialogo-cab { flex: none; }
 .importar-cuerpo { padding: 18px 22px 20px; overflow-y: auto; min-height: 0; }
 .importar-intro { margin: 0 0 14px; font-size: 14px; }
