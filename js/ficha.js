@@ -132,9 +132,6 @@ function montarCabecera() {
   tituloFide = (jugador.fideTitle ?? '');
   pintarNombre();
   pintarDatos(jugador.age && jugador.age !== '—' ? { edad: jugador.age } : null);
-  $('volver').addEventListener('click', (e) => {
-    if (window.opener && !window.opener.closed) { e.preventDefault(); window.close(); }   // se abrió desde la lista: se cierra y se vuelve a ella
-  });
 }
 
 async function cargarFoto() {
