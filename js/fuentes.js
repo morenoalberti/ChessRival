@@ -4,6 +4,7 @@
 //   GET {PROXY}/api/fide/buscar?q= → [{ nombre, fideId, federacion, elo }]
 import { PROXY_URL } from './config.js';
 import { descargarImagenJugador } from './foto-fuentes.js';
+import { completarTitulosVerificados } from './titulos-fide.js';
 
 function uri(texto) {
   try { return new URL((texto ?? '').trim()); } catch { return null; }
@@ -59,7 +60,18 @@ export const verificarJugador = (j) =>
 export const buscarFide = (texto) => pedir('/api/fide/buscar', { q: texto });
 
 /** Título(s) y edad del jugador según su perfil de la FIDE: { titulo: 'FM · AIM', edad: '58 años' }. */
-export const fichaFide = (id) => pedir('/api/fide/ficha', { id });
+let titulosVerificados = null;
+export async function fichaFide(id) {
+  let ficha = null, fallo = null;
+  try { ficha = await pedir('/api/fide/ficha', { id }); }
+  catch (ex) { fallo = ex; }
+  if (ficha?.fuente === 'FIDE' && ficha.titulosCompletos) return ficha;
+  titulosVerificados ??= fetch('assets/fotos-fide/fuentes.json', { cache: 'no-cache' })
+    .then(r => r.ok ? r.json() : []).then(v => Array.isArray(v) ? v : []).catch(() => []);
+  const completa = completarTitulosVerificados(id, ficha, await titulosVerificados);
+  if (completa) return completa;
+  throw fallo || new Error('No se pudieron consultar los títulos del jugador.');
+}
 
 /** La foto de su perfil de la FIDE, reducida a 160×160 y en forma de data URL. '' si no tiene foto. */
 export async function descargarFoto(id) {

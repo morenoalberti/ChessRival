@@ -9,6 +9,7 @@
 //   GET /api/fide/historial?id=…     → [{ fecha: 'AAAA-MM', standard, rapid, blitz }]
 //   GET /api/fide/foto?id=…      → la imagen del perfil de la FIDE (404 si no tiene)
 import { parse } from 'node-html-parser';
+import { normalizarTitulosFide } from '../../js/titulos-fide.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ChessRival/1.0';
 
@@ -301,14 +302,8 @@ async function verificarJugador(j) {
   return j;
 }
 
-const TITULOS = {
-  'Grandmaster': 'GM', 'International Master': 'IM', 'FIDE Master': 'FM', 'Candidate Master': 'CM',
-  'Woman Grandmaster': 'WGM', 'Woman International Master': 'WIM', 'Woman FIDE Master': 'WFM', 'Woman Candidate Master': 'WCM'
-};
 function abreviarTitulo(t) {
-  if (t === 'None' || t === '-' || !t) return '';
-  if (/^Arena /i.test(t)) return 'A' + abreviarTitulo(t.slice(6).trim());
-  return TITULOS[t] ?? t;
+  return normalizarTitulosFide(t);
 }
 
 /** Título(s) y edad del jugador, de su perfil público. */
@@ -316,9 +311,9 @@ async function fichaFide(id) {
   if (!/^\d+$/.test(id ?? '')) throw new ErrorUsuario('ID FIDE no válido.');
   const html = await descargarHtml(sinCache(`https://ratings.fide.com/profile/${id}/statistics`), {}, REINTENTOS_FIDE).catch(() => '');
   const perfil = datosDePerfil(html);
-  if (perfilValido(perfil)) return { titulo: perfil.titulo, edad: perfil.edad };
+  if (perfilValido(perfil)) return { titulo: perfil.titulo, edad: perfil.edad, fuente: 'FIDE', titulosCompletos: true };
   const l = await jugadorLichess(id);
-  return l ? { titulo: l.title ?? '', edad: perfilDeLichess(l).edad } : { titulo: '', edad: '' };
+  return l ? { titulo: normalizarTitulosFide(l.title), edad: perfilDeLichess(l).edad, fuente: 'Lichess', titulosCompletos: false } : { titulo: '', edad: '' };
 }
 
 
@@ -360,7 +355,8 @@ function perfilDeLichess(l) {
   const actual = new Date().getFullYear();
   const ok = l.year > 1900 && l.year <= actual;
   return {
-    titulo: l.title ?? '', edad: ok ? `${actual - l.year} años` : '', nombre: l.name ?? '', nacimiento: ok ? l.year : null,
+    titulo: normalizarTitulosFide(l.title), edad: ok ? `${actual - l.year} años` : '', nombre: l.name ?? '', nacimiento: ok ? l.year : null,
+    fuente: 'Lichess', titulosCompletos: false,
     genero: l.gender === 'F' ? 'Mujer' : l.gender === 'M' ? 'Hombre' : '',
     federacionNombre: l.federation ?? '', paisCodigo: '',
     elos: { standard: l.standard ? String(l.standard) : '', rapid: l.rapid ? String(l.rapid) : '', blitz: l.blitz ? String(l.blitz) : '' },
@@ -465,14 +461,17 @@ async function estadisticasFide(id) {
 }
 
 export function datosDePerfil(html) {
+  const doc = parse(html);
   const titulos = [];
-  for (const m of html.matchAll(/<h5>([^<]*title[^<]*)<\/h5>\s*<div class="profile-info-title\s*">.*?<p>([^<]*)<\/p>/gis)) {
-    const a = abreviarTitulo(m[2].trim());
-    if (a && !titulos.includes(a)) titulos.push(a);
+  for (const h of doc.querySelectorAll('h5')) {
+    if (!/^(?:FIDE|FOA|Arena)\s+title$/i.test(texto(h))) continue;
+    const hermanos = h.parentNode.childNodes;
+    const siguiente = hermanos.slice(hermanos.indexOf(h) + 1).find(n => n.nodeType === 1);
+    if (!siguiente?.getAttribute('class')?.split(/\s+/).includes('profile-info-title')) continue;
+    titulos.push(texto(siguiente.querySelector('p') ?? siguiente));
   }
   const anio = entero(/class="profile-info-byear\s*"[^>]*>([^<]*)</i.exec(html)?.[1] ?? '');
   const actual = new Date().getFullYear();
-  const doc = parse(html);
   const genero = texto(doc.querySelector('.profile-info-sex'));
   const pais = doc.querySelector('.profile-info-country');
   const clasificaciones = doc.querySelectorAll('.profile-rank-block').map(b => {
@@ -481,7 +480,8 @@ export function datosDePerfil(html) {
     return { nombre: texto(b.querySelector('h5')), activos: valor(/active players/i), todos: valor(/all players/i) };
   }).filter(r => r.nombre);
   return {
-    titulo: titulos.join(' · '), edad: anio > 1900 && anio <= actual ? `${actual - anio} años` : '',
+    titulo: normalizarTitulosFide(titulos).replace(/\//g, ' · '), edad: anio > 1900 && anio <= actual ? `${actual - anio} años` : '',
+    fuente: 'FIDE', titulosCompletos: true,
     nombre: texto(doc.querySelector('.player-title')), nacimiento: anio > 1900 && anio <= actual ? anio : null,
     genero: /^male$/i.test(genero) ? 'Hombre' : /^female$/i.test(genero) ? 'Mujer' : genero,
     federacionNombre: texto(pais), paisCodigo: /\/flags\/([a-z]{2})\./i.exec(pais?.querySelector('img')?.getAttribute('src') ?? '')?.[1]?.toUpperCase() ?? '',

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../src/index.js';
+import { datosDePerfil } from '../src/index.js';
+import { normalizarTitulosFide, cambiosIdentidadFide, completarTitulosVerificados } from '../../js/titulos-fide.js';
+import { nombreConTitulo } from '../../js/nombre-jugador.js';
 
 const perfil = `<h1 class="player-title">Jugador oficial</h1>
   <h5>FIDE title</h5><div class="profile-info-title "><p>International Master</p></div>
@@ -9,6 +12,40 @@ const perfil = `<h1 class="player-title">Jugador oficial</h1>
 const respaldo = { id: 123, name: 'Jugador de prueba', title: 'GM', year: 1980, federation: 'ESP', standard: 2300 };
 const json = datos => new Response(JSON.stringify(datos), { headers: { 'content-type': 'application/json' } });
 const pedir = ruta => worker.fetch(new Request('https://chessrival.test/api/fide/' + ruta), { ORIGENES_PERMITIDOS: '*' });
+
+await test('Se reconocen todos los títulos FIDE y FOA sin duplicados', () => {
+  for (const [nombre, codigo] of [
+    ['Grandmaster', 'GM'], ['International Master', 'IM'], ['FIDE Master', 'FM'], ['Candidate Master', 'CM'],
+    ['Woman Grandmaster', 'WGM'], ['Woman International Master', 'WIM'], ['Woman FIDE Master', 'WFM'], ['Woman Candidate Master', 'WCM'],
+    ['Arena Grandmaster', 'AGM'], ['Arena International Master', 'AIM'], ['Arena FIDE Master', 'AFM'], ['Arena Candidate Master', 'ACM']
+  ]) assert.equal(normalizarTitulosFide(nombre), codigo, nombre);
+  assert.equal(normalizarTitulosFide('IM · AIM', 'AIM/AFM', 'None', '—'), 'IM/AIM/AFM');
+});
+
+await test('La ficha real de Cardoso distingue FIDE None y FOA Arena International Master', () => {
+  const p = datosDePerfil(`<h1 class="player-title">Cardoso Garcia, Sergio</h1>
+    <div class="profile-info-row"><h5>FIDE title</h5><div class="profile-info-title "><p>None</p></div></div>
+    <div class="profile-info-row"><h5 data-label="foa"><span>FOA title</span></h5><div data-valor="titulo" class="extra profile-info-title"><p><span>Arena International Master</span></p></div></div>`);
+  assert.equal(p.titulo, 'AIM');
+  assert.equal(p.titulosCompletos, true);
+  assert.equal(nombreConTitulo({ name: p.nombre, fideTitle: p.titulo }), 'AIM Cardoso Garcia, Sergio');
+});
+
+await test('Se conserva el título Arena cuando Lichess solo devuelve el título presencial', () => {
+  assert.equal(cambiosIdentidadFide({ fideTitle: 'FM/AIM' }, { titulo: 'FM', fuente: 'Lichess', titulosCompletos: false }).fideTitle, undefined);
+  const nuevos = cambiosIdentidadFide({ fideTitle: '', age: '58 años', titulosOk: true }, { titulo: 'AIM', edad: '58 años', fuente: 'FIDE', titulosCompletos: true });
+  assert.equal(nuevos.fideTitle, 'AIM');
+  assert.equal(nuevos.versionTitulosFide, 2);
+});
+
+await test('El respaldo de títulos verificados completa FOA, pero no sustituye una respuesta FIDE actual', () => {
+  const entradas = [{ idFide: '2220156', titulos: ['AIM'], consultado: '2026-10-22' }];
+  const l = { titulo: '', fuente: 'Lichess', titulosCompletos: false };
+  assert.equal(completarTitulosVerificados('2220156', l, entradas).titulo, 'AIM');
+  assert.equal(completarTitulosVerificados('999999', l, entradas), l);
+  const oficial = { titulo: 'IM · AIM', fuente: 'FIDE', titulosCompletos: true };
+  assert.equal(completarTitulosVerificados('2220156', oficial, entradas), oficial);
+});
 
 async function conFuentes(responder, verificar) {
   const original = globalThis.fetch, llamadas = [];
@@ -35,7 +72,7 @@ await test('Títulos y edad: FIDE tiene prioridad y no se consulta Lichess si re
 
 await test('Un jugador FIDE sin título conserva ese dato y no se sustituye por otro de Lichess', async () => {
   await conFuentes(() => new Response('<h1 class="player-title">Jugador sin título</h1>'), async llamadas => {
-    assert.deepEqual(await (await pedir('ficha?id=123')).json(), { titulo: '', edad: '' });
+    assert.deepEqual(await (await pedir('ficha?id=123')).json(), { titulo: '', edad: '', fuente: 'FIDE', titulosCompletos: true });
     assert.equal(llamadas.length, 1);
   });
 });

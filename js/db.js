@@ -192,6 +192,15 @@ export async function cargarTodos() {
 
 export const claveJugador = (j) => j.fideId ? `f:${j.fideId}` : `n:${j.name.trim().toLowerCase()}`;
 
+/** Foto y títulos se comparten entre todas las tarjetas del mismo ID FIDE. */
+export async function actualizarTarjetasJugador(fideId, cambios) {
+  if (!fideId) return;
+  await tx('tarjetas', 'readwrite', async c => {
+    const tarjetas = await prom(c.getAll());
+    await Promise.all(tarjetas.filter(j => String(j.fideId) === String(fideId)).map(j => prom(c.put({ ...j, ...cambios }))));
+  });
+}
+
 /** Añade un jugador a la pestaña de un torneo (o a «Jugadores»). Devuelve false si ya tenía tarjeta ahí. */
 export async function anadirJugador(jugador, torneoId) {
   return tx('tarjetas', 'readwrite', async (c) => {

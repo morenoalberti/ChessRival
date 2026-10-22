@@ -71,6 +71,19 @@ await test('Un fallo o una ausencia de foto no impiden encontrarla en la siguien
   assert.equal(await fotoJugador('990002', async () => 'data:image/jpeg;base64,Zm90bw=='), 'data:image/jpeg;base64,Zm90bw==');
 });
 
+await test('Foto y títulos de una ficha se comparten con sus otras tarjetas sin modificar a otro jugador', async () => {
+  await db.tx('tarjetas', 'readwrite', async c => {
+    await db.prom(c.put({ id: 99001, fideId: '2220156', fideTitle: '', name: 'Cardoso Garcia, Sergio', orden: 4 }));
+    await db.prom(c.put({ id: 99002, fideId: '2220156', fideTitle: '', name: 'Cardoso Garcia, Sergio', orden: 1 }));
+    await db.prom(c.put({ id: 99003, fideId: '2210576', fideTitle: 'FM', name: 'Terron Elena, Francisco Miguel' }));
+  });
+  await db.actualizarTarjetasJugador('2220156', { fideTitle: 'AIM', photo: 'data:image/jpeg;base64,Zm90bw==' });
+  const una = await db.obtenerTarjeta(99001), otra = await db.obtenerTarjeta(99002), distinto = await db.obtenerTarjeta(99003);
+  assert.equal(una.fideTitle, 'AIM'); assert.equal(otra.fideTitle, 'AIM');
+  assert.equal(una.photo, otra.photo); assert.equal(otra.orden, 1);
+  assert.equal(distinto.fideTitle, 'FM'); assert.equal(distinto.photo, undefined);
+});
+
 await test('La foto FIDE evita la página vacía almacenada en caché y devuelve la imagen', async () => {
   const original = globalThis.fetch, consultas = [];
   globalThis.fetch = async url => {

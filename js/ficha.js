@@ -11,6 +11,7 @@ import { svg, svgTrazo, contenidoBoton, pintarTrazosFijos } from './iconos.js';
 import { preguntar, informar, iniciales } from './dialogos.js';
 import { urlBandera } from './banderas.js';
 import { nombreConTitulo, textoColoresDeLinea } from './nombre-jugador.js';
+import { cambiosIdentidadFide } from './titulos-fide.js';
 import { auditarPartidas, filtrarEstudio, inspeccionarPartida } from './estudio-datos.js';
 import { montarEstudioUi, textoInformeEstudio, enlazarReferenciasEstudio } from './estudio-ui.js';
 import { montarGraficoElo } from './grafico-elo.js';
@@ -79,10 +80,12 @@ async function iniciar() {
     return;
   }
 
+  montarCabecera();
+  cargarFoto();
+  cargarTitulosCabecera();
   await cargarLibroAperturas();
   megaListo = mega.restaurar().catch(() => {});     // la ficha es otra página: la base elegida se vuelve a abrir aquí
   pintarTrazosFijos();
-  montarCabecera();
   montarPestanas();
   montarAcciones();
   montarAyudaTarjetas();
@@ -104,7 +107,6 @@ async function iniciar() {
   const inicial = location.hash.slice(1);
   mostrarPestana(PESTANAS.some(p => p.id === inicial) ? inicial : 'resumen', false);
 
-  cargarFoto();
   cargarDatosFide();
 }
 
@@ -133,13 +135,43 @@ function montarCabecera() {
   tituloFide = (jugador.fideTitle ?? '');
   pintarNombre();
   pintarDatos(jugador.age && jugador.age !== '—' ? { edad: jugador.age } : null);
+  if (jugador.photo) pintarFoto(jugador.photo);
+}
+
+function pintarFoto(foto) {
+  const avatar = $('avatar');
+  avatar.querySelector('img')?.remove();
+  const imagen = document.createElement('img');
+  imagen.alt = `Foto de ${jugador.name}`;
+  imagen.addEventListener('error', () => imagen.remove(), { once: true });
+  imagen.src = foto;
+  avatar.appendChild(imagen);
+}
+
+async function aplicarIdentidad(ficha) {
+  const cambios = cambiosIdentidadFide(jugador, ficha);
+  Object.assign(jugador, cambios);
+  tituloFide = jugador.fideTitle || '';
+  pintarNombre();
+  pintarDatos({ titulo: tituloFide, edad: jugador.age === '—' ? '' : jugador.age });
+  if (Object.keys(cambios).length) await db.actualizarTarjetasJugador(jugador.fideId, cambios).catch(() => {});
+}
+
+async function cargarTitulosCabecera() {
+  if (!jugador.fideId) return;
+  try { await aplicarIdentidad(await fuentes.fichaFide(jugador.fideId)); }
+  catch { /* se conservan los títulos ya guardados */ }
 }
 
 async function cargarFoto() {
   if (!jugador.fideId) return;
   try {
     const foto = await fotoJugador(jugador.fideId, fuentes.descargarFoto);
-    if (foto) $('avatar').insertAdjacentHTML('beforeend', `<img src="${esc(foto)}" alt="">`);
+    if (foto) {
+      pintarFoto(foto);
+      jugador.photo = foto;
+      await db.actualizarTarjetasJugador(jugador.fideId, { photo: foto });
+    }
   } catch { /* la foto es opcional: sin servidor o sin conexión se quedan las iniciales */ }
 }
 
@@ -174,10 +206,7 @@ async function cargarDatosFide() {
   if (nuevos.estadisticas || nuevos.historial) db.guardarAjuste(clave, { estadisticas, historial, fecha: Date.now() }).catch(() => {});
 
   if (estadisticas) {
-    tituloFide = estadisticas.titulo ? estadisticas.titulo.replace(/ · /g, '/') : tituloFide;
-    jugador.fideTitle = tituloFide;
-    pintarNombre();
-    pintarDatos(estadisticas);
+    await aplicarIdentidad(estadisticas);
     pintarAperturas(visibles());
     panel.innerHTML = htmlTarjetasFide(completarConHistorial(estadisticas.bloques, historial), await db.leerAjuste('ficha_orden_fide', ''));
   } else {

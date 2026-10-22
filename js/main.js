@@ -12,6 +12,7 @@ import * as libro from './libro.js';
 import { instalarFichaFide } from './ficha-fide-emergente.js';
 import { svgMiniElo, valoresDeHistorial } from './mini-elo.js';
 import { nombreConTitulo } from './nombre-jugador.js';
+import { VERSION_TITULOS_FIDE, cambiosIdentidadFide, normalizarTitulosFide } from './titulos-fide.js';
 
 const LIMITE_TORNEOS = 6;
 const $ = (id) => document.getElementById(id);
@@ -402,16 +403,13 @@ function repintarFoto(j) {
 }
 
 async function cargarTitulos(lista) {
-  // Una sola vez por tarjeta: trae todos los títulos del perfil (FIDE y Arena: GM, FM, AIM, AFM, AGM…) y la edad.
-  await Promise.all(lista.filter(j => j.fideId && (!j.titulosOk || !j.age)).map(async (j) => {
+  // Las tarjetas antiguas se revisan de nuevo para recuperar también los títulos FOA.
+  await Promise.all(lista.filter(j => j.fideId && (j.versionTitulosFide !== VERSION_TITULOS_FIDE || !j.age)).map(async (j) => {
     try {
       const ficha = await fuentes.fichaFide(j.fideId);
-      const cambios = {};
-      if (ficha.titulo || ficha.edad) cambios.titulosOk = true;       // sin datos (la FIDE no respondió): se volverá a intentar
-      if (ficha.titulo) cambios.fideTitle = ficha.titulo.replace(/ · /g, '/');
-      if (ficha.edad) cambios.age = ficha.edad;
-      for (const t of jugadores) if (t.id === j.id) { Object.assign(t, cambios); repintar(t); if (t.photo) repintarFoto(t); }
-      if (Object.keys(cambios).length) await db.actualizarTarjeta(j.id, cambios);
+      const cambios = cambiosIdentidadFide(j, ficha);
+      for (const t of jugadores) if (t.fideId === j.fideId) { Object.assign(t, cambiosIdentidadFide(t, ficha)); repintar(t); if (t.photo) repintarFoto(t); }
+      if (Object.keys(cambios).length) await db.actualizarTarjetasJugador(j.fideId, cambios);
     } catch { /* el título es un complemento: si la FIDE no responde, la tarjeta se queda sin él */ }
   }));
 }
@@ -659,7 +657,7 @@ async function anadirJugador(texto) {
     const torneoId = torneoActual ?? await db.torneoJugadoresId();
     const ok = await db.anadirJugador({
       name: restaurarAcentos(elegido.nombre, texto), fideId: elegido.fideId, federation: elegido.federacion, rating: elegido.elo,
-      fideTitle: elegido.titulo && elegido.titulo !== '-' ? elegido.titulo : '',
+      fideTitle: normalizarTitulosFide(elegido.titulo),
       verificado: true
     }, torneoId);
     if (!ok) { await informar('Ya está', `${nombreConTitulo(elegido)} ya tiene su tarjeta en esta pestaña.`); el.pie.textContent = ''; return; }
