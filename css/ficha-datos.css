@@ -146,6 +146,7 @@
 .arbol-vacio { font-size: 13px; margin: 6px 0 0 8px; }
 .arbol-vacio:empty { display: none; }
 .arbol-tablero { justify-self: end; }
+.tablero-fecha { width: calc(8 * var(--casilla) + 3px); max-width: 100%; margin: 0 0 6px; color: var(--texto); font-size: 12px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
 
 /* Tablero */
 .tablero { display: grid; grid-template-columns: repeat(8, var(--casilla)); grid-auto-rows: var(--casilla); border: 1.5px solid #4A5568; width: max-content; user-select: none; }

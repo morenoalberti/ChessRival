@@ -238,7 +238,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
           <div class="qj-caja"><h4>③ Por qué funciona</h4>${porQueFunciona(color, g)}</div>
         </div></div>
       <div class="qj-acc"><button type="button" class="btn btn-secundario qj-ver-partidas" data-qj-partidas>${`Ver sus ${g.n} partidas en esta línea`}</button><button type="button" class="btn btn-primario" data-qj-arbol>Estudiar la línea en el Árbol</button></div></div></div>`;
-    tablero = new Tablero(contenedor.querySelector('[data-qj-tablero]'), { casilla: 44 });
+    tablero = new Tablero(contenedor.querySelector('[data-qj-tablero]'), { casilla: 44, partidas: g.lista });
     irAPaso(paso);
   }
 

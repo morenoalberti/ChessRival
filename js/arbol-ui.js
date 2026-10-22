@@ -95,7 +95,7 @@ export class ArbolUI {
     this.el.partidasBtn.innerHTML = contenidoBoton('lista', 'Ver partidas');
     this.el.buscarLinea.innerHTML = contenidoBoton('barras', 'Calcular mi plan');
     this.pasoLinea = -1; this.reloj = null;
-    this.tablero = new Tablero($('[data-tablero]'), { casilla: 34 });
+    this.tablero = new Tablero($('[data-tablero]'), { casilla: 34, partidas: [] });
 
     this.contenedor.querySelector('.arbol-cab .mini-pestanas').addEventListener('click', (e) => {
       const b = e.target.closest('.mini');
@@ -186,6 +186,7 @@ export class ArbolUI {
   }
 
   _pintarPosicion(nodo) {
+    this.tablero.ponerPartidas(nodo.listaPartidas);
     this.tablero.mostrar(nodo.fen, nodo.desde, nodo.hasta, this.color === 'N');
     const nombre = nombreApertura(nodo);
     this.el.nombre.textContent = nombre || (nodo.ply === 0 ? 'Posición inicial' : 'Sin nombre de apertura');
@@ -368,6 +369,7 @@ export class ArbolUI {
     this.pasoLinea = Math.max(-1, Math.min(linea.length - 1, i));
     const n = this.pasoLinea < 0 ? linea[0].nodo.padre : linea[this.pasoLinea].nodo;
     if (!n) return;
+    this.tablero.ponerPartidas(n.listaPartidas);
     // Un paso adelante o atrás: la pieza se desliza
     const animacion = this.pasoLinea === anterior + 1 && this.pasoLinea >= 0 ? { de: n.desde, a: n.hasta }
       : this.pasoLinea === anterior - 1 && anterior >= 0 ? { de: linea[anterior].nodo.hasta, a: linea[anterior].nodo.desde } : null;

@@ -158,7 +158,7 @@ let fichas = [];                                         // las fichas de la par
 function bloqueDiagrama(fen, activar, ruta) {
   const marco = document.createElement('div');
   marco.className = 'diagrama';
-  const t = new Tablero(marco, { casilla: 18 });
+  const t = new Tablero(marco, { casilla: 18, partida });
   t.mostrar(fen, null, null, girado);
   marco.addEventListener('click', () => { detener(); activar(); });
   marco.addEventListener('contextmenu', (e) => { e.preventDefault(); abrirMenu(e.clientX, e.clientY, [{ texto: 'Quitar diagrama', accion: () => alternarDiagrama(ruta) }]); });
@@ -1263,7 +1263,7 @@ async function iniciar() {
   } catch { /* sin título */ }
   girado = partida.colorJugador === 'N';                                             // se mira desde el lado del jugador de la ficha
 
-  tablero = new Tablero($('tablero'), { casilla: 65, etiquetas: true, interactivo: true });
+  tablero = new Tablero($('tablero'), { casilla: 65, etiquetas: true, interactivo: true, partida, fechaEn: $('fechaPartida') });
   tablero.puedeArrastrar = (c) => seleccion === c && destinos.length > 0;
   tablero.alPulsar = casillaPulsada;
   tablero.alSoltar = casillaSoltada;

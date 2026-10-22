@@ -206,7 +206,7 @@ async function abrirEjercicio(e, jugador, siguiente = null) {
   const $ = s => panel.velo.querySelector(s);
   let t = new Chess(e.fen), fenActual = e.fen, pasos = 0, maxPasos = 0, hechas = [], valoracionFinal = '';   // «pasos»: jugadas correctas del jugador; «maxPasos»: las que dura la variante
   $('[data-siguiente]')?.addEventListener('click', () => { panel.cerrar(); siguiente(); });
-  const tablero = new Tablero($('[data-tablero-ejercicio]'), { casilla: Math.max(22, Math.min(42, Math.floor((innerWidth - 85) / 8))), etiquetas: true, interactivo: true });
+  const tablero = new Tablero($('[data-tablero-ejercicio]'), { casilla: Math.max(22, Math.min(42, Math.floor((innerWidth - 85) / 8))), etiquetas: true, interactivo: true, partida: p });
   let seleccion = null, destinos = [], ocupado = false, resuelto = false;
   let motor = null, iniciandoMotor = null, generacionMotor = 0, base = null;
   const cancelacion = new AbortController();

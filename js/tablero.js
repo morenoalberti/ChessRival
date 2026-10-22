@@ -1,11 +1,16 @@
 // Tablero de ajedrez con las mismas figuras que ChessVision (TableroControl.cs): se le da una posición en FEN y, si se quiere, la última jugada para
 // resaltarla (con su flecha), la casilla elegida y las casillas a las que puede ir. Las casillas se nombran como en ajedrez («e4»).
 // Con «interactivo» admite clics y arrastrar piezas.
+import { textoFechaPartida, textoFechasPartidas } from './fecha-partida.js';
 const CLARA = '#EEEED2', OSCURA = '#769656';
 const NS = 'http://www.w3.org/2000/svg';
 
 export class Tablero {
-  constructor(contenedor, { casilla = 34, etiquetas = false, interactivo = false } = {}) {
+  constructor(contenedor, { casilla = 34, etiquetas = false, interactivo = false, partida = null, partidas = null, fechaEn = contenedor } = {}) {
+    this.fecha = document.createElement('div');
+    this.fecha.className = 'tablero-fecha';
+    this.fecha.textContent = partidas ? textoFechasPartidas(partidas) : textoFechaPartida(partida);
+    fechaEn.appendChild(this.fecha);
     this.raiz = document.createElement('div');
     this.raiz.className = 'tablero';
     this.casillas = new Map();
@@ -22,7 +27,13 @@ export class Tablero {
     if (interactivo) this._conectarRaton();
   }
 
-  setCasilla(px) { this.casillaPx = px; this.raiz.style.setProperty('--casilla', `${px}px`); }
+  setCasilla(px) {
+    this.casillaPx = px;
+    this.raiz.style.setProperty('--casilla', `${px}px`);
+    this.fecha.style.setProperty('--casilla', `${px}px`);
+  }
+
+  ponerPartidas(partidas) { this.fecha.textContent = textoFechasPartidas(partidas); }
 
   _construir(girado) {
     this.raiz.innerHTML = '';

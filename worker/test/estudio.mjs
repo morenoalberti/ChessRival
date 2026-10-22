@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import 'fake-indexeddb/auto';
 import { PartidaGuardada } from '../../js/partidas.js';
+import { fechaPartida, textoFechaPartida, textoFechasPartidas } from '../../js/fecha-partida.js';
 import { leerPgn, detectarRitmo, colorDelJugador } from '../../js/pgn.js';
 import { inspeccionarPartida, auditarPartidas, filtrarEstudio, fiabilidad, resumirMuestra, resultadoEsperado, repertorioEstudio, aperturasEstudio, crearInformeEstudio } from '../../js/estudio-datos.js';
 import { cargarLibroAperturas } from '../../js/aperturas.js';
@@ -19,6 +20,29 @@ import * as mega from '../../js/mega.js';
 import { guardarPartidas, listarPartidas, guardarEdicion, cargarEdicion } from '../../js/db-partidas.js';
 
 const fetchAnterior = globalThis.fetch;
+test('Fechas de los tableros: conserva fechas parciales y rechaza días imposibles', () => {
+  for (const [fecha, texto] of [
+    ['2024.12.03', '03/12/2024'], ['2024-12-03', '03/12/2024'],
+    ['2024.12.??', '12/2024'], ['2024.??.??', '2024'],
+    ['2024.02.29', '29/02/2024'], ['2000.02.29', '29/02/2000'],
+    ['2023.02.29', ''], ['1900.02.29', ''], ['2024.04.31', ''],
+    ['2024.13.01', ''], ['2024.01.00', ''], ['????.12.03', ''],
+    ['????.??.??', ''], ['', ''],
+  ]) assert.equal(fechaPartida({ fecha }), texto, fecha);
+  assert.equal(textoFechaPartida({ fecha: '' }), 'Fecha de la partida: desconocida');
+  assert.equal(textoFechaPartida({ fecha: '2024.12.03' }), 'Fecha de la partida: 03/12/2024');
+});
+
+test('Los tableros de líneas muestran las fechas de su muestra y no inventan una partida', () => {
+  const a = { fecha: '2024.12.03' }, b = { fecha: '2023.01.20' }, sin = { fecha: '????.??.??' };
+  assert.equal(textoFechasPartidas([a, b]), 'Fechas de las partidas: 20/01/2023 – 03/12/2024');
+  assert.equal(textoFechasPartidas([b, a, sin]), 'Fechas de las partidas: 20/01/2023 – 03/12/2024 · Sin fecha: 1');
+  assert.equal(textoFechasPartidas([a, a]), 'Fechas de las partidas: 03/12/2024');
+  assert.equal(textoFechasPartidas([a]), 'Fecha de la partida: 03/12/2024');
+  assert.equal(textoFechasPartidas([sin, sin]), 'Fechas de las partidas: desconocidas');
+  assert.equal(textoFechasPartidas([]), 'Línea de preparación · sin partida concreta');
+});
+
 try {
   globalThis.fetch = async ruta => ({ json: async () => JSON.parse(await readFile(new URL(`../../${ruta}`, import.meta.url), 'utf8')) });
   await cargarLibroAperturas();

@@ -50,13 +50,13 @@ function construir(partida, tituloJugador) {
   div.className = 'vista-previa';
   div.innerHTML = `
     <div class="vp-titulo recortar">${esc(blancas)}${esc(eloB)} – ${esc(negras)}${esc(eloN)} &nbsp; ${esc(resultado)}</div>
-    <div class="vp-subtitulo suave recortar">${esc([partida.fechaMostrada, partida.evento].filter(Boolean).join(' · '))}</div>
+    <div class="vp-subtitulo suave recortar">${esc(partida.evento)}</div>
     <div class="vp-cuerpo">
       <div class="vp-izq"><div class="vp-tablero"></div><div class="suave vp-pos">${figurasHtml(posicion)}</div></div>
       ${planilla(jugadas, desdeInicio ? null : leida.cab('FEN'), ['1-0', '0-1', '1/2-1/2'].includes(partida.resultado) ? resultado : null)}
     </div>
     <div class="vp-pie">Doble clic para seguir la partida hasta el final con el motor.</div>`;
-  new Tablero(div.querySelector('.vp-tablero'), { casilla: 30 }).mostrar(tablero.fen());
+  new Tablero(div.querySelector('.vp-tablero'), { casilla: 30, partida }).mostrar(tablero.fen());
   return div;
 }
 

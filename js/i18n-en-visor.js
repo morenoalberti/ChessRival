@@ -1,5 +1,8 @@
 // Inglés: visor de partidas.
 export const exactas = {
+  'Línea de preparación · sin partida concreta': 'Preparation line · no specific game',
+  'Fecha de la partida: desconocida': 'Game date: unknown',
+  'Fechas de las partidas: desconocidas': 'Game dates: unknown',
   'Partida · ChessRival': 'Game · ChessRival',
   'Conclusiones': 'Conclusions',
   'Analizar partida': 'Analyse game',
@@ -110,6 +113,9 @@ export const exactas = {
 };
 
 export const plantillas = {
+  'Fecha de la partida: {}': 'Game date: {}',
+  'Fechas de las partidas: {} · Sin fecha: {}': 'Game dates: {} · Undated: {}',
+  'Fechas de las partidas: {}': 'Game dates: {}',
   'Partida · {} – {}': 'Game · {} – {}',
   'Resultado {}': 'Result {}',
   'La partida se corta en la jugada {}: no se ha podido leer «{}».': 'The game is cut off at move {}: “{}” could not be read.',
