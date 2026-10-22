@@ -15,7 +15,7 @@ const SECCIONES = [
     h('Tu primera preparación'),
     pasos('Pega una URL de Chess-Results o Info64 y pulsa «Cargar». También puedes escribir un nombre o ID FIDE y pulsar «Añadir».',
       'Abre la ficha del jugador con doble clic en su tarjeta.',
-      'Pulsa «Importar partidas» y elige sus archivos PGN o busca en la MegaDatabase conectada.',
+      'Pulsa «Importar partidas» para buscar sus PGN en las carpetas elegidas o en la MegaDatabase conectada.',
       'Pulsa «Analizar» y consulta sus aperturas, debilidades y preparación.'),
     nota('Pulsa F1 en cualquier pantalla para abrir la ayuda del lugar en el que estás trabajando.')
   ]],
@@ -71,12 +71,13 @@ const SECCIONES = [
   ]],
   ['importar', 'Importar partidas y MegaDatabase', 'Estudiar al rival', [
     p('Añade las partidas del jugador desde archivos PGN o desde tu MegaDatabase de ChessBase.'),
-    p('Cada tarjeta de archivos tiene su propio botón «Elegir archivos» y muestra los PGN cargados y las partidas del jugador. Elige el PGN de YottaChess o AhoraAjedrez en su tarjeta; usa «Archivos PGN» para otras fuentes. Pulsa «Importar» para guardarlas. Las repetidas entre fuentes se unen y conservan sus análisis y anotaciones.'),
+    p('Cada tarjeta recuerda una carpeta elegida con «Cambiar» y muestra solo su nombre. Al abrir el cuadro se buscan sus archivos PGN, sin entrar en subcarpetas. El jugador se reconoce por el ID FIDE o el nombre dentro del PGN. Se muestran los archivos encontrados y sus partidas; pulsa «Importar» para guardarlas. Las repetidas entre fuentes se unen y conservan sus análisis y anotaciones.'),
+    p('YottaChess y AhoraAjedrez pueden compartir carpeta: sus PGN se distinguen por las etiquetas de origen y el nombre de descarga. Cada archivo se muestra una sola vez. Si no se reconoce su procedencia, se indica y se importa como PGN genérico.'),
     h('Importar paso a paso'),
     pasos('Conecta la MegaDatabase con «Elegir» en la pantalla principal, si quieres utilizarla.',
-      'Abre la ficha y pulsa «Importar partidas». Elige o arrastra los archivos PGN, o utiliza la base conectada.',
-      'Si aún no tienes un PGN con sus partidas, pulsa «YottaChess»: copia el ID FIDE del jugador y abre YottaChess, donde puedes descargarlas. Vuelve a ChessRival, pulsa «Importar partidas» y elige ese archivo. Sirve cualquier PGN: de YottaChess, ChessBase, Lichess…'),
-    p('«AhoraAjedrez» abre su ficha si encuentra una coincidencia exacta; si no, abre la búsqueda por nombre. También copia su ID FIDE al portapapeles, o su nombre si no tiene ID. Descarga el PGN y selecciónalo en «Importar partidas».'),
+      'Abre la ficha y pulsa «Importar partidas». En Edge o Chrome, elige una carpeta con «Cambiar» en cada fuente que quieras usar. Si aparece «Permitir», púlsalo para renovar el acceso.',
+      'Si aún no tienes un PGN con sus partidas, pulsa «YottaChess»: copia su ID FIDE y abre YottaChess. Descarga el PGN en la carpeta elegida para esa fuente y vuelve a abrir «Importar partidas» para encontrarlo. Usa «Archivos PGN» para otras fuentes, como ChessBase o Lichess.'),
+    p('«AhoraAjedrez» abre su ficha si encuentra una coincidencia exacta; si no, abre la búsqueda por nombre. También copia su ID FIDE al portapapeles, o su nombre si no tiene ID. Descarga el PGN en su carpeta seleccionada y vuelve a abrir «Importar partidas».'),
     nota('Las partidas repetidas no se duplican y se conservan sus distintas fuentes. La MegaDatabase se lee sin modificar sus archivos.'),
     h('Herramientas incluidas'),
     p('Stockfish y la clasificación de aperturas vienen incluidos. Las consultas a FIDE y a los torneos utilizan el servicio local que inicia el BAT.')

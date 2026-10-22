@@ -1,24 +1,28 @@
-// Cuadro «Importar partidas» (ImportarPartidasDialog.xaml): elegir o arrastrar archivos PGN y traer las partidas del jugador.
+// Cuadro «Importar partidas»: revisar las carpetas PGN recordadas y traer las partidas del jugador.
 import { LOCALE } from './i18n.js';
 import { contenidoBoton } from './iconos.js';
 import { informar } from './dialogos.js';
-import { leerArchivo, importar, mensaje } from './importador.js';
+import { importar, mensaje } from './importador.js';
+import { leerCarpetaPgn, elegirCarpetaPgn, permitirCarpetaPgn, buscarPgnEnCarpeta, agruparCarpetasPgn, repartirPgn } from './importar-carpetas.js';
 import * as mega from './mega.js';
 import { nombreConTitulo } from './nombre-jugador.js';
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const tam = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 const FUENTES_PGN = [
-  { id: 'pgn', nombre: 'Archivos PGN', fuente: 'PGN', ayuda: 'Elige uno o varios PGN de otras fuentes.' },
-  { id: 'yotta', nombre: 'YottaChess', fuente: 'YottaChess', ayuda: 'Elige el PGN descargado de YottaChess.' },
-  { id: 'ahora', nombre: 'AhoraAjedrez', fuente: 'AhoraAjedrez', ayuda: 'Elige el PGN descargado de AhoraAjedrez.' }
+  { id: 'pgn', nombre: 'Archivos PGN' },
+  { id: 'yotta', nombre: 'YottaChess' },
+  { id: 'ahora', nombre: 'AhoraAjedrez' }
 ];
 
 /** Devuelve el resultado de la importación, o null si se cierra sin importar. */
 export function abrirImportar(jugador) {
   return new Promise((resolver) => {
     const previo = document.activeElement;
-    let lecturas = [], ocupado = false, leyendo = false, resultado = null;
+    let lecturas = [], ocupado = false, cerrado = false, iniciando = true, resultado = null;
+    const control = new AbortController();
+    const carpetas = Object.fromEntries(FUENTES_PGN.map(f => [f.id, { carpeta: null, buscando: false, pendiente: false, error: '', errores: [] }]));
+    const leyendo = () => iniciando || Object.values(carpetas).some(c => c.buscando);
 
     const velo = document.createElement('div');
     velo.className = 'velo';
@@ -26,18 +30,19 @@ export function abrirImportar(jugador) {
       <div class="dialogo dialogo-importar" role="dialog" aria-modal="true" aria-label="Importar partidas">
         <div class="dialogo-cab"><img src="assets/icon.png" alt=""><span>Importar partidas · ${esc(nombreConTitulo(jugador))}</span></div>
         <div class="importar-cuerpo">
-          <p class="importar-intro">Se importan las partidas de este jugador de los archivos PGN que elijas (YottaChess, ChessBase, Lichess…). Las que ya estén guardadas no se repiten.</p>
+          <p class="importar-intro">Se buscan automáticamente los PGN de este jugador en las carpetas seleccionadas. Pulsa «Importar» para guardar las partidas encontradas.</p>
 
           ${FUENTES_PGN.map(f => `<div class="importar-caja" data-fuente="${f.id}">
             <div class="importar-fila">
-              <div class="importar-texto"><b>${f.nombre}</b><span class="suave">${f.ayuda}</span></div>
-              <button type="button" class="btn btn-secundario btn-chico" data-elegir="${f.id}"></button>
+              <div class="importar-texto"><b>${f.nombre}</b><span class="suave importar-carpeta" data-carpeta="${f.id}">Carpeta seleccionada: ninguna</span></div>
+              <button type="button" class="btn btn-secundario btn-chico" data-cambiar="${f.id}" aria-label="Cambiar carpeta de ${f.nombre}"></button>
+              <button type="button" class="btn btn-secundario btn-chico" data-permitir="${f.id}" aria-label="Permitir acceso a la carpeta de ${f.nombre}" hidden></button>
             </div>
-            <div class="importar-zona" data-zona="${f.id}" tabindex="0" role="button" aria-label="Elegir PGN de ${f.nombre}">
+            <div class="importar-zona">
               <span data-lista="${f.id}" class="suave">Ningún archivo todavía</span>
             </div>
             <div class="importar-recuento" data-recuento="${f.id}" aria-live="polite" hidden></div>
-            <input type="file" accept=".pgn,.txt,text/plain" multiple hidden data-entrada="${f.id}">
+            <div class="importar-error" data-error="${f.id}" role="status" hidden></div>
           </div>`).join('')}
 
           <div class="importar-caja">
@@ -57,12 +62,17 @@ export function abrirImportar(jugador) {
       </div>`;
 
     const $ = (s) => velo.querySelector(s);
-    for (const f of FUENTES_PGN) $(`[data-elegir="${f.id}"]`).innerHTML = contenidoBoton('carpeta', 'Elegir archivos');
+    for (const f of FUENTES_PGN) {
+      $(`[data-cambiar="${f.id}"]`).innerHTML = contenidoBoton('carpeta', 'Cambiar');
+      $(`[data-permitir="${f.id}"]`).innerHTML = contenidoBoton('visto', 'Permitir');
+    }
     $('[data-importar]').innerHTML = contenidoBoton('descargar', 'Importar');
     $('[data-cerrar]').innerHTML = contenidoBoton('equis', 'Cerrar');
 
     const cerrar = () => {
-      if (ocupado || leyendo) return;
+      if (ocupado || cerrado) return;
+      cerrado = true;
+      control.abort();
       document.removeEventListener('keydown', teclas, true);
       velo.classList.add('saliendo');
       setTimeout(() => { velo.remove(); previo?.focus?.(); }, 160);
@@ -72,23 +82,35 @@ export function abrirImportar(jugador) {
 
     const pintarLista = () => {
       for (const f of FUENTES_PGN) {
-        const propias = lecturas.filter(l => l.fuente === f.fuente);
+        const estado = carpetas[f.id];
+        const propias = lecturas.filter(l => l.tarjeta === f.id);
         const lista = $(`[data-lista="${f.id}"]`), recuento = $(`[data-recuento="${f.id}"]`);
-        if (!propias.length) { lista.className = 'suave'; lista.textContent = 'Ningún archivo todavía'; }
+        $(`[data-carpeta="${f.id}"]`).textContent = estado.carpeta ? `Carpeta seleccionada: ${estado.carpeta.name}` : 'Carpeta seleccionada: ninguna';
+        if (!propias.length) {
+          lista.className = 'suave';
+          lista.textContent = estado.buscando ? 'Buscando PGN del jugador…' : estado.pendiente ? 'Pulsa «Permitir» para buscar en esta carpeta.'
+            : estado.error ? 'No se pudo completar la búsqueda.' : estado.carpeta ? 'No se encontraron PGN de este jugador.' : 'Selecciona una carpeta con «Cambiar».';
+        }
         else {
           lista.className = '';
           lista.innerHTML = propias.map(l => `<div class="importar-archivo ${l.suyas ? '' : 'sin-suyas'}">
             <span class="recortar" title="${esc(l.archivo.name)}">${esc(l.archivo.name)}</span>
             <span class="suave">${l.suyas} suyas de ${l.total} · ${tam(l.archivo.size)}</span></div>`).join('');
+          if (propias.some(l => l.sinOrigen)) lista.insertAdjacentHTML('beforeend', '<div class="suave importar-origen">Origen sin identificar: se importará como PGN.</div>');
         }
         const n = propias.reduce((s, l) => s + l.suyas, 0);
         recuento.hidden = !propias.length;
         recuento.textContent = n === 1 ? '1 partida del jugador cargada' : `${n} partidas del jugador cargadas`;
-        $(`[data-elegir="${f.id}"]`).disabled = ocupado || leyendo;
-        $(`[data-zona="${f.id}"]`).setAttribute('aria-disabled', String(ocupado || leyendo));
+        $(`[data-cambiar="${f.id}"]`).disabled = ocupado || leyendo();
+        const permiso = $(`[data-permitir="${f.id}"]`);
+        permiso.hidden = !estado.pendiente;
+        permiso.disabled = ocupado || leyendo();
+        const error = $(`[data-error="${f.id}"]`);
+        error.hidden = !estado.error && !estado.errores.length;
+        error.textContent = estado.error || (estado.errores.length ? `No se pudieron leer ${estado.errores.length} archivos. Los demás se han revisado.` : '');
       }
-      $('[data-cerrar]').disabled = ocupado || leyendo;
-      $('[data-importar]').disabled = ocupado || leyendo || !(lecturas.some(l => l.suyas > 0) || mega.estado.base || mega.estado.pendiente);
+      $('[data-cerrar]').disabled = ocupado;
+      $('[data-importar]').disabled = ocupado || leyendo() || !(lecturas.some(l => l.suyas > 0) || mega.estado.base || mega.estado.pendiente);
     };
 
     // Estado de la MegaDatabase: conectada, a la espera del permiso del navegador o sin elegir.
@@ -102,48 +124,66 @@ export function abrirImportar(jugador) {
       pintarLista();
     };
 
-    const anadir = async (archivos, fuente) => {
-      if (ocupado || leyendo || !archivos.length) return;
-      leyendo = true;
+    const revisarCarpetas = async () => {
+      if (cerrado) return;
+      iniciando = true;
+      lecturas = [];
+      for (const estado of Object.values(carpetas).filter(c => c.carpeta)) {
+        estado.buscando = true; estado.pendiente = false; estado.error = ''; estado.errores = [];
+      }
       pintarLista();
-      const progreso = $('[data-progreso]');
-      progreso.hidden = false;
-      progreso.textContent = 'Leyendo archivos…';
       try {
-        for (const a of archivos) {
-          if (lecturas.some(l => l.fuente === fuente && l.archivo.name === a.name && l.archivo.size === a.size && l.archivo.lastModified === a.lastModified)) continue;
-          lecturas.push({ ...await leerArchivo(a, jugador), fuente });
-          pintarLista();
-        }
-        progreso.hidden = true;
-        const deFuente = lecturas.filter(l => l.fuente === fuente), sin = deFuente.filter(l => !l.suyas);
-        if (deFuente.length && deFuente.every(l => !l.suyas)) {
-          progreso.hidden = false;
-          progreso.textContent = 'Ninguno de los archivos tiene partidas de este jugador. Comprueba que su nombre aparece igual en las cabeceras White y Black.';
-        } else if (sin.length) {
-          progreso.hidden = false;
-          progreso.textContent = `${sin.length === 1 ? 'Un archivo no tiene' : `${sin.length} archivos no tienen`} partidas suyas y se ignorará${sin.length === 1 ? '' : 'n'}.`;
-        }
-      } catch (ex) { progreso.hidden = false; progreso.textContent = `No se pudo leer el archivo: ${ex.message}`; }
-      finally { leyendo = false; pintarLista(); }
+        const grupos = await agruparCarpetasPgn(FUENTES_PGN.filter(f => carpetas[f.id].carpeta).map(f => ({ id: f.id, carpeta: carpetas[f.id].carpeta })));
+        if (cerrado) return;
+        await Promise.all(grupos.map(async grupo => {
+          try {
+            const encontrados = await buscarPgnEnCarpeta(grupo.carpeta, jugador, { señal: control.signal });
+            if (cerrado) return;
+            for (const id of grupo.fuentes) {
+              carpetas[id].pendiente = encontrados.pendiente;
+              carpetas[id].errores = encontrados.errores;
+            }
+            lecturas.push(...repartirPgn(encontrados.lecturas, grupo.fuentes));
+          } catch (e) {
+            if (e.name !== 'AbortError') for (const id of grupo.fuentes) carpetas[id].error = 'No se pudo leer la carpeta. Selecciónala de nuevo con «Cambiar».';
+          }
+        }));
+      } catch {
+        for (const estado of Object.values(carpetas).filter(c => c.carpeta)) estado.error = 'No se pudo leer la carpeta. Selecciónala de nuevo con «Cambiar».';
+      } finally {
+        iniciando = false;
+        for (const estado of Object.values(carpetas)) estado.buscando = false;
+        if (!cerrado) pintarLista();
+      }
     };
 
     for (const f of FUENTES_PGN) {
-      const entrada = $(`[data-entrada="${f.id}"]`), zona = $(`[data-zona="${f.id}"]`);
-      const elegir = () => { if (!ocupado && !leyendo) entrada.click(); };
-      $(`[data-elegir="${f.id}"]`).addEventListener('click', elegir);
-      entrada.addEventListener('change', e => { anadir([...e.target.files], f.fuente); e.target.value = ''; });
-      zona.addEventListener('click', elegir);
-      zona.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegir(); } });
-      zona.addEventListener('dragover', e => { e.preventDefault(); if (!ocupado && !leyendo) zona.classList.add('encima'); });
-      zona.addEventListener('dragleave', () => zona.classList.remove('encima'));
-      zona.addEventListener('drop', e => { e.preventDefault(); zona.classList.remove('encima'); anadir([...e.dataTransfer.files].filter(a => /\.(pgn|txt)$/i.test(a.name)), f.fuente); });
+      $(`[data-cambiar="${f.id}"]`).addEventListener('click', async () => {
+        const estado = carpetas[f.id];
+        if (ocupado || leyendo()) return;
+        estado.buscando = true; estado.error = ''; pintarLista();
+        try {
+          const carpeta = await elegirCarpetaPgn(f.id, estado.carpeta);
+          if (!carpeta || cerrado) return;
+          estado.carpeta = carpeta;
+          await revisarCarpetas();
+        } catch (e) { estado.error = e.message; }
+        finally { estado.buscando = false; if (!cerrado) pintarLista(); }
+      });
+      $(`[data-permitir="${f.id}"]`).addEventListener('click', async () => {
+        const estado = carpetas[f.id];
+        if (ocupado || leyendo()) return;
+        estado.buscando = true; pintarLista();
+        try { if (await permitirCarpetaPgn(estado.carpeta) && !cerrado) await revisarCarpetas(); }
+        catch { estado.error = 'No se pudo autorizar la carpeta. Selecciónala de nuevo con «Cambiar».'; }
+        finally { estado.buscando = false; if (!cerrado) pintarLista(); }
+      });
     }
     $('[data-cerrar]').addEventListener('click', cerrar);
     velo.addEventListener('mousedown', (e) => { if (e.target === velo) cerrar(); });
 
     $('[data-importar]').addEventListener('click', async () => {
-      if (ocupado || leyendo) return;
+      if (ocupado || leyendo()) return;
       ocupado = true;
       pintarLista();
       const progreso = $('[data-progreso]');
@@ -175,6 +215,8 @@ export function abrirImportar(jugador) {
           } catch (ex) { textoMega = `no se pudo leer (${ex.message}).`; }
         }
         ocupado = false;
+        cerrado = true;
+        control.abort();
         document.removeEventListener('keydown', teclas, true);
         velo.remove();
         const partes = [];
@@ -194,6 +236,16 @@ export function abrirImportar(jugador) {
     document.addEventListener('keydown', teclas, true);
     document.body.appendChild(velo);
     pintarMega();
-    $('[data-elegir]').focus();
+    $('[data-cerrar]').focus();
+    // Al abrir se revisan las carpetas recordadas sin mostrar selectores ni pedir permisos automáticamente.
+    Promise.all(FUENTES_PGN.map(async f => {
+      try { carpetas[f.id].carpeta = await leerCarpetaPgn(f.id); }
+      catch { carpetas[f.id].error = 'No se pudo recuperar la carpeta guardada. Pulsa «Cambiar».'; }
+    })).then(async () => {
+      iniciando = false;
+      if (cerrado) return;
+      await revisarCarpetas();
+      if (!cerrado) pintarLista();
+    });
   });
 }

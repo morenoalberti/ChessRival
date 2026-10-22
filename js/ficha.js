@@ -363,7 +363,7 @@ function pintarTabla(vis) {
   $('partidasFiltroLinea').hidden = !filtroLinea;
   $('partidasLineaTitulo').textContent = filtroLinea?.titulo ?? '';
   $('partidasVacio').textContent = partidas.length === 0
-    ? 'Todavía no hay partidas de este jugador. Pulsa «Importar partidas» y elige un archivo PGN, por ejemplo uno exportado desde ChessBase o YottaChess.'
+    ? 'Todavía no hay partidas de este jugador. Pulsa «Importar partidas» y elige la carpeta donde guardas sus PGN.'
     : vis.length === 0 ? 'No hay partidas válidas con estos filtros. Cambia el ritmo o el periodo, o revisa las incidencias en Resumen.'
     : muestra.length === 0 && filtroLinea ? 'Ya no hay partidas disponibles en esta línea. Pulsa «Ver todas las partidas» para quitar el filtro.'
     : enTabla.length === 0 ? 'No hay partidas con ese color.' : '';

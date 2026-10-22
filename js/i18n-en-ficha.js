@@ -91,7 +91,7 @@ export const exactas = {
   'Izquierda: qué se jugó y quién lo jugó': 'Left: what was played and who played it',
   'Derecha: los resultados': 'Right: the results',
   'Solo cuentan partidas terminadas, válidas y únicas. Se respetan los filtros de ritmo y periodo. Los resultados no prueban por sí solos una debilidad de apertura.': 'Only finished, valid and unique games count. The pace and period filters are respected. Results alone do not prove an opening weakness.',
-  'Todavía no hay partidas de este jugador. Pulsa «Importar partidas» y elige un archivo PGN, por ejemplo uno exportado desde ChessBase o YottaChess.': 'There are no games for this player yet. Press “Import games” and choose a PGN file, for example one exported from ChessBase or YottaChess.',
+  'Todavía no hay partidas de este jugador. Pulsa «Importar partidas» y elige la carpeta donde guardas sus PGN.': 'There are no games for this player yet. Press “Import games” and choose the folder where you save their PGNs.',
   'No hay partidas válidas con estos filtros. Cambia el ritmo o el periodo, o revisa las incidencias en Resumen.': 'There are no valid games with these filters. Change the pace or period, or check the issues in Summary.',
   'No hay partidas con ese color.': 'There are no games with that colour.',
 
@@ -163,6 +163,18 @@ export const exactas = {
   'Ventana bloqueada': 'Window blocked',
 
   // Importar partidas
+  'Origen sin identificar: se importará como PGN.': 'Unknown source: it will be imported as PGN.',
+  'Se buscan automáticamente los PGN de este jugador en las carpetas seleccionadas. Pulsa «Importar» para guardar las partidas encontradas.': 'This player’s PGNs are searched automatically in the selected folders. Press “Import” to save the games found.',
+  'Carpeta seleccionada: ninguna': 'Selected folder: none',
+  'Buscando PGN del jugador…': 'Looking for this player’s PGNs…',
+  'Pulsa «Permitir» para buscar en esta carpeta.': 'Press “Allow” to search this folder.',
+  'No se pudo completar la búsqueda.': 'The search could not be completed.',
+  'No se encontraron PGN de este jugador.': 'No PGNs for this player were found.',
+  'Selecciona una carpeta con «Cambiar».': 'Select a folder with “Change”.',
+  'No se pudo leer la carpeta. Selecciónala de nuevo con «Cambiar».': 'Could not read the folder. Select it again with “Change”.',
+  'No se pudo autorizar la carpeta. Selecciónala de nuevo con «Cambiar».': 'Could not authorise the folder. Select it again with “Change”.',
+  'No se pudo recuperar la carpeta guardada. Pulsa «Cambiar».': 'Could not restore the saved folder. Press “Change”.',
+  'Usa Edge o Chrome para elegir una carpeta de PGN.': 'Use Edge or Chrome to choose a PGN folder.',
   'Se importan las partidas de este jugador de los archivos PGN que elijas (YottaChess, ChessBase, Lichess…). Las que ya estén guardadas no se repiten.': 'This player’s games are imported from the PGN files you choose (YottaChess, ChessBase, Lichess…). Games already saved are not repeated.',
   'Archivos PGN': 'PGN files',
   'Elige uno o varios PGN de otras fuentes.': 'Select one or more PGNs from other sources.',
@@ -359,6 +371,10 @@ export const exactas = {
 };
 
 export const plantillas = {
+  'Carpeta seleccionada: {}': 'Selected folder: {}',
+  'Cambiar carpeta de {}': 'Change folder for {}',
+  'Permitir acceso a la carpeta de {}': 'Allow access to the folder for {}',
+  'No se pudieron leer {} archivos. Los demás se han revisado.': '{} files could not be read. The others have been checked.',
   '{} partidas del jugador cargadas': '{} games for this player loaded',
   'Elegir PGN de {}': 'Select PGN from {}',
   '{} estaba repetida entre los archivos seleccionados.': '{} was duplicated across the selected files.',

@@ -13,6 +13,7 @@ import { registrarIntentoEjercicio } from '../../js/estudio-progreso.js';
 import { textoColoresDeLinea } from '../../js/nombre-jugador.js';
 import { analizarRespuestaEjercicio } from '../../js/explicacion-ejercicio.js';
 import { leerArchivo, importar } from '../../js/importador.js';
+import { leerCarpetaPgn, elegirCarpetaPgn, permitirCarpetaPgn, buscarPgnEnCarpeta, fuenteDePgn, agruparCarpetasPgn, repartirPgn } from '../../js/importar-carpetas.js';
 import * as db from '../../js/db.js';
 import { guardarPartidas, listarPartidas, guardarEdicion, cargarEdicion } from '../../js/db-partidas.js';
 
@@ -28,6 +29,95 @@ const jugadorFuentes = { name: 'Estudiado, Uno Segundo', fideId: '8812345' };
 const pgnFuentes = (abreviado = false, fecha = '2026.10.01') =>
   `${abreviado ? '' : '[Event "Torneo"]\n'}[White "Estudiado, Uno ${abreviado ? 'S.' : 'Segundo'}"]\n[Black "Rival, Dos"]\n[Date "${fecha}"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0`;
 const archivoFuentes = texto => ({ name: 'partidas.pgn', size: texto.length, arrayBuffer: async () => new TextEncoder().encode(texto).buffer });
+const archivoCarpeta = (nombre, texto) => [nombre, { kind: 'file', getFile: async () => ({ ...archivoFuentes(texto), name: nombre }) }];
+const carpetaPrueba = archivos => ({ queryPermission: async () => 'granted', async *entries() { yield* archivos; } });
+
+test('Cada fuente recuerda su carpeta de solo lectura; cancelar Cambiar conserva la anterior', async () => {
+  const yotta = { kind: 'directory', name: 'Yotta PGN' }, ahora = { kind: 'directory', name: 'Ahora PGN' };
+  let opciones;
+  assert.deepEqual(await elegirCarpetaPgn('yotta', null, { showDirectoryPicker: async o => { opciones = o; return yotta; } }), yotta);
+  assert.deepEqual(opciones, { id: 'chessrival-pgn-yotta', mode: 'read' });
+  await elegirCarpetaPgn('ahora', ahora, { showDirectoryPicker: async o => { assert.equal(o.startIn, ahora); return ahora; } });
+  assert.deepEqual(await leerCarpetaPgn('yotta'), yotta);
+  assert.deepEqual(await leerCarpetaPgn('ahora'), ahora);
+  assert.equal(await elegirCarpetaPgn('yotta', yotta, { showDirectoryPicker: async () => { throw new DOMException('Cancelado', 'AbortError'); } }), undefined);
+  assert.deepEqual(await leerCarpetaPgn('yotta'), yotta);
+  assert.equal(await leerCarpetaPgn('sin-elegir'), null);
+  await assert.rejects(elegirCarpetaPgn('yotta', yotta, {}), /Edge o Chrome/);
+});
+
+test('Al buscar solo se consulta el permiso; Permitir lo renueva explícitamente', async () => {
+  let solicitudes = 0, permiso = 'prompt';
+  const carpeta = { queryPermission: async o => { assert.equal(o.mode, 'read'); return permiso; }, requestPermission: async o => { assert.equal(o.mode, 'read'); solicitudes++; return permiso; }, entries: () => { throw new Error('No debe enumerar sin permiso'); } };
+  assert.deepEqual(await buscarPgnEnCarpeta(carpeta, jugadorFuentes), { pendiente: true, lecturas: [], errores: [] });
+  assert.equal(solicitudes, 0);
+  assert.equal(await permitirCarpetaPgn(carpeta), false); assert.equal(solicitudes, 1);
+  permiso = 'granted';
+  assert.equal(await permitirCarpetaPgn(carpeta), true); assert.equal(solicitudes, 1);
+  permiso = 'prompt'; carpeta.requestPermission = async () => { solicitudes++; return 'granted'; };
+  assert.equal(await permitirCarpetaPgn(carpeta), true); assert.equal(solicitudes, 2);
+});
+
+test('La carpeta reconoce el contenido del PGN, ignora nombres engañosos, ID contradictorio y subcarpetas', async () => {
+  const otro = pgnFuentes().replace('Estudiado, Uno Segundo', 'Distinto, Otro');
+  const contradictorio = pgnFuentes().replace('[White ', '[WhiteFideId "999"]\n[White ');
+  const porId = otro.replace('[White ', '[WhiteFideId "8812345"]\n[White ');
+  const archivos = [archivoCarpeta('nombre-cualquiera.PGN', pgnFuentes(true)), archivoCarpeta('Estudiado.pgn', otro), archivoCarpeta('id-incorrecto.pgn', contradictorio), archivoCarpeta('mixto.pgn', `${otro}\n\n${pgnFuentes()}`), archivoCarpeta('por-id.pgn', porId), archivoCarpeta('ignorado.txt', pgnFuentes()), ['subcarpeta.pgn', { kind: 'directory' }]];
+  const progreso = [];
+  const r = await buscarPgnEnCarpeta(carpetaPrueba(archivos), jugadorFuentes, { progreso: n => progreso.push(n) });
+  assert.equal(r.pendiente, false); assert.deepEqual(r.errores, []);
+  assert.deepEqual(r.lecturas.map(l => [l.archivo.name, l.suyas, l.total]), [['nombre-cualquiera.PGN', 1, 1], ['mixto.pgn', 1, 2], ['por-id.pgn', 1, 1]]);
+  assert.deepEqual(progreso, archivos.slice(0, 5).map(([n]) => n));
+});
+
+test('Un PGN ilegible no impide revisar los demás y una nueva búsqueda ve archivos nuevos sin guardar partidas', async () => {
+  const antes = (await listarPartidas('f:8812345')).length;
+  const archivos = [['roto.pgn', { kind: 'file', getFile: async () => { throw new Error('No disponible'); } }], archivoCarpeta('bien.pgn', pgnFuentes())];
+  const carpeta = carpetaPrueba(archivos);
+  const r = await buscarPgnEnCarpeta(carpeta, jugadorFuentes);
+  assert.deepEqual(r.errores, ['roto.pgn']); assert.equal(r.lecturas.length, 1);
+  archivos.push(archivoCarpeta('nuevo.pgn', pgnFuentes(false, '2026.10.02')));
+  assert.equal((await buscarPgnEnCarpeta(carpeta, jugadorFuentes)).lecturas.length, 2);
+  assert.equal((await listarPartidas('f:8812345')).length, antes);
+  assert.deepEqual(await buscarPgnEnCarpeta(carpetaPrueba([]), jugadorFuentes), { pendiente: false, lecturas: [], errores: [] });
+});
+
+test('Cerrar cancela la búsqueda antes de continuar con otros PGN y no guarda nada', async () => {
+  const control = new AbortController(); let leidos = 0;
+  const archivos = [1, 2].map(n => [`${n}.pgn`, { kind: 'file', getFile: async () => { leidos++; control.abort(); return archivoFuentes(pgnFuentes()); } }]);
+  const antes = (await listarPartidas('f:8812345')).length;
+  await assert.rejects(buscarPgnEnCarpeta(carpetaPrueba(archivos), jugadorFuentes, { señal: control.signal }), { name: 'AbortError' });
+  assert.equal(leidos, 1);
+  await assert.rejects(buscarPgnEnCarpeta(carpetaPrueba(archivos), jugadorFuentes, { señal: control.signal }), { name: 'AbortError' });
+  assert.equal(leidos, 1); assert.equal((await listarPartidas('f:8812345')).length, antes);
+});
+
+test('Una carpeta compartida se lee una vez y reparte los PGN entre las webs sin duplicar su listado', async () => {
+  const carpeta = { name: 'Descargas', isSameEntry: async c => c.name === 'Descargas' };
+  const otraReferencia = { name: 'Descargas' }, distinta = { name: 'Otros PGN' };
+  const grupos = await agruparCarpetasPgn([{ id: 'yotta', carpeta }, { id: 'ahora', carpeta: otraReferencia }, { id: 'pgn', carpeta: distinta }]);
+  assert.deepEqual(grupos.map(g => g.fuentes), [['yotta', 'ahora'], ['pgn']]);
+  const archivos = [archivoCarpeta('estudiado, uno segundo.pgn', pgnFuentes().replace('[White ', '[Source "YottaBase"]\n[White ')), archivoCarpeta('Estudiado__Uno_Segundo_todas_1 (2).pgn', pgnFuentes(true)), archivoCarpeta('renombrado.pgn', pgnFuentes())];
+  const { lecturas } = await buscarPgnEnCarpeta(carpetaPrueba(archivos), jugadorFuentes);
+  assert.deepEqual(lecturas.map(fuenteDePgn), ['yotta', 'ahora', null]);
+  const repartidas = repartirPgn(lecturas, grupos[0].fuentes);
+  assert.deepEqual(repartidas.map(l => [l.tarjeta, l.fuente, l.sinOrigen]), [['yotta', 'YottaChess', false], ['ahora', 'AhoraAjedrez', false], ['yotta', 'PGN', true]]);
+  assert.equal(new Set(repartidas.map(l => l.archivo.name)).size, 3);
+  assert.equal(repartirPgn([lecturas[2]], ['yotta', 'ahora', 'pgn'])[0].tarjeta, 'pgn');
+  assert.equal(repartirPgn([lecturas[2]], ['ahora'])[0].fuente, 'AhoraAjedrez');
+  assert.deepEqual(repartirPgn(lecturas.slice(0, 2), ['ahora']).map(l => l.archivo.name), ['Estudiado__Uno_Segundo_todas_1 (2).pgn']);
+  assert.equal(repartirPgn(lecturas, ['pgn']).length, 3);
+  // Las etiquetas prevalecen incluso si el archivo se renombra como una descarga de otra web.
+  assert.equal(fuenteDePgn({ ...lecturas[0], archivo: { name: 'nombre_todas_1.pgn' } }), 'yotta');
+});
+
+test('Los formatos reales descargados de ambas webs permiten distinguir su procedencia', async () => {
+  // Mismas cabeceras y nombres de exportación observados, con partidas sintéticas.
+  const textos = [pgnFuentes().replace('[White ', '[Annotator "YottaBase"]\n[Source "YottaBase"]\n[White '), pgnFuentes(true).replaceAll('"]', '"\\]')];
+  const lecturas = await Promise.all(textos.map(t => leerArchivo(archivoFuentes(t), jugadorFuentes)));
+  lecturas[0].archivo.name = 'estudiado, uno segundo.pgn'; lecturas[1].archivo.name = 'Estudiado__Uno_Segundo_todas_1.pgn';
+  assert.deepEqual(lecturas.map(fuenteDePgn), ['yotta', 'ahora']);
+});
 function partida({ id = 1, fecha = '2026.10.01', evento = 'Prueba', movimientos = '1. f3 e5 2. g4 Qh4#', resultado = '0-1', color = 'B', elo = '2000', eloRival = '2000', control = '5400+30', extra = '' } = {}) {
   const blancas = color === 'B' ? 'Estudiado, Uno' : 'Rival, Dos', negras = color === 'N' ? 'Estudiado, Uno' : 'Rival, Dos';
   return new PartidaGuardada({ id, fecha, evento, blancas, negras, resultado, colorJugador: color, ritmo: 1,
