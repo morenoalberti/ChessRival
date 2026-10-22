@@ -37,6 +37,7 @@ export function montarAccesoAhoraAjedrez(enlace, jugador) {
   enlace.href = busquedaAhoraAjedrez(jugador);
   enlace.target = '_blank';
   enlace.rel = 'noopener noreferrer';
+  enlace.title = 'Baja el PGN de sus partidas';
   enlace.innerHTML = contenidoBoton('enlace', '<span data-ahora-texto>AhoraAjedrez</span>');
   let temporizador;
   enlace.addEventListener('click', async () => {

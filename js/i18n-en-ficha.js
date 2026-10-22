@@ -159,8 +159,7 @@ export const exactas = {
   'YottaChess': 'YottaChess',
   'AhoraAjedrez': 'AhoraAjedrez',
   'Nombre copiado': 'Name copied',
-  'Busca su ficha y copia el ID FIDE.': 'Finds their profile and copies the FIDE ID.',
-  'Busca su ficha automáticamente y copia su ID FIDE. Descarga allí el PGN y elígelo arriba.': 'Finds their profile automatically and copies their FIDE ID. Download the PGN there and select it above.',
+  'Baja el PGN de sus partidas': 'Download the PGN of their games',
   'Ventana bloqueada': 'Window blocked',
 
   // Importar partidas

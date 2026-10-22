@@ -43,7 +43,7 @@ export function abrirImportar(jugador, { alAbrirYotta } = {}) {
 
           <div class="importar-caja">
             <div class="importar-fila">
-              <div class="importar-texto"><b>AhoraAjedrez</b><span class="suave">Busca su ficha automáticamente y copia su ID FIDE. Descarga allí el PGN y elígelo arriba.</span></div>
+              <div class="importar-texto"><b>AhoraAjedrez</b><span class="suave">Baja el PGN de sus partidas</span></div>
               <a class="btn btn-secundario btn-chico" data-ahora href="https://ahoraajedrez.com/" target="_blank" rel="noopener noreferrer"></a>
             </div>
           </div>
