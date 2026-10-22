@@ -61,6 +61,7 @@ let arbol = null;
 let queJugar = null;           // la pantalla «¿Qué debemos jugar?»              // la pestaña «Árbol»
 let megaListo = Promise.resolve();   // la MegaDatabase abriéndose
 let filtroColor = '';          // '', 'B' o 'N'
+let filtroLinea = null;        // { ids: Set, titulo }: muestra exacta de una recomendación
 let orden = { columna: null, ascendente: true };
 let pestanaActual = 'resumen';
 let tituloFide = '';
@@ -86,7 +87,15 @@ async function iniciar() {
   estudioUi = montarEstudioUi({ obtenerJugador: () => jugador });
   montarIa();
   conectarArrastre();
-  queJugar = montarQueJugar($('queJugarContenedor'), { nombreJugador: () => nombreConTitulo(jugador, tituloFide), apellido });
+  queJugar = montarQueJugar($('queJugarContenedor'), {
+    nombreJugador: () => nombreConTitulo(jugador, tituloFide), apellido,
+    alVerPartidas: ({ ids, titulo }) => {
+      filtroLinea = { ids: new Set(ids), titulo };
+      restablecerColorTabla();
+      pintarTabla(visibles());
+      mostrarPestana('partidas');
+    }
+  });
   arbol = new ArbolUI($('arbolContenedor'), { nombreJugador: () => nombreConTitulo(jugador, tituloFide), alAbrirPartida: abrirVisor });
 
   await recargar();
@@ -346,12 +355,16 @@ function pintar() {
 // ---------- Partidas: tabla ----------
 
 function pintarTabla(vis) {
-  const enTabla = filtroColor ? vis.filter(p => p.colorJugador === filtroColor) : vis;
+  const muestra = filtroLinea ? vis.filter(p => filtroLinea.ids.has(p.id)) : vis;
+  const enTabla = filtroColor ? muestra.filter(p => p.colorJugador === filtroColor) : muestra;
   const sufijo = filtroColor === 'B' ? ' con blancas' : filtroColor === 'N' ? ' con negras' : '';
-  $('partidasTitulo').textContent = (enTabla.length === 1 ? '1 partida' : `${enTabla.length} partidas`) + sufijo;
+  $('partidasTitulo').textContent = (enTabla.length === 1 ? '1 partida' : `${enTabla.length} partidas`) + sufijo + (filtroLinea ? ' en esta línea' : '');
+  $('partidasFiltroLinea').hidden = !filtroLinea;
+  $('partidasLineaTitulo').textContent = filtroLinea?.titulo ?? '';
   $('partidasVacio').textContent = partidas.length === 0
     ? 'Todavía no hay partidas de este jugador. Pulsa «Importar partidas» y elige un archivo PGN, por ejemplo uno exportado desde ChessBase o YottaChess.'
     : vis.length === 0 ? 'No hay partidas válidas con estos filtros. Cambia el ritmo o el periodo, o revisa las incidencias en Resumen.'
+    : muestra.length === 0 && filtroLinea ? 'Ya no hay partidas disponibles en esta línea. Pulsa «Ver todas las partidas» para quitar el filtro.'
     : enTabla.length === 0 ? 'No hay partidas con ese color.' : '';
 
   // Resultado: de más a menos puntos del jugador; las sin terminar, al final.
@@ -373,6 +386,18 @@ function pintarTabla(vis) {
   document.querySelector('.tabla-caja').style.minHeight = filas.length ? '' : '200px';
   for (const th of document.querySelectorAll('th[data-orden]')) th.dataset.dir = th.dataset.orden === orden.columna ? (orden.ascendente ? '▲' : '▼') : '';
 }
+
+function restablecerColorTabla() {
+  filtroColor = '';
+  for (const s of document.querySelectorAll('.segmento')) s.classList.toggle('activa', s.dataset.color === '');
+}
+
+$('partidasQuitarLinea').addEventListener('click', () => {
+  filtroLinea = null;
+  restablecerColorTabla();
+  pintarTabla(visibles());
+});
+$('partidasVolverLinea').addEventListener('click', () => mostrarPestana('quejugar'));
 
 const cuerpoTabla = $('partidasCuerpo');
 cuerpoTabla.addEventListener('mouseover', (e) => {

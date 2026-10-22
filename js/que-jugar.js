@@ -120,7 +120,7 @@ function chips(g) {
   }).join('')}</div>`;
 }
 
-export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido = () => 'el jugador' } = {}) {
+export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido = () => 'el jugador', alVerPartidas = () => {} } = {}) {
   let partidas = [], debilidades = [], vista = 'resumen', actual = null;
   const datos = { B: null, N: null };
   const evaluador = new EvaluadorArbol(), evals = new Map();   // fen → centipeones (desde las blancas)
@@ -237,7 +237,7 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
           <div class="qj-caja"><h4>② Qué esperar de él en esta línea</h4>${esperable(g)}</div>
           <div class="qj-caja"><h4>③ Por qué funciona</h4>${porQueFunciona(color, g)}</div>
         </div></div>
-      <div class="qj-acc"><button type="button" class="btn" data-qj-partidas>${`Ver sus ${g.n} partidas en esta línea`}</button><button type="button" class="btn btn-primario" data-qj-arbol>Estudiar la línea en el Árbol</button></div></div></div>`;
+      <div class="qj-acc"><button type="button" class="btn btn-secundario qj-ver-partidas" data-qj-partidas>${`Ver sus ${g.n} partidas en esta línea`}</button><button type="button" class="btn btn-primario" data-qj-arbol>Estudiar la línea en el Árbol</button></div></div></div>`;
     tablero = new Tablero(contenedor.querySelector('[data-qj-tablero]'), { casilla: 44 });
     irAPaso(paso);
   }
@@ -308,7 +308,11 @@ export function montarQueJugar(contenedor, { nombreJugador = () => '', apellido 
     if (e.target.closest('[data-qj-sig]')) { parar(); irAPaso(paso + 1); return; }
     if (e.target.closest('[data-qj-rep]')) { reproducir(); return; }
     if (e.target.closest('[data-qj-arbol]')) { document.querySelector('[data-pestana="arbol"]')?.click(); return; }
-    if (e.target.closest('[data-qj-partidas]')) { document.querySelector('[data-pestana="partidas"]')?.click(); }
+    if (e.target.closest('[data-qj-partidas]') && actual) {
+      parar();
+      // La misma muestra que sustenta el recuento y los resultados de la recomendación.
+      alVerPartidas({ ids: actual.g.lista.map(p => p.id), titulo: tituloTexto(actual.g) });
+    }
   });
 
   function actualizarEval() {

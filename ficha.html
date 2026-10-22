@@ -115,6 +115,13 @@
       <div class="seccion" data-panel="entrenamiento" hidden><div id="estudioEntrenamiento"></div></div>
       <!-- Partidas -->
       <div class="seccion" data-panel="partidas" hidden>
+        <div id="partidasFiltroLinea" class="partidas-filtro-linea" hidden>
+          <div><b>Filtro de línea activo</b><span id="partidasLineaTitulo"></span></div>
+          <div class="partidas-filtro-acciones">
+            <button type="button" class="btn btn-secundario" id="partidasVolverLinea">Volver a la recomendación</button>
+            <button type="button" class="btn btn-primario" id="partidasQuitarLinea">Ver todas las partidas</button>
+          </div>
+        </div>
         <div class="partidas-barra">
           <b id="partidasTitulo">0 partidas</b>
           <div class="segmentos" role="group" aria-label="Color">

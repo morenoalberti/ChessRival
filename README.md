@@ -51,6 +51,8 @@ Los nuevos análisis vuelven a evaluar errores críticos y pérdidas de ventaja 
 
 En «Preparación», se recorren las jugadas hasta la última posición identificada en el libro y se muestran el nombre completo de la apertura o variante, su ECO y la secuencia con figuritas. No se asigna una defensa concreta solo por 1.d4 Cf6. Si no hay una posición reconocida suficientemente avanzada, se muestra «Apertura aún sin identificar» con su secuencia real. «Ver línea» y «Preparar» abren el tablero en la posición que termina la secuencia mostrada.
 
+En «¿Qué debemos jugar?», «Ver sus partidas en esta línea» abre «Partidas» con la muestra exacta que sustenta los resultados de esa recomendación. Un aviso identifica el filtro activo y permite volver a la recomendación o ver todas las partidas. Ordenar la tabla y cambiar el color conservan el filtro de línea; abrir otra recomendación lo sustituye.
+
 Los resultados incluyen todas las partidas de la muestra que alcanzan esa posición, también por transposición o continuando hacia una variante posterior. La frecuencia indica cuántas de sus partidas con ese color alcanzan la línea, dentro de la muestra. Una línea general y una variante pueden compartir partidas; sus frecuencias no tienen que sumar el 100 %. La frecuencia es distinta de la puntuación obtenida en las partidas.
 
 Cada línea destaca cuántas partidas gana el jugador estudiado y su porcentaje de victorias, junto con las tablas y derrotas. Se cuentan únicamente las partidas terminadas de esa línea y desde el color del jugador estudiado. Las tablas no cuentan como victoria; en la «puntuación» sí aportan medio punto.
