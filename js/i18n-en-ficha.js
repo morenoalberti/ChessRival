@@ -30,7 +30,7 @@ export const exactas = {
   'Ocultar las estadísticas': 'Hide the statistics',
   'Arrástrala sobre las estadísticas para cambiarlas de sitio': 'Drag it over the statistics to swap their places',
   'Pasa el ratón por el gráfico para ver el ELO de cada mes': 'Hover over the chart to see the ELO of each month',
-  'Importa sus partidas de la MegaDatabase y de YottaChess': 'Imports their games from the MegaDatabase and YottaChess',
+  'Abre la importación de PGN o MegaDatabase.': 'Opens PGN or MegaDatabase import.',
   'Analiza sus partidas con Stockfish para ver sus debilidades': 'Analyses their games with Stockfish to find their weaknesses',
   'Importar partidas': 'Import games',
   'Analizar': 'Analyse',
@@ -154,12 +154,12 @@ export const exactas = {
   'El proveedor no devolvió ningún modelo de chat; se mantiene la lista habitual.': 'The provider returned no chat model; the usual list is kept.',
 
   // Borrar / YottaChess
-  "Para conseguir un PGN con sus partidas: copia su ID FIDE y abre YottaChess para descargarlas. Después, elige ese PGN en «Importar partidas»": "To get a PGN with their games: copies their FIDE ID and opens YottaChess to download them. Then choose that PGN in “Import games”",
+  'Abre YottaChess y copia el ID FIDE.': 'Opens YottaChess and copies the FIDE ID.',
   'Conseguir e importar partidas': 'Get and import games',
   'YottaChess': 'YottaChess',
   'AhoraAjedrez': 'AhoraAjedrez',
   'Nombre copiado': 'Name copied',
-  'Busca su ficha en AhoraAjedrez y copia su ID FIDE. Descarga allí el PGN y elígelo en «Importar partidas».': 'Finds their profile on AhoraAjedrez and copies their FIDE ID. Download the PGN there and select it in “Import games”.',
+  'Busca su ficha y copia el ID FIDE.': 'Finds their profile and copies the FIDE ID.',
   'Busca su ficha automáticamente y copia su ID FIDE. Descarga allí el PGN y elígelo arriba.': 'Finds their profile automatically and copies their FIDE ID. Download the PGN there and select it above.',
   'Ventana bloqueada': 'Window blocked',
 
