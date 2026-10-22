@@ -2,6 +2,8 @@
 import base64
 from collections import OrderedDict
 from html.parser import HTMLParser
+import logging
+from pathlib import Path
 import re
 import threading
 import time
@@ -12,6 +14,7 @@ _cache = OrderedDict()
 _lock = threading.Lock()
 _MAX_IMAGEN = 1024 * 1024
 _MAX_HTML = 4 * 1024 * 1024
+_FOTOS = Path(__file__).resolve().parent / 'assets' / 'fotos-fide'
 
 
 class FotoNoDisponible(Exception):
@@ -58,6 +61,14 @@ def _tipo_imagen(datos):
 def obtener_foto(id_fide):
     if not isinstance(id_fide, str) or not re.fullmatch(r'[1-9][0-9]{0,11}', id_fide):
         raise FotoNoDisponible('ID FIDE no válido.', 400)
+    # Copias verificadas por ID: disponibles incluso si FIDE rechaza la conexión del alojamiento.
+    try:
+        with (_FOTOS / f'{id_fide}.jpg').open('rb') as archivo:
+            datos = archivo.read(_MAX_IMAGEN + 1)
+        if len(datos) <= _MAX_IMAGEN:
+            return datos, _tipo_imagen(datos)
+    except (OSError, FotoNoDisponible):
+        pass
     with _lock:
         guardada = _cache.get(id_fide)
         if guardada and time.monotonic() - guardada[0] < 3600:
@@ -87,6 +98,7 @@ def obtener_foto(id_fide):
     except FotoNoDisponible:
         raise
     except (OSError, ValueError) as ex:
+        logging.getLogger(__name__).warning('Foto FIDE %s: %s: %s', id_fide, type(ex).__name__, ex)
         raise FotoNoDisponible('No se pudo descargar la foto FIDE. Inténtalo de nuevo en un momento.') from ex
     # Solo se guardan imágenes válidas, nunca respuestas vacías ni fallos temporales.
     with _lock:

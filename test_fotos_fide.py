@@ -1,5 +1,7 @@
 import base64
 from io import BytesIO
+from pathlib import Path
+import tempfile
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
@@ -27,6 +29,28 @@ def perfil_con_foto():
 class FotosFide(unittest.TestCase):
     def setUp(self):
         fotos_fide._cache.clear()
+        proyecto = Path(__file__).resolve().parent
+        temporal = tempfile.TemporaryDirectory(prefix='.prueba-fotos-', dir=proyecto)
+        self.assertEqual(Path(temporal.name).resolve().parent, proyecto)
+        self.addCleanup(temporal.cleanup)
+        self.fotos = Path(temporal.name)
+        respaldo = patch('fotos_fide._FOTOS', self.fotos)
+        respaldo.start()
+        self.addCleanup(respaldo.stop)
+
+    def test_copia_verificada_funciona_sin_conexion_y_corresponde_al_id(self):
+        (self.fotos / '2256657.jpg').write_bytes(PNG)
+        with patch('fotos_fide._descargar', side_effect=OSError('Sin conexión')) as descargar:
+            self.assertEqual(fotos_fide.obtener_foto('2256657'), (PNG, 'image/png'))
+            descargar.assert_not_called()
+            with self.assertRaises(fotos_fide.FotoNoDisponible):
+                fotos_fide.obtener_foto('9999999')
+
+    def test_respaldo_invalido_no_impide_buscar_la_foto_real(self):
+        (self.fotos / '2256657.jpg').write_bytes(b'<html>Error</html>')
+        with patch('fotos_fide._descargar', return_value=perfil_con_foto()) as descargar:
+            self.assertEqual(fotos_fide.obtener_foto('2256657'), (PNG, 'image/png'))
+            descargar.assert_called_once()
 
     def test_recupera_foto_y_reutiliza_solo_imagenes_validas(self):
         with patch('fotos_fide._descargar', return_value=perfil_con_foto()) as descargar:
@@ -106,6 +130,16 @@ class RutaPublicaFotos(unittest.TestCase):
                 self.assertEqual(int(r.headers['Content-Length']), len(PNG))
                 self.assertEqual(r.read(), b'')
             obtener.assert_called_with('2256657')
+
+    def test_respaldos_reales_se_entregan_sin_consultar_fide(self):
+        fotos_fide._cache.clear()
+        with patch('fotos_fide._descargar', side_effect=OSError('FIDE inaccesible')) as descargar:
+            for id_fide in ['2256657', '2220156', '2210576']:
+                with self.subTest(id=id_fide), self.pedir('/api/fide/foto?id=' + id_fide) as r:
+                    self.assertEqual(r.status, 200)
+                    self.assertEqual(r.headers['Content-Type'], 'image/jpeg')
+                    self.assertTrue(r.read().startswith(b'\xff\xd8\xff'))
+            descargar.assert_not_called()
 
     def test_error_temporal_se_comunica_y_no_expone_rutas_locales(self):
         with patch('fotos_fide.obtener_foto', side_effect=fotos_fide.FotoNoDisponible('FIDE no responde', 503)):
