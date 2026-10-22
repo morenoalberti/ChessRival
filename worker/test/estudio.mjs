@@ -92,6 +92,35 @@ test('Cerrar cancela la búsqueda antes de continuar con otros PGN y no guarda n
   assert.equal(leidos, 1); assert.equal((await listarPartidas('f:8812345')).length, antes);
 });
 
+test('Las copias (1) y (2) de un PGN idéntico muestran una sola fila y cuentan sus 131 partidas una vez', async () => {
+  const nombre = 'Estudiado__Uno_Segundo_todas_131';
+  const texto = Array.from({ length: 131 }, () => pgnFuentes()).join('\n\n');
+  for (const orden of [[`${nombre}.pgn`, `${nombre} (1).pgn`, `${nombre} (2).pgn`], [`${nombre} (2).pgn`, `${nombre} (1).pgn`, `${nombre}.pgn`]]) {
+    const r = await buscarPgnEnCarpeta(carpetaPrueba(orden.map(n => archivoCarpeta(n, texto))), jugadorFuentes);
+    assert.deepEqual(r.errores, []); assert.equal(r.lecturas.length, 1);
+    assert.equal(r.lecturas[0].archivo.name, `${nombre}.pgn`);
+    const tarjeta = repartirPgn(r.lecturas, ['yotta', 'ahora'], jugadorFuentes);
+    assert.equal(tarjeta.length, 1); assert.equal(tarjeta[0].tarjeta, 'ahora');
+    assert.equal(tarjeta.reduce((n, l) => n + l.suyas, 0), 131);
+  }
+});
+
+test('Una copia con contenido distinto se conserva aunque su tamaño y número de partidas sean iguales', async () => {
+  const nombre = 'Estudiado__Uno_Segundo_todas_1';
+  const a = pgnFuentes(false, '2026.10.01'), b = pgnFuentes(false, '2026.10.02');
+  assert.equal(a.length, b.length);
+  const r = await buscarPgnEnCarpeta(carpetaPrueba([archivoCarpeta(`${nombre}.pgn`, a), archivoCarpeta(`${nombre} (1).pgn`, b)]), jugadorFuentes);
+  assert.equal(r.lecturas.length, 2);
+  assert.equal(r.lecturas[0].partidas[0].cab('Date'), '2026.10.01');
+  assert.equal(r.lecturas[1].partidas[0].cab('Date'), '2026.10.02');
+});
+
+test('Sin original se conserva una copia; los archivos con nombres de fuentes distintas siguen separados', async () => {
+  const nombre = 'Estudiado__Uno_Segundo_todas_1';
+  const r = await buscarPgnEnCarpeta(carpetaPrueba([archivoCarpeta(`${nombre} (3).pgn`, pgnFuentes()), archivoCarpeta(`${nombre} (1).pgn`, pgnFuentes()), archivoCarpeta('estudiado, uno segundo.pgn', pgnFuentes())]), jugadorFuentes);
+  assert.deepEqual(r.lecturas.map(l => l.archivo.name), [`${nombre} (1).pgn`, 'estudiado, uno segundo.pgn']);
+});
+
 test('Una carpeta compartida se lee una vez y reparte los PGN entre las webs sin duplicar su listado', async () => {
   const carpeta = { name: 'Descargas', isSameEntry: async c => c.name === 'Descargas' };
   const otraReferencia = { name: 'Descargas' }, distinta = { name: 'Otros PGN' };

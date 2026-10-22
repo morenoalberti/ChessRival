@@ -5,6 +5,8 @@ import { leerArchivo } from './importador.js';
 
 const claveCarpeta = fuente => `importar_carpeta:${fuente}`;
 const cancelarSiHaceFalta = señal => { if (señal?.aborted) throw new DOMException('Búsqueda cancelada', 'AbortError'); };
+const numeroCopia = nombre => Number(/\((\d+)\)\.pgn$/i.exec(nombre)?.[1] ?? 0);
+const nombreSinCopia = nombre => nombre.replace(/\s*\(\d+\)(?=\.pgn$)/i, '').normalize('NFC').toLowerCase();
 
 export async function leerCarpetaPgn(fuente) {
   const carpeta = await leerAjuste(claveCarpeta(fuente));
@@ -87,15 +89,27 @@ export function repartirPgn(lecturas, fuentes, jugador) {
 export async function buscarPgnEnCarpeta(carpeta, jugador, { señal, progreso = () => {} } = {}) {
   cancelarSiHaceFalta(señal);
   if (await carpeta.queryPermission({ mode: 'read' }) !== 'granted') return { pendiente: true, lecturas: [], errores: [] };
-  const lecturas = [], errores = [];
+  const lecturas = [], errores = [], archivosUnicos = new Map();
   for await (const [nombre, handle] of carpeta.entries()) {
     cancelarSiHaceFalta(señal);
     if (handle.kind !== 'file' || !/\.pgn$/i.test(nombre)) continue;
     progreso(nombre);
     try {
-      const lectura = await leerArchivo(await handle.getFile(), jugador);
+      const archivo = await handle.getFile();
+      const bytes = await archivo.arrayBuffer();
+      const hash = await crypto.subtle.digest('SHA-256', bytes);
       cancelarSiHaceFalta(señal);
-      if (lectura.suyas > 0) lecturas.push(lectura);
+      const huella = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, '0')).join('');
+      const clave = `${nombreSinCopia(archivo.name)}\0${huella}`;
+      const anterior = archivosUnicos.get(clave);
+      if (anterior) {
+        // Se prefiere el original aunque la carpeta haya enumerado primero «(1)».
+        if (numeroCopia(archivo.name) < numeroCopia(anterior.archivo.name)) anterior.archivo = archivo;
+      } else {
+        const lectura = await leerArchivo(archivo, jugador, bytes);
+        cancelarSiHaceFalta(señal);
+        if (lectura.suyas > 0) { lecturas.push(lectura); archivosUnicos.set(clave, lectura); }
+      }
     } catch (e) {
       if (e.name === 'AbortError') throw e;
       errores.push(nombre);

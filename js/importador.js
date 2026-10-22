@@ -3,9 +3,9 @@ import { leerPgn, decodificar, colorDelJugador, detectarRitmo } from './pgn.js';
 import { cargarLibroAperturas, clasificarApertura } from './aperturas.js';
 import { guardarPartidas, claveJugador, refrescarTarjetasDe } from './db-partidas.js';
 
-/** Lee un archivo PGN: sus partidas y cuántas son del jugador. */
-export async function leerArchivo(archivo, jugador) {
-  const partidas = leerPgn(decodificar(await archivo.arrayBuffer()));
+/** Lee un archivo PGN: sus partidas y cuántas son del jugador. Reutiliza los bytes si ya se han leído. */
+export async function leerArchivo(archivo, jugador, bytes = null) {
+  const partidas = leerPgn(decodificar(bytes ?? await archivo.arrayBuffer()));
   const suyas = partidas.filter(p => colorDelJugador(jugador, p) !== null).length;
   return { archivo, partidas, suyas, total: partidas.length };
 }
