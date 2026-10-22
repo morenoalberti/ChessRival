@@ -465,7 +465,7 @@ function pintarAperturas(vis) {
     // Cada apertura: su nombre, una barra con lo que la juega respecto a la más frecuente, cuántas partidas y su puntuación (color según le va).
     const masFrecuente = Math.max(1, ...filas.map(f => f.partidas));
     const nivel = (p) => p >= 65 ? 'alta' : p >= 45 ? 'media' : 'baja';
-    const cabecera = tipo === 'completa' && filas.length ? `<div class="aper-fila aper-cab"><span>Apertura</span><span title="Cuántas partidas ha jugado con cada apertura">Frecuencia</span><span class="aper-n">Partidas</span><span class="aper-punt" title="Porcentaje de los puntos posibles: victoria 1, tablas ½, derrota 0">Puntuación</span></div>` : '';
+    const cabecera = filas.length ? `<div class="aper-fila aper-cab"><span>Apertura</span><span title="Cuántas partidas ha jugado con cada apertura">Frecuencia</span><span class="aper-n">Partidas</span><span class="aper-punt" title="Porcentaje de los puntos posibles: victoria 1, tablas ½, derrota 0">Puntuación</span></div>` : '';
     tarjeta.querySelector('[data-filas]').innerHTML = cabecera + filas.map(f =>
       `<div class="aper-fila"><span class="aper-nombre recortar" title="${esc(f.nombre)}">${figurasHtml(f.nombre)}</span><span class="aper-barra"><i style="width:${Math.max(3, Math.round(f.partidas * 100 / masFrecuente))}%"></i></span><span class="aper-n">${f.partidas}</span><span class="aper-punt ${nivel(f.porcentaje)}">${f.porcentaje} %</span></div>`).join('');
     tarjeta.classList.toggle('con-datos', filas.length > 0);
