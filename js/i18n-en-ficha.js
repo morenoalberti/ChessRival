@@ -164,7 +164,16 @@ export const exactas = {
 
   // Importar partidas
   'Origen sin identificar: se importará como PGN.': 'Unknown source: it will be imported as PGN.',
-  'Se buscan automáticamente los PGN de este jugador en las carpetas seleccionadas. Pulsa «Importar» para guardar las partidas encontradas.': 'This player’s PGNs are searched automatically in the selected folders. Press “Import” to save the games found.',
+  'Se buscan sus partidas en las carpetas elegidas y en la MegaDatabase conectada. También puedes elegir archivos PGN. Pulsa «Importar» para guardarlas.': 'Their games are searched in the selected folders and the connected MegaDatabase. You can also choose PGN files. Press “Import” to save them.',
+  'Elige uno o varios archivos PGN de tu ordenador.': 'Choose one or more PGN files from your computer.',
+  'Buscando partidas en la MegaDatabase…': 'Searching for games in the MegaDatabase…',
+  'Buscando los nombres en la base…': 'Searching for names in the database…',
+  'Recorriendo las partidas de la base…': 'Scanning the games in the database…',
+  'Leyendo las partidas más recientes…': 'Reading the most recent games…',
+  'Reintentar': 'Retry',
+  'No se encontraron partidas de este jugador en la MegaDatabase.': 'No games for this player were found in the MegaDatabase.',
+  'Importando de la MegaDatabase…': 'Importing from the MegaDatabase…',
+  '1 partida encontrada · 1 preparada para importar': '1 game found · 1 prepared for import',
   'Carpeta seleccionada: ninguna': 'Selected folder: none',
   'Buscando PGN del jugador…': 'Looking for this player’s PGNs…',
   'Pulsa «Permitir» para buscar en esta carpeta.': 'Press “Allow” to search this folder.',
@@ -371,6 +380,13 @@ export const exactas = {
 };
 
 export const plantillas = {
+  'Buscando los nombres en la base… {} %': 'Searching for names in the database… {} %',
+  'Recorriendo las partidas de la base… {} %': 'Scanning the games in the database… {} %',
+  'Leyendo las partidas más recientes… {} de {}': 'Reading the most recent games… {} of {}',
+  'No se pudo buscar en la MegaDatabase: {}': 'Could not search the MegaDatabase: {}',
+  '{} partidas encontradas · {} preparadas para importar': '{} games found · {} prepared for import',
+  '1 partida encontrada · {} preparadas para importar': '1 game found · {} prepared for import',
+  '{} partidas encontradas · 1 preparada para importar': '{} games found · 1 prepared for import',
   'Carpeta seleccionada: {}': 'Selected folder: {}',
   'Cambiar carpeta de {}': 'Change folder for {}',
   'Permitir acceso a la carpeta de {}': 'Allow access to the folder for {}',

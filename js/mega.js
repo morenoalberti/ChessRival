@@ -126,17 +126,34 @@ export function contar(jugador, progreso, señal) {
   return enCola(async () => (await estado.base.buscar([{ nombre: jugador.name, elo: jugador.rating }], 0, progreso, señal))[0].candidatas);
 }
 
-/** Busca en la base las partidas de este jugador y las guarda. Devuelve { candidatas, nuevas, yaEstaban, noLegibles }. */
-export function importar(jugador, progreso, señal) {
-  if (!estado.base) return Promise.resolve({ candidatas: 0, nuevas: 0, yaEstaban: 0, noLegibles: 0 });
+/** Prepara las partidas del jugador sin guardarlas. El resultado se reutiliza al pulsar «Importar». */
+export function buscar(jugador, progreso, señal) {
+  const base = estado.base;
+  if (!base) return Promise.resolve(null);
   return enCola(async () => {
+    const cancelar = () => { if (señal?.aborted) throw new DOMException('Búsqueda cancelada', 'AbortError'); };
+    cancelar();
     await cargarLibroAperturas();
-    const [r] = await estado.base.buscar([{ nombre: jugador.name, elo: jugador.rating }], MAX_POR_JUGADOR, progreso, señal);
-    const items = r.partidas.map(({ partida, color }) => ({ partida, color, eco: partida.cab('ECO'), apertura: partida.cab('Opening'), ritmo: detectarRitmo(partida) }));
-    const clave = claveJugador(jugador);
-    const g = await guardarPartidas(clave, items, 'MegaDatabase');
-    await guardarAjuste(`mega_buscado:${clave}`, new Date().toISOString());
-    await refrescarTarjetasDe(clave);
-    return { candidatas: r.candidatas, nuevas: g.nuevas, yaEstaban: g.repetidas + g.enLote, noLegibles: r.noLegibles };
+    cancelar();
+    const [r] = await base.buscar([{ nombre: jugador.name, elo: jugador.rating }], MAX_POR_JUGADOR, progreso, señal);
+    cancelar();
+    return { ...r, jugadorClave: claveJugador(jugador) };
   });
+}
+
+/** Guarda una búsqueda ya preparada sin volver a recorrer los archivos de ChessBase. */
+export async function importarEncontradas(jugador, encontradas) {
+  const clave = claveJugador(jugador);
+  if (!encontradas || encontradas.jugadorClave !== clave) throw new Error('La búsqueda no corresponde a este jugador.');
+  const items = encontradas.partidas.map(({ partida, color }) => ({ partida, color, eco: partida.cab('ECO'), apertura: partida.cab('Opening'), ritmo: detectarRitmo(partida) }));
+  const g = await guardarPartidas(clave, items, 'MegaDatabase');
+  await guardarAjuste(`mega_buscado:${clave}`, new Date().toISOString());
+  await refrescarTarjetasDe(clave);
+  return { candidatas: encontradas.candidatas, nuevas: g.nuevas, yaEstaban: g.repetidas + g.enLote, noLegibles: encontradas.noLegibles };
+}
+
+/** Busca en la base las partidas de este jugador y las guarda. Devuelve { candidatas, nuevas, yaEstaban, noLegibles }. */
+export async function importar(jugador, progreso, señal) {
+  const encontradas = await buscar(jugador, progreso, señal);
+  return encontradas ? importarEncontradas(jugador, encontradas) : { candidatas: 0, nuevas: 0, yaEstaban: 0, noLegibles: 0 };
 }

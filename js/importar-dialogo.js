@@ -2,7 +2,7 @@
 import { LOCALE } from './i18n.js';
 import { contenidoBoton } from './iconos.js';
 import { informar } from './dialogos.js';
-import { importar, mensaje } from './importador.js';
+import { leerArchivo, importar, mensaje } from './importador.js';
 import { leerCarpetaPgn, elegirCarpetaPgn, permitirCarpetaPgn, buscarPgnEnCarpeta, agruparCarpetasPgn, repartirPgn } from './importar-carpetas.js';
 import * as mega from './mega.js';
 import { nombreConTitulo } from './nombre-jugador.js';
@@ -10,7 +10,6 @@ import { nombreConTitulo } from './nombre-jugador.js';
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const tam = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
 const FUENTES_PGN = [
-  { id: 'pgn', nombre: 'Archivos PGN' },
   { id: 'yotta', nombre: 'YottaChess' },
   { id: 'ahora', nombre: 'AhoraAjedrez' }
 ];
@@ -19,10 +18,11 @@ const FUENTES_PGN = [
 export function abrirImportar(jugador) {
   return new Promise((resolver) => {
     const previo = document.activeElement;
-    let lecturas = [], ocupado = false, cerrado = false, iniciando = true, resultado = null;
+    let lecturas = [], ocupado = false, cerrado = false, iniciando = true, leyendoPgn = false, resultado = null;
+    let megaBuscando = false, megaResultado = null, megaError = '', megaProgreso = '';
     const control = new AbortController();
     const carpetas = Object.fromEntries(FUENTES_PGN.map(f => [f.id, { carpeta: null, buscando: false, pendiente: false, error: '', errores: [] }]));
-    const leyendo = () => iniciando || Object.values(carpetas).some(c => c.buscando);
+    const leyendo = () => iniciando || leyendoPgn || Object.values(carpetas).some(c => c.buscando);
 
     const velo = document.createElement('div');
     velo.className = 'velo';
@@ -30,7 +30,18 @@ export function abrirImportar(jugador) {
       <div class="dialogo dialogo-importar" role="dialog" aria-modal="true" aria-label="Importar partidas">
         <div class="dialogo-cab"><img src="assets/icon.png" alt=""><span>Importar partidas · ${esc(nombreConTitulo(jugador))}</span></div>
         <div class="importar-cuerpo">
-          <p class="importar-intro">Se buscan automáticamente los PGN de este jugador en las carpetas seleccionadas. Pulsa «Importar» para guardar las partidas encontradas.</p>
+          <p class="importar-intro">Se buscan sus partidas en las carpetas elegidas y en la MegaDatabase conectada. También puedes elegir archivos PGN. Pulsa «Importar» para guardarlas.</p>
+
+          <div class="importar-caja">
+            <div class="importar-fila">
+              <div class="importar-texto"><b>Archivos PGN</b><span class="suave">Elige uno o varios archivos PGN de tu ordenador.</span></div>
+              <button type="button" class="btn btn-secundario btn-chico" data-elegir-pgn></button>
+            </div>
+            <div class="importar-zona"><span data-lista="pgn" class="suave">Ningún archivo todavía</span></div>
+            <div class="importar-recuento" data-recuento="pgn" aria-live="polite" hidden></div>
+            <div class="importar-error" data-error-pgn role="status" hidden></div>
+            <input type="file" accept=".pgn" multiple hidden data-entrada-pgn>
+          </div>
 
           ${FUENTES_PGN.map(f => `<div class="importar-caja" data-fuente="${f.id}">
             <div class="importar-fila">
@@ -49,7 +60,9 @@ export function abrirImportar(jugador) {
             <div class="importar-fila">
               <div class="importar-texto"><b>MegaDatabase de ChessBase</b><span class="suave" data-mega-estado></span></div>
               <button type="button" class="btn btn-secundario btn-chico" data-mega-permiso hidden></button>
+              <button type="button" class="btn btn-secundario btn-chico" data-mega-reintentar hidden></button>
             </div>
+            <div class="importar-recuento" data-mega-recuento aria-live="polite" hidden></div>
           </div>
 
           <p class="importar-nota suave">Al importar, las partidas repetidas entre PGN y MegaDatabase se guardan una sola vez.</p>
@@ -62,6 +75,8 @@ export function abrirImportar(jugador) {
       </div>`;
 
     const $ = (s) => velo.querySelector(s);
+    $('[data-elegir-pgn]').innerHTML = contenidoBoton('carpeta', 'Elegir archivos');
+    $('[data-mega-reintentar]').innerHTML = contenidoBoton('reiniciar', 'Reintentar');
     for (const f of FUENTES_PGN) {
       $(`[data-cambiar="${f.id}"]`).innerHTML = contenidoBoton('carpeta', 'Cambiar');
       $(`[data-permitir="${f.id}"]`).innerHTML = contenidoBoton('visto', 'Permitir');
@@ -80,27 +95,30 @@ export function abrirImportar(jugador) {
     };
     const teclas = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cerrar(); } };
 
+    const pintarArchivos = (id, vacio) => {
+      const propias = lecturas.filter(l => l.tarjeta === id);
+      const lista = $(`[data-lista="${id}"]`), recuento = $(`[data-recuento="${id}"]`);
+      if (!propias.length) { lista.className = 'suave'; lista.textContent = vacio; }
+      else {
+        lista.className = '';
+        lista.innerHTML = propias.map(l => `<div class="importar-archivo ${l.suyas ? '' : 'sin-suyas'}">
+          <span class="recortar" title="${esc(l.archivo.name)}">${esc(l.archivo.name)}</span>
+          <span class="suave">${l.suyas} suyas de ${l.total} · ${tam(l.archivo.size)}</span></div>`).join('');
+        if (propias.some(l => l.sinOrigen)) lista.insertAdjacentHTML('beforeend', '<div class="suave importar-origen">Origen sin identificar: se importará como PGN.</div>');
+      }
+      const n = propias.reduce((s, l) => s + l.suyas, 0);
+      recuento.hidden = !propias.length;
+      recuento.textContent = n === 1 ? '1 partida del jugador cargada' : `${n} partidas del jugador cargadas`;
+    };
+
     const pintarLista = () => {
+      pintarArchivos('pgn', leyendoPgn ? 'Leyendo archivos…' : 'Ningún archivo todavía');
+      $('[data-elegir-pgn]').disabled = ocupado || leyendo();
       for (const f of FUENTES_PGN) {
         const estado = carpetas[f.id];
-        const propias = lecturas.filter(l => l.tarjeta === f.id);
-        const lista = $(`[data-lista="${f.id}"]`), recuento = $(`[data-recuento="${f.id}"]`);
         $(`[data-carpeta="${f.id}"]`).textContent = estado.carpeta ? `Carpeta seleccionada: ${estado.carpeta.name}` : 'Carpeta seleccionada: ninguna';
-        if (!propias.length) {
-          lista.className = 'suave';
-          lista.textContent = estado.buscando ? 'Buscando PGN del jugador…' : estado.pendiente ? 'Pulsa «Permitir» para buscar en esta carpeta.'
-            : estado.error ? 'No se pudo completar la búsqueda.' : estado.carpeta ? 'No existen PGN de este jugador' : 'Selecciona una carpeta con «Cambiar».';
-        }
-        else {
-          lista.className = '';
-          lista.innerHTML = propias.map(l => `<div class="importar-archivo ${l.suyas ? '' : 'sin-suyas'}">
-            <span class="recortar" title="${esc(l.archivo.name)}">${esc(l.archivo.name)}</span>
-            <span class="suave">${l.suyas} suyas de ${l.total} · ${tam(l.archivo.size)}</span></div>`).join('');
-          if (propias.some(l => l.sinOrigen)) lista.insertAdjacentHTML('beforeend', '<div class="suave importar-origen">Origen sin identificar: se importará como PGN.</div>');
-        }
-        const n = propias.reduce((s, l) => s + l.suyas, 0);
-        recuento.hidden = !propias.length;
-        recuento.textContent = n === 1 ? '1 partida del jugador cargada' : `${n} partidas del jugador cargadas`;
+        pintarArchivos(f.id, estado.buscando ? 'Buscando PGN del jugador…' : estado.pendiente ? 'Pulsa «Permitir» para buscar en esta carpeta.'
+          : estado.error ? 'No se pudo completar la búsqueda.' : estado.carpeta ? 'No existen PGN de este jugador' : 'Selecciona una carpeta con «Cambiar».');
         $(`[data-cambiar="${f.id}"]`).disabled = ocupado || leyendo();
         const permiso = $(`[data-permitir="${f.id}"]`);
         permiso.hidden = !estado.pendiente;
@@ -110,24 +128,72 @@ export function abrirImportar(jugador) {
         error.textContent = estado.error || (estado.errores.length ? `No se pudieron leer ${estado.errores.length} archivos. Los demás se han revisado.` : '');
       }
       $('[data-cerrar]').disabled = ocupado;
-      $('[data-importar]').disabled = ocupado || leyendo() || !(lecturas.some(l => l.suyas > 0) || mega.estado.base || mega.estado.pendiente);
+      $('[data-mega-permiso]').disabled = ocupado || megaBuscando;
+      $('[data-mega-reintentar]').disabled = ocupado || megaBuscando;
+      $('[data-importar]').disabled = ocupado || leyendo() || megaBuscando || !(lecturas.some(l => l.suyas > 0) || megaResultado?.partidas.length);
     };
 
     // Estado de la MegaDatabase: conectada, a la espera del permiso del navegador o sin elegir.
     const pintarMega = () => {
       const e = mega.estado, t = $('[data-mega-estado]'), b = $('[data-mega-permiso]');
       b.hidden = !e.pendiente;
+      b.disabled = ocupado || megaBuscando;
+      $('[data-mega-reintentar]').hidden = !megaError || !e.base;
+      $('[data-mega-reintentar]').disabled = ocupado || megaBuscando;
       if (e.base) t.textContent = `${e.base.nombre} · ${e.base.totalPartidas.toLocaleString(LOCALE)} partidas. Se buscan por nombre y ELO (ChessBase no guarda el ID FIDE); tarda unos segundos.`;
       else if (e.pendiente) t.textContent = `${e.nombre || 'La MegaDatabase'} está elegida, pero el navegador pide confirmar el acceso a sus archivos.`;
       else if (e.error) t.textContent = `No disponible: ${e.error}`;
       else t.textContent = 'Todavía no has elegido tu MegaDatabase. Hazlo con el botón «Elegir» del aviso de MegaDatabase de la pantalla principal.';
+      const recuento = $('[data-mega-recuento]');
+      recuento.hidden = !megaBuscando && !megaResultado && !megaError;
+      const encontradas = megaResultado?.candidatas === 1 ? '1 partida encontrada' : `${megaResultado?.candidatas.toLocaleString(LOCALE)} partidas encontradas`;
+      const preparadas = megaResultado?.partidas.length === 1 ? '1 preparada para importar' : `${megaResultado?.partidas.length.toLocaleString(LOCALE)} preparadas para importar`;
+      recuento.textContent = megaError ? `No se pudo buscar en la MegaDatabase: ${megaError}` : megaBuscando ? (megaProgreso || 'Buscando partidas en la MegaDatabase…')
+        : megaResultado?.candidatas ? `${encontradas} · ${preparadas}`
+        : 'No se encontraron partidas de este jugador en la MegaDatabase.';
       pintarLista();
     };
+
+    const buscarMega = async () => {
+      if (cerrado || ocupado || megaBuscando || !mega.estado.base) return;
+      megaBuscando = true; megaResultado = null; megaError = ''; megaProgreso = '';
+      pintarMega();
+      try {
+        const r = await mega.buscar(jugador, texto => { if (!cerrado) { megaProgreso = texto; pintarMega(); } }, control.signal);
+        if (!cerrado) megaResultado = r;
+      } catch (e) { if (e.name !== 'AbortError') megaError = e.message; }
+      finally { megaBuscando = false; if (!cerrado) pintarMega(); }
+    };
+
+    $('[data-elegir-pgn]').addEventListener('click', () => { if (!ocupado && !leyendo()) $('[data-entrada-pgn]').click(); });
+    $('[data-entrada-pgn]').addEventListener('change', async e => {
+      const archivos = [...e.target.files];
+      e.target.value = '';
+      if (cerrado || ocupado || leyendo() || !archivos.length) return;
+      leyendoPgn = true;
+      lecturas = lecturas.filter(l => l.tarjeta !== 'pgn');
+      const error = $('[data-error-pgn]'), errores = [];
+      error.hidden = true;
+      pintarLista();
+      try {
+        for (const archivo of archivos) {
+          try {
+            const lectura = await leerArchivo(archivo, jugador);
+            if (cerrado) return;
+            lecturas.push({ ...lectura, tarjeta: 'pgn', fuente: 'PGN' });
+          } catch { errores.push(archivo.name); }
+          if (cerrado) return;
+        }
+        error.textContent = errores.length ? `No se pudo leer el archivo: ${errores.join(', ')}`
+          : !lecturas.some(l => l.tarjeta === 'pgn' && l.suyas > 0) ? 'Ninguno de los archivos tiene partidas de este jugador. Comprueba que su nombre aparece igual en las cabeceras White y Black.' : '';
+        error.hidden = !error.textContent;
+      } finally { leyendoPgn = false; if (!cerrado) pintarLista(); }
+    });
 
     const revisarCarpetas = async () => {
       if (cerrado) return;
       iniciando = true;
-      lecturas = [];
+      lecturas = lecturas.filter(l => l.tarjeta === 'pgn');
       for (const estado of Object.values(carpetas).filter(c => c.carpeta)) {
         estado.buscando = true; estado.pendiente = false; estado.error = ''; estado.errores = [];
       }
@@ -183,15 +249,13 @@ export function abrirImportar(jugador) {
     velo.addEventListener('mousedown', (e) => { if (e.target === velo) cerrar(); });
 
     $('[data-importar]').addEventListener('click', async () => {
-      if (ocupado || leyendo()) return;
+      if (ocupado || leyendo() || megaBuscando) return;
       ocupado = true;
       pintarLista();
       const progreso = $('[data-progreso]');
       progreso.hidden = false;
       progreso.textContent = 'Importando…';
       try {
-        // MegaDatabase: si el navegador pide permiso para sus archivos, se pide ahora (hace falta un clic del usuario).
-        if (mega.estado.pendiente && !await mega.pedirPermiso()) { progreso.textContent = 'No se ha dado permiso para leer la MegaDatabase.'; }
         pintarMega();
 
         let textoMega = null, textoPgn = null;
@@ -202,9 +266,10 @@ export function abrirImportar(jugador) {
           textoPgn = mensaje(nombreConTitulo(jugador), r);
           resultado = { ...(resultado ?? {}), pgn: r };
         }
-        if (mega.estado.base) {
+        if (megaResultado) {
           try {
-            const m = await mega.importar(jugador, (t) => { progreso.textContent = `MegaDatabase · ${t}`; });
+            progreso.textContent = 'Importando de la MegaDatabase…';
+            const m = await mega.importarEncontradas(jugador, megaResultado);
             const ya = m.yaEstaban > 0 ? ` y ${m.yaEstaban} que ${m.yaEstaban === 1 ? 'ya estaba guardada' : 'ya estaban guardadas'}` : '';
             textoMega = m.candidatas === 0 ? 'no hay partidas suyas en la base.'
               : m.candidatas > mega.MAX_POR_JUGADOR
@@ -232,10 +297,21 @@ export function abrirImportar(jugador) {
     });
 
     $('[data-mega-permiso]').innerHTML = contenidoBoton('visto', 'Permitir');
-    $('[data-mega-permiso]').addEventListener('click', async () => { await mega.pedirPermiso(); pintarMega(); });
+    $('[data-mega-permiso]').addEventListener('click', async () => {
+      if (cerrado || ocupado || megaBuscando) return;
+      megaBuscando = true; megaError = '';
+      pintarMega();
+      try {
+        if (!await mega.pedirPermiso()) megaError = 'No se ha dado permiso para leer la MegaDatabase.';
+      } catch (e) { megaError = e.message; }
+      finally { megaBuscando = false; }
+      if (!cerrado) { pintarMega(); await buscarMega(); }
+    });
+    $('[data-mega-reintentar]').addEventListener('click', buscarMega);
     document.addEventListener('keydown', teclas, true);
     document.body.appendChild(velo);
     pintarMega();
+    buscarMega();
     $('[data-cerrar]').focus();
     // Al abrir se revisan las carpetas recordadas sin mostrar selectores ni pedir permisos automáticamente.
     Promise.all(FUENTES_PGN.map(async f => {

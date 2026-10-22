@@ -15,6 +15,7 @@ import { analizarRespuestaEjercicio } from '../../js/explicacion-ejercicio.js';
 import { leerArchivo, importar } from '../../js/importador.js';
 import { leerCarpetaPgn, elegirCarpetaPgn, permitirCarpetaPgn, buscarPgnEnCarpeta, fuenteDePgn, agruparCarpetasPgn, repartirPgn } from '../../js/importar-carpetas.js';
 import * as db from '../../js/db.js';
+import * as mega from '../../js/mega.js';
 import { guardarPartidas, listarPartidas, guardarEdicion, cargarEdicion } from '../../js/db-partidas.js';
 
 const fetchAnterior = globalThis.fetch;
@@ -31,6 +32,58 @@ const pgnFuentes = (abreviado = false, fecha = '2026.10.01') =>
 const archivoFuentes = texto => ({ name: 'partidas.pgn', size: texto.length, arrayBuffer: async () => new TextEncoder().encode(texto).buffer });
 const archivoCarpeta = (nombre, texto) => [nombre, { kind: 'file', getFile: async () => ({ ...archivoFuentes(texto), name: nombre }) }];
 const carpetaPrueba = archivos => ({ queryPermission: async () => 'granted', async *entries() { yield* archivos; } });
+
+test('La búsqueda previa en MegaDatabase no guarda partidas y se reutiliza al importar, sin recorrer la base otra vez', async () => {
+  const anterior = mega.estado.base, jugador = { ...jugadorFuentes, fideId: '8812360', rating: 2100 };
+  let busquedas = 0;
+  const avances = [];
+  mega.estado.base = { buscar: async (objetivos, maximo, progreso, señal) => {
+    busquedas++;
+    assert.deepEqual(objetivos, [{ nombre: jugador.name, elo: 2100 }]); assert.equal(maximo, mega.MAX_POR_JUGADOR);
+    assert.equal(señal.aborted, false); progreso('Prueba de búsqueda');
+    return [{ candidatas: 501, noLegibles: 0, partidas: [{ partida: leerPgn(pgnFuentes())[0], color: 'B' }] }];
+  } };
+  try {
+    const r = await mega.buscar(jugador, t => avances.push(t), new AbortController().signal);
+    assert.deepEqual(avances, ['Prueba de búsqueda']); assert.equal(r.candidatas, 501);
+    assert.equal((await listarPartidas('f:8812360')).length, 0);
+    assert.equal(await db.leerAjuste('mega_buscado:f:8812360'), null);
+    await assert.rejects(mega.importarEncontradas(jugadorFuentes, r), /no corresponde/);
+    assert.equal((await mega.importarEncontradas(jugador, r)).nuevas, 1);
+    assert.equal((await mega.importarEncontradas(jugador, r)).yaEstaban, 1);
+    assert.equal(busquedas, 1);
+    assert.equal((await listarPartidas('f:8812360')).length, 1);
+    assert.ok(await db.leerAjuste('mega_buscado:f:8812360'));
+  } finally { mega.estado.base = anterior; }
+});
+
+test('Cerrar durante la búsqueda de MegaDatabase la cancela sin guardar partidas', async () => {
+  const anterior = mega.estado.base, jugador = { ...jugadorFuentes, fideId: '8812361' };
+  let busquedas = 0;
+  const control = new AbortController();
+  mega.estado.base = { buscar: async () => { busquedas++; control.abort(); return [{ candidatas: 1, noLegibles: 0, partidas: [{ partida: leerPgn(pgnFuentes())[0], color: 'B' }] }]; } };
+  try {
+    await assert.rejects(mega.buscar(jugador, () => {}, control.signal), { name: 'AbortError' });
+    assert.equal(busquedas, 1);
+    await assert.rejects(mega.buscar(jugador, () => {}, control.signal), { name: 'AbortError' });
+    assert.equal(busquedas, 1);
+    assert.equal((await listarPartidas('f:8812361')).length, 0);
+  } finally { mega.estado.base = anterior; }
+});
+
+test('MegaDatabase distingue una búsqueda vacía de un fallo y permite reintentar tras el fallo', async () => {
+  const anterior = mega.estado.base;
+  let intentos = 0;
+  mega.estado.base = { buscar: async () => { if (++intentos === 1) throw new Error('Lectura fallida'); return [{ candidatas: 0, noLegibles: 0, partidas: [] }]; } };
+  try {
+    await assert.rejects(mega.buscar(jugadorFuentes), /Lectura fallida/);
+    const vacia = await mega.buscar(jugadorFuentes);
+    assert.equal(vacia.candidatas, 0); assert.deepEqual(vacia.partidas, []);
+    mega.estado.base = null;
+    assert.equal(await mega.buscar(jugadorFuentes), null);
+    assert.deepEqual(await mega.importar(jugadorFuentes), { candidatas: 0, nuevas: 0, yaEstaban: 0, noLegibles: 0 });
+  } finally { mega.estado.base = anterior; }
+});
 
 test('Cada fuente recuerda su carpeta de solo lectura; cancelar Cambiar conserva la anterior', async () => {
   const yotta = { kind: 'directory', name: 'Yotta PGN' }, ahora = { kind: 'directory', name: 'Ahora PGN' };
