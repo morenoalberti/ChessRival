@@ -1,12 +1,13 @@
 import { estadisticasFide, historialElo } from './fuentes.js';
 import { PROXY_URL } from './config.js';
+import { rutaFotoFide } from './foto-fuentes.js';
 import { svg } from './iconos.js';
 import { htmlFichaFide, posicionFichaFide } from './ficha-fide-datos.js';
 import { montarGraficoElo } from './grafico-elo.js';
 import { completarConHistorial } from './fide-historial-datos.js';
 
 /** Una ficha flotante compartida por todas las tarjetas. Las respuestas tardías nunca vuelven a abrirla. */
-export function instalarFichaFide(contenedor, obtenerJugador, { cargar = estadisticasFide, cargarHistorial = historialElo, foto = j => j.fideId && PROXY_URL ? `${PROXY_URL}/api/fide/foto?id=${encodeURIComponent(j.fideId)}` : j.photo || '' } = {}) {
+export function instalarFichaFide(contenedor, obtenerJugador, { cargar = estadisticasFide, cargarHistorial = historialElo, foto = j => j.photo || (j.fideId ? rutaFotoFide(j.fideId) : '') } = {}) {
   const ficha = document.createElement('section');
   ficha.className = 'fide-emergente'; ficha.id = 'ficha-fide-emergente'; ficha.hidden = true;
   ficha.setAttribute('role', 'region'); ficha.setAttribute('aria-label', 'Ficha FIDE del jugador');
@@ -29,6 +30,13 @@ export function instalarFichaFide(contenedor, obtenerJugador, { cargar = estadis
   function pintar(j, perfil, opciones) {
     grafico?.destruir(); grafico = null;
     ficha.innerHTML = `<header class="fide-emergente-cab"><span>Ficha FIDE</span><button type="button" data-cerrar-fide title="Cerrar" aria-label="Cerrar ficha FIDE">${svg('equis', 16)}</button></header>${htmlFichaFide(j, perfil, { foto: foto(j), ...opciones })}`;
+    const imagen = ficha.querySelector('.fide-emergente-foto img');
+    imagen?.addEventListener('error', () => {
+      if (!j.photo && PROXY_URL && !imagen.dataset.alternativa) {
+        imagen.dataset.alternativa = '1';
+        imagen.src = PROXY_URL + rutaFotoFide(j.fideId);
+      } else imagen.remove();
+    });
     ficha.style.height = `${Math.min(j.fideId ? 660 : 440, innerHeight - 20)}px`;
     situar();
     pintarEvolucion();

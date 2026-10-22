@@ -79,6 +79,8 @@ Las banderas de la barra superior cambian el idioma (español o inglés) al inst
 
 ## Datos y borrado
 
+Las fotos se consultan primero en `/api/fide/foto` del servidor Python de la web (Render o equipo local) y, si falla, en el Worker. Así la descarga FIDE no depende exclusivamente de Cloudflare. Solo se guardan imágenes válidas: una respuesta vacía no se conserva como ausencia permanente de foto. Al publicar cambios en esta ruta hay que usar `python servidor.py` como comando de inicio de Render.
+
 El ojo de las tarjetas con ID FIDE abre una ficha con foto, datos del perfil, evolución del ELO antes de las estadísticas, resultados por color y ritmo y rankings; se cierra al pulsar fuera de ella. La gráfica de Standard, Rapid y Blitz permite consultar el ELO de cada mes con el ratón. El contenido se puede desplazar sin cerrar la ficha. Las tarjetas sin ID FIDE no tienen ojo. Utiliza el Worker para consultar FIDE y conserva las respuestas durante 15 minutos para evitar consultas repetidas. Las estadísticas y el historial se cargan de forma independiente; si no hay historial o falla su consulta, se indica en la gráfica sin ocultar los resultados.
 
 Los datos se guardan en IndexedDB, en el navegador y origen utilizados. `localhost` y `127.0.0.1`, distintos puertos o distintos perfiles de navegador tienen bases de datos independientes.

@@ -18,6 +18,8 @@ import os
 import socket
 import threading
 import copias_local
+import fotos_fide
+from urllib.parse import parse_qs, urlsplit
 
 PUERTO = int(os.environ.get("PORT") or 8765)
 CARPETA = os.path.dirname(os.path.abspath(__file__))
@@ -216,6 +218,8 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         return self.path.split("?")[0].startswith("/local/")
 
     def do_GET(self):
+        if urlsplit(self.path).path == '/api/fide/foto':
+            return self._foto_fide(enviar_cuerpo=True)
         if not self._es_local():
             return super().do_GET()                      # los archivos de la web no necesitan permiso
         if not self._permitido():
@@ -229,6 +233,8 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_HEAD(self):
+        if urlsplit(self.path).path == '/api/fide/foto':
+            return self._foto_fide(enviar_cuerpo=False)
         if not self._es_local():
             return super().do_HEAD()
         if not self._permitido():
@@ -238,6 +244,24 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
         if self.path.split("?")[0].startswith("/local/libro"):
             return self._libro(enviar_cuerpo=False)
         super().do_HEAD()
+
+    def _foto_fide(self, enviar_cuerpo):
+        parametros = parse_qs(urlsplit(self.path).query)
+        try:
+            datos, tipo = fotos_fide.obtener_foto(parametros.get('id', [''])[0])
+        except fotos_fide.FotoNoDisponible as ex:
+            if enviar_cuerpo:
+                return self._json({'error': str(ex)}, ex.estado)
+            self.send_response(ex.estado)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header('Content-Type', tipo)
+        self.send_header('Content-Length', str(len(datos)))
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.end_headers()
+        if enviar_cuerpo:
+            self.wfile.write(datos)
 
     def do_POST(self):
         if not self._es_local():

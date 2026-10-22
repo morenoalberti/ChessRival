@@ -12,8 +12,48 @@ import * as copias from '../../js/copias.js';
 import { leerDestinoCopias, nombreDestinoCopias, elegirDestinoCopias, guardarArchivoCopia } from '../../js/copias-destino.js';
 import { posicionFichaFide, htmlFichaFide } from '../../js/ficha-fide-datos.js';
 import { fotoJugador } from '../../js/foto-jugador.js';
+import { descargarImagenJugador } from '../../js/foto-fuentes.js';
 
 const almacenes = ['torneos', 'tarjetas', 'partidas', 'analisis', 'ediciones', 'ajustes'];
+await test('La foto usa el servidor de la web y no necesita Cloudflare cuando funciona', async () => {
+  const original = globalThis.fetch, urls = [];
+  globalThis.fetch = async (url, opciones) => {
+    urls.push(url); assert.equal(opciones.cache, 'no-cache');
+    return new Response('foto de Diego', { headers: { 'content-type': 'image/jpeg' } });
+  };
+  try {
+    const foto = await descargarImagenJugador('2256657', 'https://proxy.test');
+    assert.equal(await foto.text(), 'foto de Diego');
+    assert.deepEqual(urls, ['/api/fide/foto?id=2256657']);
+  } finally { globalThis.fetch = original; }
+});
+
+await test('Si Render falla o no tiene la foto, se intenta Cloudflare', async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const estado of [404, 503, 200]) {
+      const urls = [];
+      globalThis.fetch = async url => {
+        urls.push(url);
+        return urls.length === 1 ? new Response('<html>Sin imagen</html>', { status: estado, headers: { 'content-type': 'text/html' } })
+          : new Response('foto alternativa', { headers: { 'content-type': 'image/webp' } });
+      };
+      assert.equal(await (await descargarImagenJugador('2256657', 'https://proxy.test')).text(), 'foto alternativa');
+      assert.deepEqual(urls, ['/api/fide/foto?id=2256657', 'https://proxy.test/api/fide/foto?id=2256657']);
+    }
+  } finally { globalThis.fetch = original; }
+});
+
+await test('La ausencia confirmada se distingue del fallo temporal de las fuentes', async () => {
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Response('Sin foto', { status: 404 });
+    assert.equal(await descargarImagenJugador('2256657', 'https://proxy.test'), null);
+    globalThis.fetch = async url => new Response('Error', { status: String(url).startsWith('/') ? 503 : 404 });
+    await assert.rejects(descargarImagenJugador('2256657', 'https://proxy.test'), /Error 503/);
+  } finally { globalThis.fetch = original; }
+});
+
 await test('La foto vuelve a consultarse tras un antiguo sin foto y conserva la descarga válida', async () => {
   await db.guardarAjuste('foto:990001', '');
   let consultas = 0;
