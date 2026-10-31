@@ -24,7 +24,8 @@ const el = {
   megaText: $('megaText'), megaBtn: $('megaBtn'), libroText: $('libroText'), libroBtn: $('libroBtn'),
   rango: $('cantidadRango'), cantidad: $('cantidadValor'),
   pestanas: $('filaPestanas'), estado: $('estadoText'), tarjetas: $('tarjetas'),
-  redPunto: $('redPunto'), redText: $('redText'), pie: $('pieText')
+  redPunto: $('redPunto'), redText: $('redText'), pie: $('pieText'),
+  demoAviso: $('avisoDemostracion'), demoTexto: $('textoDemostracion'), demoSalir: $('salirDemostracion')
 };
 
 /** Torneo cuya pestaña está abierta; null = «Todos». */
@@ -33,6 +34,8 @@ let pestanas = [];          // [{ id, titulo, contador, esJugadores, activa }]
 let jugadores = [];         // tarjetas en pantalla, en su orden
 let arrastre = null;        // { tipo: 'tarjeta' | 'pestana', ... }
 let urlDelPortapapeles = null;
+let demostracionEnCurso = false;
+let cancelarDemostracion = false;
 instalarFichaFide(el.tarjetas, elemento => jugadores.find(j => j.id === Number(elemento.dataset.id)));
 
 // ---------- Animación de reordenación (FLIP): los elementos se deslizan a su nuevo sitio ----------
@@ -178,9 +181,12 @@ function plantillaTarjeta(j) {
   const estado = j.status === 'Listo' ? ['listo', 'Listo'] : j.status === 'Importando' ? ['importando', 'Importando'] : ['', 'Sin partidas'];
   const titulo = nombreConTitulo(j);
   const tituloCompleto = j.rank > 0 ? `${j.rank} · ${titulo}` : titulo;
+  const avatar = j.demostracion
+    ? `<div class="avatar avatar-demo" style="--demo-x:${(j.demoPortraitIndex % 4) * 33.3333}%;--demo-y:${Math.floor(j.demoPortraitIndex / 4) * 33.3333}%" aria-label="Retrato ficticio"></div>`
+    : `<div class="avatar">${j.photo ? `<img src="${esc(j.photo)}" alt="" draggable="false">` : esc(iniciales(j.name))}</div>`;
   return `
     <div class="tarjeta-cab">
-      <div class="avatar">${j.photo ? `<img src="${esc(j.photo)}" alt="" draggable="false">` : esc(iniciales(j.name))}</div>
+      ${avatar}
       <div class="tarjeta-titulo recortar" title="${esc(tituloCompleto)}">${esc(tituloCompleto)}</div>
       <div class="estado-pildora ${estado[0]}"><i></i><span>${estado[1]}</span></div>
     </div>
@@ -221,6 +227,8 @@ function pintarTarjetas(lista) {
         d.addEventListener('animationend', () => d.classList.remove('entra'), { once: true });
         elementosTarjeta.set(j.id, d);
       }
+      d.dataset.demostracion = j.demostracion ? 'true' : 'false';
+      d.title = j.demostracion ? 'Pulsa para abrir la ficha (jugador ficticio)' : '';
       d.innerHTML = plantillaTarjeta(j);
     }
     lista.forEach((j, i) => {
@@ -266,7 +274,7 @@ function mostrarBienvenida() {
       </div>
     </div>
     <ol class="bienvenida-pasos">
-      <li><b>1</b><div><strong>Busca a tu rival</strong><span>Pega la URL de un torneo (Chess-Results o Info64) para cargar de 1 a 10 jugadores, los que elijas con «Jugadores a cargar», o escribe el nombre o el ID FIDE de un jugador en la caja de arriba y pulsa Enter.</span></div></li>
+      <li><b>1</b><div><strong>Busca a tu rival</strong><span>Pega una URL pública de Chess-Results, Info64, ChessRoster, ChessRegister o VegaResults para cargar a los jugadores con mayor rating publicado, o escribe el nombre o el ID FIDE de un jugador.</span></div></li>
       <li><b>2</b><div><strong>Importa sus partidas</strong><span>Abre su ficha con doble clic en su tarjeta y pulsa «Importar partidas»: con archivos PGN o desde tu MegaDatabase.</span></div></li>
       <li><b>3</b><div><strong>Analiza y prepara</strong><span>Stockfish revisa sus partidas y te dice cómo juega y qué te conviene jugarle.</span></div></li>
     </ol>
@@ -285,7 +293,7 @@ async function cargarVista() {
   pintarTarjetas(lista);
 
   if (pestanas.every(p => p.contador === 0)) {
-    el.subtitulo.textContent = 'Pega una URL de Chess-Results o Info64';
+    el.subtitulo.textContent = 'Pega el enlace de un torneo público';
     mostrarBienvenida();
     el.pie.textContent = '';
     return;
@@ -329,6 +337,7 @@ async function aplicarCambios(id, cambios) {
  *  Las tarjetas se van completando una a una, de arriba abajo. */
 async function completarTarjetas(lista) {
   await enParalelo(lista, 4, async (j) => {
+    if (j.demostracion) return; // Las tarjetas ficticias no deben consultar la FIDE ni completar datos reales.
     if (!j.verificado) {
       try {
         const v = await fuentes.verificarJugador(j);
@@ -449,13 +458,20 @@ function abrirFicha(j) {
 
 el.tarjetas.addEventListener('click', (e) => {
   const d = e.target.closest('.tarjeta');
-  if (!d || !e.target.closest('.borrar')) return;
+  if (!d) return;
+  if (d.dataset.demostracion === 'true' && !e.target.closest('.borrar') && e.detail === 1) {
+    const ejemplo = jugadores.find(x => x.id === Number(d.dataset.id));
+    // En la demo navegamos en esta pestaña para que el navegador no bloquee la ventana de ejemplo.
+    if (ejemplo) location.href = `ficha.html?id=${ejemplo.id}`;
+    return;
+  }
+  if (!e.target.closest('.borrar')) return;
   const j = jugadores.find(x => x.id === Number(d.dataset.id));
   if (j) borrarTarjeta(j);
 });
 el.tarjetas.addEventListener('dblclick', (e) => {
   const d = e.target.closest('.tarjeta');
-  if (!d || e.target.closest('.borrar')) return;
+  if (!d || e.target.closest('.borrar') || d.dataset.demostracion === 'true') return;
   const j = jugadores.find(x => x.id === Number(d.dataset.id));
   if (j) abrirFicha(j);
 });
@@ -587,7 +603,7 @@ function actualizarBotonCargar() {
   const texto = el.urlBox.value.trim();
   el.cargarBtn.innerHTML = texto && !fuentes.esUrl(texto)
     ? contenidoBoton('mas', 'Añadir') : contenidoBoton('descargar', 'Cargar');
-  el.cargarBtn.disabled = cargandoURL || texto.length === 0;
+  el.cargarBtn.disabled = demostracionEnCurso || cargandoURL || texto.length === 0;
   el.urlBox.parentElement.classList.toggle('con-texto', el.urlBox.value.length > 0);
 }
 
@@ -609,6 +625,8 @@ async function cargar() {
   const texto = el.urlBox.value.trim();
   if (!texto) return;
   if (!fuentes.esUrl(texto)) { await anadirJugador(texto); return; }
+
+  await salirDeDemostracion(true);
 
   cargandoURL = true; actualizarBotonCargar();
   mostrarEstado('Cargando torneo…', true, Number(el.rango.value) || 5);
@@ -638,6 +656,7 @@ async function cargar() {
 }
 
 async function anadirJugador(texto) {
+  await salirDeDemostracion(true);
   cargandoURL = true; actualizarBotonCargar();
   mostrarEstado(`Buscando «${texto}» en la FIDE…`, true, 1);
   el.pie.textContent = 'Buscando jugador…';
@@ -682,7 +701,7 @@ el.urlBox.addEventListener('keydown', (e) => { if (e.key === 'Enter') cargar(); 
 el.urlBox.addEventListener('input', actualizarBotonCargar);
 $('urlLimpiar').addEventListener('click', () => { el.urlBox.value = ''; actualizarBotonCargar(); el.urlBox.focus(); });
 
-// Al volver a la pestaña del navegador se mira el portapapeles: si hay una URL de Chess-Results o Info64 se pone en la caja,
+// Al volver a la pestaña del navegador se mira el portapapeles: si hay una URL de torneo se pone en la caja,
 // salvo que el usuario ya haya escrito otra cosa.
 async function mirarPortapapeles() {
   let texto;
@@ -801,19 +820,129 @@ addEventListener('offline', actualizarRed);
 navigator.connection?.addEventListener?.('change', actualizarRed);
 setInterval(actualizarRed, 15000);
 
-// ---------- Datos de demostración (solo con ?demo) ----------
+// ---------- Recorrido inicial: URLs visibles y datos de jugadores ficticios ----------
 
-async function sembrarDemo() {
-  await db.guardarTorneo({
-    nombre: 'Torneo de demostración', url: 'https://chess-results.com/tnr000000.aspx', clave: 'cr:000000',
-    jugadores: [
-      { rank: 1, name: 'Carlsen, Magnus', federation: 'NOR', rating: 2830, fideId: '1503014', age: '35 años', fideTitle: 'GM', gamesCount: 1240, sources: 'ChessBase 62% · Lichess 38%', status: 'Listo', verificado: true },
-      { rank: 2, name: 'Caruana, Fabiano', federation: 'USA', rating: 2795, fideId: '2020009', age: '33 años', fideTitle: 'GM', gamesCount: 860, sources: 'ChessBase 100%', status: 'Importando', verificado: true },
-      { rank: 3, name: 'Gukesh, D', federation: 'IND', rating: 2783, fideId: '46616543', age: '20 años', fideTitle: 'GM', gamesCount: 0, sources: '—', status: 'SinPartidas', verificado: true },
-      { rank: 4, name: 'Firouzja, Alireza', federation: 'FRA', rating: 2770, fideId: '12573981', age: '23 años', fideTitle: 'GM', gamesCount: 410, sources: 'Lichess 100%', status: 'Listo', verificado: true },
-      { rank: 5, name: 'Nakamura, Hikaru', federation: 'USA', rating: 2768, fideId: '2016192', age: '38 años', fideTitle: 'GM', gamesCount: 0, sources: '—', status: 'SinPartidas', verificado: true }
-    ]
-  });
+const esperarDemo = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const jugadoresDemo = (participantes, retratoInicial) => participantes.map((p, i) => ({
+  rank: i + 1, name: p.name, federation: p.federation, rating: p.rating, fideId: '', age: '—', fideTitle: '',
+  gamesCount: 0, sources: '—', status: 'SinPartidas', verificado: true, demostracion: true,
+  demoPortraitIndex: retratoInicial + i
+}));
+
+const torneosDemo = [
+  {
+    nombre: 'Demo · Open Estelar', fuenteDemo: 'ChessRoster', url: 'https://bayareachess.chessroster.com/torneo-demo-chessrival-0000', clave: 'demo:chessroster',
+    jugadores: jugadoresDemo([
+      { name: 'Vega, Samuel', federation: 'USA', rating: 2397 },
+      { name: 'Navarro, Inés', federation: 'ESP', rating: 2330 },
+      { name: 'Okafor, Daniel', federation: 'ENG', rating: 2267 },
+      { name: 'Kowalski, Lena', federation: 'POL', rating: 2219 },
+      { name: 'Chen, Marco', federation: 'USA', rating: 2212 }
+    ], 0)
+  },
+  {
+    nombre: 'Demo · Copa Continental', fuenteDemo: 'VegaResults', url: 'https://www.vegaresults.com/vega/index.php?id=987654321&page=players', clave: 'demo:vega',
+    jugadores: jugadoresDemo([
+      { name: 'Ríos, Valentina', federation: 'ARG', rating: 2310 },
+      { name: 'Haddad, Karim', federation: 'MAR', rating: 2285 },
+      { name: 'Park, Min-jun', federation: 'KOR', rating: 2240 },
+      { name: 'Silva, Beatriz', federation: 'BRA', rating: 2198 },
+      { name: 'Müller, Jonas', federation: 'GER', rating: 2175 }
+    ], 5)
+  }
+];
+
+function mostrarAvisoDemo(texto) {
+  el.demoTexto.textContent = texto;
+  el.demoAviso.classList.remove('oculto');
+}
+
+async function pegarUrlDemo(url) {
+  el.urlBox.value = '';
+  for (const letra of url) {
+    if (cancelarDemostracion) return false;
+    el.urlBox.value += letra;
+    await esperarDemo(12);
+  }
+  actualizarBotonCargar();
+  return true;
+}
+
+async function salirDeDemostracion(actualizar = true) {
+  cancelarDemostracion = true;
+  const direccion = new URL(location.href);
+  if (direccion.searchParams.has('demo')) {
+    direccion.searchParams.delete('demo');
+    history.replaceState(null, '', `${direccion.pathname}${direccion.search}${direccion.hash}`);
+  }
+  const torneos = await db.listarTorneos();
+  const ejemplos = torneos.filter(t => t.demostracion);
+  for (const t of ejemplos) await db.cerrarTorneo(t.id);
+  await db.guardarAjuste('demostracion_inicial_completada', true);
+  el.demoAviso.classList.add('oculto');
+  if (ejemplos.length) {
+    torneoActual = null;
+    await db.guardarTorneoActual(null);
+    if (actualizar && !demostracionEnCurso) {
+      await refrescarPestanas();
+      await cargarVista();
+    }
+  }
+}
+
+el.demoSalir.addEventListener('click', async () => {
+  cancelarDemostracion = true;
+  while (demostracionEnCurso) await esperarDemo(100);
+  await salirDeDemostracion(true);
+  el.urlBox.value = '';
+  actualizarBotonCargar();
+  el.urlBox.focus();
+});
+
+async function ejecutarDemostracionInicial() {
+  demostracionEnCurso = true;
+  cancelarDemostracion = false;
+  mostrarAvisoDemo('Dos torneos, diez rivales y sus retratos. Todo es ficticio: estas URL no se consultan ni se importa información real.');
+  try {
+    // Al repetir ?demo, elimina solo las tarjetas de ejemplo anteriores antes de reproducir la secuencia.
+    const demosAnteriores = (await db.listarTorneos()).filter(t => t.demostracion);
+    for (const t of demosAnteriores) await db.cerrarTorneo(t.id);
+    if (demosAnteriores.length) {
+      torneoActual = null;
+      await db.guardarTorneoActual(null);
+      await refrescarPestanas();
+      await cargarVista();
+    }
+    el.urlBox.readOnly = true;
+    for (let i = 0; i < torneosDemo.length; i++) {
+      if (cancelarDemostracion) return;
+      const torneo = torneosDemo[i];
+      const paso = `${i + 1}/${torneosDemo.length} · ${torneo.fuenteDemo}`;
+      mostrarAvisoDemo(`${paso}: pegando la URL ficticia y preparando cinco jugadores…`);
+      if (!await pegarUrlDemo(torneo.url)) return;
+      mostrarEstado('Cargando torneo de ejemplo…', true, 5);
+      el.pie.textContent = 'Demostración simulada';
+      await esperarDemo(450);
+      if (cancelarDemostracion) return;
+      await db.guardarTorneo({ ...torneo, demostracion: true });
+      torneoActual = null;
+      await db.guardarTorneoActual(null);
+      await refrescarPestanas();
+      await cargarVista();
+      mostrarAvisoDemo(`${paso}: cinco jugadores ficticios añadidos. Sus retratos, nombres y ratings son de muestra.`);
+      await esperarDemo(850);
+    }
+    if (cancelarDemostracion) return;
+    el.urlBox.value = '';
+    actualizarBotonCargar();
+    mostrarAvisoDemo('¡Diez rivales listos! Pulsa una tarjeta para abrir la ficha de muestra. Todo es ficticio; «Empezar con mis datos» quita los ejemplos.');
+    el.pie.textContent = 'Los datos de esta demostración no son reales';
+    await db.guardarAjuste('demostracion_inicial_completada', true);
+  } finally {
+    demostracionEnCurso = false;
+    el.urlBox.readOnly = false;
+    actualizarBotonCargar();
+  }
 }
 
 // La ficha avisa cuando cambian las partidas de un jugador (importar, borrar…): las tarjetas se actualizan solas.
@@ -830,10 +959,15 @@ async function iniciar() {
     pintarMega(); pintarLibro();
     el.rango.value = String(await db.leerAjuste('jugadores_a_cargar', 5)); pintarCantidad();
 
-    if (new URLSearchParams(location.search).has('demo') && (await db.listarTorneos()).every(t => t.visibles === 0)) await sembrarDemo();
-
     await refrescarPestanas(await db.leerTorneoActual());
     await cargarVista();
+    const forzarDemo = new URLSearchParams(location.search).has('demo');
+    if (forzarDemo) await ejecutarDemostracionInicial();
+    else {
+      // La bienvenida permanece limpia; el recorrido solo se inicia si se solicita expresamente con ?demo.
+      el.demoAviso?.classList.add('oculto');
+      await db.guardarAjuste('demostracion_inicial_completada', true);
+    }
   } catch (ex) {
     mostrarEstado(`No se pudo abrir la base de datos: ${ex.message}`);
   }

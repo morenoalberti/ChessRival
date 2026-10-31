@@ -24,14 +24,25 @@ export async function guardarPartidas(jugadorClave, items, fuente = 'PGN') {
     const porClave = new Map(existentes.map(p => [claveDePartida(p), p]));
     // El jugador ya se ha identificado al importar: su nombre abreviado en otra
     // fuente no convierte el mismo encuentro en una partida diferente.
-    const huellaDe = p => {
+    const idRivalDe = p => {
+      const info = inspeccionarPartida(p);
+      const id = info.leida?.cab(p.colorJugador === 'N' ? 'WhiteFideId' : 'BlackFideId') ?? '';
+      return /^[1-9]\d*$/.test(id) ? id : '';
+    };
+    const huellaDe = (p, porId = false) => {
       const huella = inspeccionarPartida(p).huella;
       if (!huella) return '';
       const datos = JSON.parse(huella);
       datos[p.colorJugador === 'N' ? 2 : 1] = jugadorClave;
+      if (porId) {
+        const rival = idRivalDe(p);
+        if (!rival) return '';
+        datos[p.colorJugador === 'N' ? 1 : 2] = `fide:${rival}`;
+      }
       return JSON.stringify(datos);
     };
     const porHuella = new Map(existentes.map(p => [huellaDe(p), p]).filter(([h]) => h));
+    const porIdRival = new Map(existentes.map(p => [huellaDe(p, true), p]).filter(([h]) => h));
     const delLote = new Set();
     let nuevas = 0, repetidas = 0, enLote = 0;
 
@@ -43,18 +54,24 @@ export async function guardarPartidas(jugadorClave, items, fuente = 'PGN') {
       };
       const k = claveDePartida(dato);
       const huella = huellaDe(dato);
+      const huellaId = huellaDe(dato, true);
       const cabeceraIgual = porClave.get(k);
-      const ya = (huella && porHuella.get(huella)) || (cabeceraIgual?.pgn === dato.pgn ? cabeceraIgual : null);
+      let ya = (huellaId && porIdRival.get(huellaId)) || (huella && porHuella.get(huella)) || (cabeceraIgual?.pgn === dato.pgn ? cabeceraIgual : null);
+      // Los nombres abreviados de TWIC no crean copias si ambos PGN identifican
+      // al rival por FIDE. Dos IDs contradictorios nunca se unen solo por nombre.
+      if (ya && idRivalDe(ya) && idRivalDe(dato) && idRivalDe(ya) !== idRivalDe(dato)) ya = null;
       if (ya) {
         // La partida ya estaba: si ahora llega de otra fuente, se anota también esa.
         const unidas = unirFuentes(ya.origen, origen);
         if (unidas !== ya.origen) { ya.origen = unidas; await prom(store.put(ya)); }
+        if (huellaId) porIdRival.set(huellaId, ya);
         if (delLote.has(ya.id)) enLote++; else repetidas++;
         continue;
       }
       dato.id = await prom(store.add(dato));
       porClave.set(k, dato);
       if (huella) porHuella.set(huella, dato);
+      if (huellaId) porIdRival.set(huellaId, dato);
       delLote.add(dato.id);
       nuevas++;
     }

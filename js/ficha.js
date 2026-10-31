@@ -80,6 +80,7 @@ async function iniciar() {
     return;
   }
 
+  if (jugador.demostracion) $('avisoDemoFicha')?.classList.remove('oculto');
   montarCabecera();
   cargarFoto();
   cargarTitulosCabecera();
@@ -132,6 +133,14 @@ function pintarDatos(ficha = null) {
 
 function montarCabecera() {
   $('iniciales').textContent = iniciales(jugador.name);
+  if (jugador.demostracion) {
+    const avatar = $('avatar');
+    const indice = jugador.demoPortraitIndex ?? 0;
+    avatar.classList.add('ficha-avatar-demo');
+    avatar.style.setProperty('--demo-x', `${(indice % 4) * 33.3333}%`);
+    avatar.style.setProperty('--demo-y', `${Math.floor(indice / 4) * 33.3333}%`);
+    $('iniciales').hidden = true;
+  }
   tituloFide = (jugador.fideTitle ?? '');
   pintarNombre();
   pintarDatos(jugador.age && jugador.age !== '—' ? { edad: jugador.age } : null);

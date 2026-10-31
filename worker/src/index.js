@@ -1,5 +1,5 @@
 // Servidor intermedio de ChessRival (Cloudflare Worker).
-// El navegador no puede leer Chess-Results, Info64 ni la FIDE por CORS: este Worker las pide por él y devuelve JSON.
+// El navegador no puede leer proveedores externos de torneos ni la FIDE por CORS: este Worker los consulta.
 //
 //   GET /api/torneo?url=…&top=N  → { nombre, jugadores: [{ rank, name, federation, rating, points, fideId }] }
 //   GET /api/jugador/verificar?name=&fideId=&federation=&rating=  → el jugador con su ID FIDE, federación, título y edad corregidos
@@ -10,6 +10,8 @@
 //   GET /api/fide/foto?id=…      → la imagen del perfil de la FIDE (404 si no tiene)
 import { parse } from 'node-html-parser';
 import { normalizarTitulosFide } from '../../js/titulos-fide.js';
+import { consultarTwic, sincronizarTwic } from './twic.js';
+import { consultarLumbra, guardarLumbraLote } from './lumbra.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ChessRival/1.0';
 
@@ -64,15 +66,30 @@ const entero = (t) => { const n = parseInt(t, 10); return Number.isFinite(n) ? n
 
 function esChessResults(u) { return u.hostname.toLowerCase().endsWith('chess-results.com'); }
 function esInfo64(u) { return u.hostname.toLowerCase().includes('info64'); }
+function esChessRoster(u) { return u.hostname.toLowerCase() === 'chessroster.com' || u.hostname.toLowerCase().endsWith('.chessroster.com'); }
+function esVegaResults(u) { return u.hostname.toLowerCase() === 'vegaresults.com' || u.hostname.toLowerCase() === 'www.vegaresults.com'; }
+function esChessRegister(u) { return u.hostname.toLowerCase() === 'chessregister.com' || u.hostname.toLowerCase() === 'www.chessregister.com'; }
 
 const MAX_JUGADORES = 400;
 
 async function cargarTorneo(texto_, top = 5) {
   let u;
   try { u = new URL((texto_ ?? '').trim()); } catch { throw new ErrorUsuario('La URL no es válida.'); }
+  if (!['http:', 'https:'].includes(u.protocol)) throw new ErrorUsuario('La URL debe empezar por http:// o https://.');
   if (esChessResults(u)) return cargarChessResults(u, top);
   if (esInfo64(u)) return cargarInfo64(u, top);
-  throw new ErrorUsuario('Solo se admiten URLs de Chess-Results e Info64.');
+  if (esChessRoster(u)) return cargarChessRoster(u, top);
+  if (esChessRegister(u)) return cargarChessRegister(u, top);
+  if (esVegaResults(u)) return cargarVegaResults(u, top);
+  throw new ErrorUsuario('No reconozco este proveedor. Prueba con Chess-Results, Info64, ChessRoster, ChessRegister o VegaResults.');
+}
+
+function mejoresPorRating(jugadores, top) {
+  const ordenados = jugadores
+    .filter(j => j.name)
+    .sort((a, b) => (Number(b.rating) || 0) - (Number(a.rating) || 0) || (Number(a.rank) || 0) - (Number(b.rank) || 0));
+  const mejores = top > 0 ? ordenados.slice(0, top) : ordenados;
+  return mejores.map((j, i) => ({ ...j, rank: i + 1 }));
 }
 
 async function cargarChessResults(u, top = 5) {
@@ -93,44 +110,44 @@ async function cargarChessResults(u, top = 5) {
     fide: columna(cab, 'FideID', 'FIDE-ID', 'ID'), sno: columna(cab, 'No.Ini.', 'SNo', 'No.')
   };
 
-  const jugadores = [], numeros = [], enlaces = [];
-  for (const fila of tabla.querySelectorAll('tr').filter(f => f.querySelector('td'))) {
+  const jugadores = [];
+  for (const fila of tabla.querySelectorAll('tr').filter(f => f.querySelector('td')).slice(0, MAX_JUGADORES)) {
     const tds = celdasDe(fila);
     const cs = tds.map(texto);
     if (c.nombre < 0 || c.nombre >= cs.length || !cs[c.nombre]) continue;
-    numeros.push(entero(celda(cs, c.sno)));
-    enlaces.push(tds[c.nombre].querySelector('a[href]')?.getAttribute('href') ?? null);
     jugadores.push({
       rank: c.rank >= 0 && entero(cs[c.rank]) ? entero(cs[c.rank]) : jugadores.length + 1,
       name: cs[c.nombre], federation: celda(cs, c.fed), rating: entero(celda(cs, c.elo)),
-      points: celda(cs, c.pts), fideId: celda(cs, c.fide)
+      points: celda(cs, c.pts), fideId: celda(cs, c.fide),
+      _sno: entero(celda(cs, c.sno)), _profileHref: tds[c.nombre].querySelector('a[href]')?.getAttribute('href') ?? null
     });
-    if (jugadores.length === top) break;
   }
   if (jugadores.length === 0) throw new ErrorUsuario('La clasificación está vacía.', 422);
 
+  const seleccionados = mejoresPorRating(jugadores, top);
+
   // La clasificación suele no traer el ID FIDE: primero se busca en el listado por ranking inicial y,
   // si aun así falta, en la ficha individual del jugador.
-  if (jugadores.some(j => !j.fideId)) {
+  if (seleccionados.some(j => !j.fideId)) {
     try {
       const { porNumero, porNombre } = await idsFideDeLaLista(clasificacion);
-      jugadores.forEach((j, i) => {
+      seleccionados.forEach(j => {
         if (j.fideId) return;
-        j.fideId = (numeros[i] > 0 && porNumero.get(numeros[i])) || porNombre.get(normalizarNombre(j.name)) || '';
+        j.fideId = (j._sno > 0 && porNumero.get(j._sno)) || porNombre.get(normalizarNombre(j.name)) || '';
       });
     } catch { /* se sigue con las fichas individuales */ }
   }
 
   let consultas = 0;   // un Worker tiene un máximo de subpeticiones por llamada: solo las fichas de los primeros
-  await Promise.all(jugadores.map(async (j, i) => {
-    if (j.fideId || !enlaces[i] || ++consultas > 12) return;
+  await Promise.all(seleccionados.map(async j => {
+    if (j.fideId || !j._profileHref || ++consultas > 12) return;
     try {
-      const ficha = await descargarHtml(new URL(enlaces[i].replace(/&amp;/g, '&'), clasificacion).href);
+      const ficha = await descargarHtml(new URL(j._profileHref.replace(/&amp;/g, '&'), clasificacion).href);
       j.fideId = idFideDeFicha(ficha);
     } catch { /* sin ID FIDE no hay foto, pero la tarjeta se muestra igual */ }
   }));
 
-  return { nombre, jugadores };
+  return { nombre, jugadores: seleccionados.map(({ _sno, _profileHref, ...j }) => j) };
 }
 
 const normalizarNombre = (n) => n.toLowerCase().replace(/\s+/g, ' ').trim();
@@ -144,7 +161,7 @@ async function idsFideDeLaLista(clasificacion) {
 
   const cab = cabecerasDe(tabla);
   const cFide = cab.findIndex(h => reFide.test(h)), cNombre = columna(cab, 'Name', 'Nombre'), cNo = columna(cab, 'No.', 'SNo', 'No.Ini.');
-  for (const fila of tabla.querySelectorAll('tr').filter(f => f.querySelector('td'))) {
+  for (const fila of tabla.querySelectorAll('tr').filter(f => f.querySelector('td')).slice(0, MAX_JUGADORES)) {
     const cs = celdasDe(fila).map(texto);
     const id = /\d{3,}/.exec(celda(cs, cFide))?.[0];
     if (!id) continue;
@@ -192,10 +209,107 @@ async function cargarInfo64(u, top = 5) {
       name: cs[c.nombre], federation: celda(cs, c.fed), rating: entero(celda(cs, c.elo)),
       points: celda(cs, c.pts), fideId: celda(cs, c.fide)
     });
-    if (jugadores.length === top) break;
   }
   if (jugadores.length === 0) throw new ErrorUsuario('La lista de jugadores de Info64 está vacía.', 422);
-  return { nombre, jugadores };
+  return { nombre, jugadores: mejoresPorRating(jugadores, top) };
+}
+
+async function cargarChessRoster(u, top = 5) {
+  const html = await descargarHtml(u.href);
+  const doc = parse(html);
+  const nombre = texto(doc.querySelector('h1')) || 'Torneo ChessRoster';
+  let rosterUrl = u;
+  if (!/\/roster\/?(?:\?|$)/i.test(u.pathname)) {
+    const enlace = doc.querySelectorAll('a[href]').find(a => /\/roster\/?(?:\?|$)/i.test(a.getAttribute('href') || ''));
+    if (!enlace) throw new ErrorUsuario('Esta página de ChessRoster no publica una lista de inscritos.', 422);
+    rosterUrl = new URL(enlace.getAttribute('href').replace(/&amp;/g, '&'), u);
+    if (!esChessRoster(rosterUrl)) throw new ErrorUsuario('El enlace de inscritos de ChessRoster no es válido.');
+  }
+  const rosterHtml = rosterUrl.href === u.href ? html : await descargarHtml(rosterUrl.href);
+  // ChessRoster genera la lista en el estado RSC de Next.js. Se extrae solo la estructura
+  // pública incrustada en la propia página, sin llamar a endpoints privados de su aplicación.
+  const inicio = rosterHtml.indexOf('tournamentRegistrations');
+  if (inicio < 0) throw new ErrorUsuario('ChessRoster no ha publicado inscritos para este torneo.', 422);
+  const fragmento = rosterHtml.slice(inicio);
+  const patron = /\\"name\\":\\"((?:\\\\.|[^\\"\\])*)\\",\\"uscfId\\":(?:\\"([^\\"]*)\\"|null),\\"fideId\\":(?:\\"([^\\"]*)\\"|null),\\"cfcId\\":(?:\\"([^\\"]*)\\"|null),\\"pairingRating\\":(\d+),\\"withdrew\\":(true|false),\\"registrationTeamId\\":(null|\\"[^\\"]*\\"),\\"isTeamEntry\\":(true|false)/g;
+  const jugadores = [];
+  for (const m of fragmento.matchAll(patron)) {
+    if (m[6] === 'true' || m[8] === 'true') continue;
+    const nombreJugador = m[1].replace(/\\\\"/g, '"').replace(/\\\\\\/g, '\\').trim();
+    if (!nombreJugador) continue;
+    jugadores.push({ rank: jugadores.length + 1, name: nombreJugador, federation: 'USA', rating: entero(m[5]), points: '', fideId: m[3] || '' });
+    if (jugadores.length >= MAX_JUGADORES) break;
+  }
+  if (!jugadores.length) throw new ErrorUsuario('La lista pública de ChessRoster no contiene jugadores.', 422);
+  return { nombre, jugadores: mejoresPorRating(jugadores, top) };
+}
+
+async function cargarChessRegister(u, top = 5) {
+  const eventKey = u.searchParams.get('event_key');
+  if (!eventKey) throw new ErrorUsuario('Pega el enlace del evento de ChessRegister, que debe incluir event_key.');
+  const rosterUrl = new URL('/registrants', u.origin);
+  rosterUrl.searchParams.set('event_key', eventKey);
+  const doc = parse(await descargarHtml(rosterUrl.href));
+  const tabla = doc.querySelector('table.registrant-table');
+  if (!tabla) throw new ErrorUsuario('ChessRegister no publica la lista de inscritos de este evento.', 422);
+  const jugadores = [];
+  for (const fila of tabla.querySelectorAll('tr').filter(f => f.querySelector('td')).slice(0, MAX_JUGADORES)) {
+    const cs = celdasDe(fila).map(texto);
+    const name = celda(cs, 0);
+    if (!name) continue;
+    jugadores.push({ rank: jugadores.length + 1, name, federation: 'USA', rating: entero(celda(cs, 1)), points: '', fideId: '' });
+  }
+  if (!jugadores.length) throw new ErrorUsuario('La lista pública de ChessRegister no contiene inscritos.', 422);
+  const nombre = texto(doc.querySelector('h1')) || texto(doc.querySelector('h2')) || 'Torneo ChessRegister';
+  return { nombre: nombre.replace(/^Event Registrants\s*[—-]?\s*/i, '').trim() || 'Torneo ChessRegister', jugadores: mejoresPorRating(jugadores, top) };
+}
+
+async function cargarVegaResults(u, top = 5) {
+  let ids = [];
+  const page = u.pathname.toLowerCase();
+  if (page.startsWith('/vega/index.php')) {
+    const id = u.searchParams.get('id');
+    if (!id) throw new ErrorUsuario('No se encontró el identificador del torneo de VegaResults.');
+    ids = [id];
+  } else if (/^\/vr\/\d+\/?$/.test(u.pathname)) {
+    const doc = parse(await descargarHtml(u.href));
+    ids = [...new Set(doc.querySelectorAll('a[href]')
+      .filter(a => /\/vega\/index\.php\?id=\d+/i.test(a.getAttribute('href') || ''))
+      .map(a => /[?&]id=(\d+)/i.exec(a.getAttribute('href'))?.[1]).filter(Boolean))].slice(0, 8);
+    if (!ids.length) throw new ErrorUsuario('La página de VegaResults no tiene una clasificación publicada todavía.', 422);
+  } else {
+    throw new ErrorUsuario('Pega la página del evento de VegaResults o el enlace «Results» de una sección.');
+  }
+  const listas = await Promise.all(ids.map(async id => {
+    const url = new URL(`/vega/index.php?page=players&id=${encodeURIComponent(id)}`, u.origin);
+    const html = await descargarHtml(url.href);
+    const doc = parse(html);
+    const tabla = doc.querySelector('table#players-table')
+      ?? doc.querySelectorAll('table').find(t => /NAME/i.test(texto(t.querySelector('thead')) || '') && /RtgF/i.test(texto(t.querySelector('thead')) || ''));
+    if (!tabla) return { nombre: '', jugadores: [] };
+    const cab = tabla.querySelectorAll('thead th').map(texto);
+    const cNombre = cab.findIndex(h => /\bNAME\b|NOMBRE/i.test(h));
+    const cFed = cab.findIndex(h => /^Fed$/i.test(h));
+    const cFide = cab.findIndex(h => /FIDE\s*ID/i.test(h));
+    const cFideRtg = cab.findIndex(h => /RtgF/i.test(h));
+    const cNatRtg = cab.findIndex(h => /RtgN/i.test(h));
+    const filas = tabla.querySelectorAll('tbody tr').slice(0, MAX_JUGADORES);
+    const jugadores = filas.map((fila, i) => {
+      const tds = celdasDe(fila), cs = tds.map(texto);
+      const fideRating = entero(celda(cs, cFideRtg));
+      return { rank: i + 1, name: celda(cs, cNombre), federation: celda(cs, cFed), rating: fideRating || entero(celda(cs, cNatRtg)), points: '', fideId: /\d{3,}/.exec(celda(cs, cFide))?.[0] || '' };
+    }).filter(j => j.name);
+    return { nombre: texto(doc.querySelector('title')).replace(/\s*[|–-].*$/, ''), jugadores };
+  }));
+  const porNombre = new Map();
+  for (const { jugadores } of listas) for (const j of jugadores) {
+    const clave = j.fideId ? `f:${j.fideId}` : `n:${normalizarNombre(j.name)}`;
+    if (!porNombre.has(clave) || porNombre.get(clave).rating < j.rating) porNombre.set(clave, j);
+  }
+  const jugadores = mejoresPorRating([...porNombre.values()], top);
+  if (!jugadores.length) throw new ErrorUsuario('VegaResults no muestra una lista pública de jugadores para esta sección.', 422);
+  const titulo = listas.map(x => x.nombre).find(Boolean) || 'Torneo';
+  return { nombre: `${titulo} · VegaResults`, jugadores };
 }
 
 const cabecerasInfo64 = (tabla) => tabla.querySelectorAll('tr').flatMap(f => f.querySelectorAll('th')).map(texto);
@@ -607,16 +721,90 @@ async function modelosIa(proveedor, request) {
 // ---------- Enrutado ----------
 
 export default {
-  async fetch(request, env) {
+  scheduled(_evento, env, ctx) {
+    ctx.waitUntil(sincronizarTwic(env));
+  },
+  async fetch(request, env, ctx) {
     const cors = cabecerasCors(request, env);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
-    const esPost = request.method === 'POST' && new URL(request.url).pathname === '/api/ia/preguntar';
+    const ruta = new URL(request.url);
+    // Herramienta de demostración: solo existe con la configuración LOCAL y una petición de loopback.
+    if (ruta.pathname === '/__twic/actualizar' && request.method === 'POST') {
+      if (env.TWIC_LOCAL !== '1' || !['127.0.0.1', 'localhost'].includes(ruta.hostname)) return json({ error: 'No encontrado' }, cors, { status: 404 });
+      if (request.headers.get('Origin') && request.headers.get('Origin') !== ruta.origin) return json({ error: 'Origen no permitido' }, cors, { status: 403 });
+      try { return json(await sincronizarTwic(env), cors); }
+      catch (e) { return json({ error: e.message }, cors, { status: 502 }); }
+    }
+    if (ruta.pathname.startsWith('/__lumbra/') && env.TWIC_LOCAL === '1' && ['127.0.0.1', 'localhost'].includes(ruta.hostname)) {
+      if (request.headers.get('Origin') && request.headers.get('Origin') !== ruta.origin) return json({ error: 'Origen no permitido' }, cors, { status: 403 });
+      if (!env.LUMBRA_DB) return json({ error: 'No hay una base Lumbra local configurada.' }, cors, { status: 503 });
+      if (ruta.pathname === '/__lumbra/lote' && request.method === 'POST') {
+        try {
+          const cuerpo = await request.text();
+          if (cuerpo.length > 1900000) return json({ error: 'El lote supera el tamaño permitido.' }, cors, { status: 413 });
+          const datos = JSON.parse(cuerpo);
+          if (!Array.isArray(datos.partidas) || datos.partidas.length > 250 || datos.partidas.some(g =>
+            !g || typeof g.id !== 'string' || g.id.length > 80 || !/^\d{4}-\d{2}-\d{2}$/.test(g.date) ||
+            typeof g.pgn !== 'string' || g.pgn.length > 50000 || typeof g.white !== 'string' || typeof g.black !== 'string'))
+            return json({ error: 'El lote de partidas Lumbra no es válido.' }, cors, { status: 400 });
+          const guardadas = await guardarLumbraLote(env.LUMBRA_DB, datos.partidas);
+          return json({ guardadas }, cors);
+        } catch (e) { return json({ error: e.message || 'No se pudo guardar el lote de Lumbra.' }, cors, { status: 400 }); }
+      }
+      if (ruta.pathname === '/__lumbra/iniciar' && request.method === 'POST') {
+        await env.LUMBRA_DB.batch([
+          env.LUMBRA_DB.prepare('DELETE FROM lumbra_games'),
+          env.LUMBRA_DB.prepare('DELETE FROM lumbra_meta')
+        ]);
+        return json({ iniciado: true }, cors);
+      }
+      if (ruta.pathname === '/__lumbra/finalizar' && request.method === 'POST') {
+        const datos = await request.json().catch(() => ({}));
+        const version = String(datos.version ?? '').slice(0, 30);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(version)) return json({ error: 'Versión Lumbra no válida.' }, cors, { status: 400 });
+        await env.LUMBRA_DB.batch([
+          env.LUMBRA_DB.prepare("INSERT INTO lumbra_meta(key,value) VALUES ('version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(version),
+          env.LUMBRA_DB.prepare("INSERT INTO lumbra_meta(key,value) VALUES ('completa','1') ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+        ]);
+        return json({ completa: true, version }, cors);
+      }
+      if (ruta.pathname === '/__lumbra/estado' && request.method === 'GET') {
+        const [cuenta, fechas, version, completa] = await Promise.all([
+          env.LUMBRA_DB.prepare('SELECT count(*) n FROM lumbra_games').first(),
+          env.LUMBRA_DB.prepare('SELECT min(game_date) desde, max(game_date) hasta FROM lumbra_games').first(),
+          env.LUMBRA_DB.prepare("SELECT value FROM lumbra_meta WHERE key='version'").first(),
+          env.LUMBRA_DB.prepare("SELECT value FROM lumbra_meta WHERE key='completa'").first()
+        ]);
+        return json({ partidas: cuenta.n, ...fechas, version: version?.value ?? '', completa: completa?.value === '1' }, cors);
+      }
+      return json({ error: 'No encontrado' }, cors, { status: 404 });
+    }
+    const esPost = request.method === 'POST' && ruta.pathname === '/api/ia/preguntar';
     if (request.method !== 'GET' && !esPost) return json({ error: 'Método no permitido' }, cors, { status: 405 });
 
     const url = new URL(request.url);
     const p = url.searchParams;
     try {
       switch (url.pathname) {
+        case '/api/twic/jugador': {
+          // Clave canónica y sin Origin: la caché comparte resultados públicos, nunca datos personales.
+          const cacheUrl = new URL('/api/twic/jugador', url.origin);
+          for (const k of ['name', 'fideId', 'cursor']) cacheUrl.searchParams.set(k, (p.get(k) ?? '').trim().slice(0, 200));
+          const cache = env.TWIC_LOCAL === '1' ? null : globalThis.caches?.default;
+          let respuesta = await cache?.match(cacheUrl.href);
+          if (!respuesta) {
+            const datos = await consultarTwic(env, cacheUrl.searchParams);
+            const status = datos.estado === 'limite' ? 429 : datos.estado === 'error' ? 400 : 200;
+            respuesta = json(datos, {}, { status, 'Cache-Control': cache && status === 200 && datos.estado !== 'sin_configurar' ? 'public, max-age=300' : 'no-store' });
+            if (cache && status === 200 && datos.estado !== 'sin_configurar') ctx?.waitUntil(cache.put(cacheUrl.href, respuesta.clone()));
+          }
+          return new Response(respuesta.body, { status: respuesta.status, headers: { ...Object.fromEntries(respuesta.headers), ...cors } });
+        }
+        case '/api/lumbra/jugador': {
+          const datos = await consultarLumbra(env, p);
+          const status = datos.estado === 'error' ? 400 : 200;
+          return json(datos, cors, { status, 'Cache-Control': 'no-store' });
+        }
         case '/api/torneo': {
           const top = Math.max(1, Math.min(MAX_JUGADORES, parseInt(p.get('top') ?? '5', 10) || MAX_JUGADORES));
           return json(await cargarTorneo(p.get('url'), top), cors, { 'Cache-Control': 'public, max-age=60' });

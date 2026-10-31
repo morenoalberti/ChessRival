@@ -1,4 +1,4 @@
-// Fuentes externas (Chess-Results, Info64, FIDE). Todas pasan por el servidor intermedio (ver config.js).
+// Fuentes externas (proveedores de torneos y FIDE). Todas pasan por el servidor intermedio (ver config.js).
 // Contrato del servidor:
 //   GET {PROXY}/api/torneo?url=…&top=N → { nombre, jugadores: [{ rank, name, federation, rating, points, fideId }] }
 //   GET {PROXY}/api/fide/buscar?q= → [{ nombre, fideId, federacion, elo }]
@@ -10,18 +10,22 @@ function uri(texto) {
   try { return new URL((texto ?? '').trim()); } catch { return null; }
 }
 
-/** Es la dirección de un torneo de Chess-Results o Info64. */
+/** Es la dirección de un proveedor de torneos que ChessRival sabe leer. */
 export function esSoportada(texto) {
   const u = uri(texto);
   if (!u || !/^https?:$/.test(u.protocol)) return false;
   const host = u.hostname.toLowerCase();
-  return host.endsWith('chess-results.com') || host.includes('info64');
+  return host === 'chess-results.com' || host.endsWith('.chess-results.com')
+    || host === 'info64.org' || host.endsWith('.info64.org')
+    || host === 'chessroster.com' || host.endsWith('.chessroster.com')
+    || host === 'chessregister.com' || host === 'www.chessregister.com'
+    || host === 'vegaresults.com' || host === 'www.vegaresults.com';
 }
 
 /** Lo escrito es la dirección de un torneo (y no el nombre de un jugador). */
 export const esUrl = (texto) => esSoportada(texto) || /^http/i.test(texto);
 
-/** Identifica un torneo aunque la URL cambie de parámetros: el número tnr en Chess-Results, o dominio + ruta. */
+/** Identifica un torneo aunque cambien los parámetros de seguimiento de la URL. */
 export function claveTorneo(texto) {
   const u = uri(texto);
   if (!u) return texto;
@@ -29,6 +33,15 @@ export function claveTorneo(texto) {
     const m = /tnr(\d+)/i.exec(u.href);
     if (m) return 'cr:' + m[1];
   }
+  if (u.hostname.toLowerCase().includes('chessregister')) {
+    const id = u.searchParams.get('event_key');
+    if (id) return 'chessregister:' + id;
+  }
+  if (u.hostname.toLowerCase().includes('vegaresults')) {
+    const id = /\/vr\/(\d+)/i.exec(u.pathname)?.[1] || u.searchParams.get('id');
+    if (id) return 'vegaresults:' + id;
+  }
+  // El subdominio de ChessRoster identifica el club/organizador y debe formar parte de la clave.
   return u.hostname.toLowerCase() + '|' + u.pathname.replace(/\/+$/, '');
 }
 

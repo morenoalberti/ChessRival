@@ -100,7 +100,7 @@ export async function listarTorneos() {
     for (const x of tarjetas) cuenta.set(x.torneoId, (cuenta.get(x.torneoId) ?? 0) + 1);
 
     return torneos
-      .map(x => ({ id: x.id, nombre: x.nombre, url: x.url, orden: x.orden ?? 0, cargadoEn: x.cargadoEn ?? 0, visibles: cuenta.get(x.id) ?? 0 }))
+      .map(x => ({ id: x.id, nombre: x.nombre, url: x.url, orden: x.orden ?? 0, cargadoEn: x.cargadoEn ?? 0, visibles: cuenta.get(x.id) ?? 0, demostracion: x.demostracion === true }))
       .filter(x => x.visibles > 0 || x.url === URL_JUGADORES)
       .sort((a, b) =>
         (a.url === URL_JUGADORES ? 0 : 1) - (b.url === URL_JUGADORES ? 0 : 1)
@@ -142,17 +142,17 @@ export async function cerrarTorneo(id) {
 
 /** Guarda un torneo cargado desde una URL con sus jugadores (los primeros) y devuelve su id.
  *  Si ya estaba (misma clave), se sustituyen sus tarjetas. */
-export async function guardarTorneo({ nombre, url, clave, jugadores }) {
+export async function guardarTorneo({ nombre, url, clave, jugadores, demostracion = false }) {
   return tx(['torneos', 'tarjetas'], 'readwrite', async (t, c) => {
     const todos = await prom(t.getAll());
     let torneo = todos.find(x => x.clave === clave);
     if (torneo) {
-      torneo.nombre = nombre; torneo.url = url; torneo.cargadoEn = Date.now();
+      torneo.nombre = nombre; torneo.url = url; torneo.cargadoEn = Date.now(); torneo.demostracion = demostracion;
       await prom(t.put(torneo));
       for (const k of await prom(c.index('torneoId').getAllKeys(torneo.id))) await prom(c.delete(k));
     } else {
       const orden = Math.max(0, ...todos.filter(x => x.url !== URL_JUGADORES).map(x => x.orden ?? 0)) + 1;
-      const id = await prom(t.add({ nombre, url, clave, fuente: 'chess-results', orden, cargadoEn: Date.now() }));
+      const id = await prom(t.add({ nombre, url, clave, fuente: 'chess-results', orden, cargadoEn: Date.now(), demostracion }));
       torneo = { id };
     }
     let orden = 0;

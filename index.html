@@ -20,12 +20,12 @@
           <div class="placa"><img src="assets/icon.png" alt="" width="46" height="46"></div>
           <div class="marca-texto">
             <div class="titulo">ChessRival</div>
-            <div id="subtitulo" class="suave recortar">Pega una URL de Chess-Results o Info64</div>
+            <div id="subtitulo" class="suave recortar">Pega el enlace de un torneo público</div>
           </div>
         </div>
         <div class="url-caja">
           <input id="urlBox" type="text" autocomplete="off" spellcheck="false"
-                 placeholder="Pega la URL de un torneo (Chess-Results o Info64) o escribe el nombre o el ID FIDE de un jugador y pulsa Enter">
+                 placeholder="Pega una URL de torneo (Chess-Results, Info64, ChessRoster, ChessRegister o VegaResults) o escribe un jugador">
           <button id="urlLimpiar" class="url-limpiar" type="button" tabindex="-1" title="Borrar el texto" aria-label="Borrar el texto">✕</button>
         </div>
         <button id="cargarBtn" class="btn btn-primario" type="button"></button>
@@ -43,13 +43,28 @@
           <span id="libroText" class="banner-texto recortar"></span>
           <button id="libroBtn" class="btn btn-secundario btn-chico" type="button"></button>
         </div>
-        <div id="cantidadBanner" class="banner banner-cantidad" title="Cuántos jugadores de un torneo se cargan como tarjetas: los primeros de la clasificación (de 1 a 10).">
+        <div id="cantidadBanner" class="banner banner-cantidad" title="Cuántos jugadores con mayor rating publicado en el torneo se cargan (de 1 a 10).">
           <span class="banner-icono" data-icono="jugadores"></span>
           <label for="cantidadRango" class="cantidad-etiqueta recortar">Jugadores a cargar</label>
-          <input id="cantidadRango" class="rango" type="range" min="1" max="10" step="1" value="5" aria-label="Jugadores del torneo que se cargan">
+          <input id="cantidadRango" class="rango" type="range" min="1" max="10" step="1" value="5" aria-label="Jugadores con mayor rating publicado del torneo que se cargan">
           <output id="cantidadValor" class="cantidad-chip" for="cantidadRango">5</output>
         </div>
       </section>
+
+      <aside id="avisoDemostracion" class="aviso-demo oculto" aria-live="polite">
+        <div class="demo-emblema" aria-hidden="true">♞</div>
+        <div class="demo-mensaje">
+          <div class="demo-etiqueta"><i></i> DEMOSTRACIÓN INTERACTIVA · TODO FICTICIO</div>
+          <strong>Encuentra a tu próximo rival</strong>
+          <span id="textoDemostracion">Se introducirán URL de torneos de ejemplo; jugadores y datos son simulados.</span>
+          <div class="demo-fuentes" aria-label="URL ficticias de demostración">
+            <span class="demo-fuente"><b>ChessRoster</b><code>…/torneo-demo-chessrival-0000</code></span>
+            <span class="demo-fuente"><b>VegaResults</b><code>…?id=987654321</code></span>
+            <span class="demo-conteo"><strong id="demoContador">10</strong><small>jugadores</small></span>
+          </div>
+        </div>
+        <button id="salirDemostracion" class="btn btn-demo-salir" type="button">Empezar con mis datos</button>
+      </aside>
 
       <!-- Pestañas de torneo -->
       <nav id="filaPestanas" class="pestanas" aria-label="Torneos"></nav>
