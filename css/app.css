@@ -190,11 +190,13 @@ svg.icono { display: inline-block; vertical-align: middle; fill: none; stroke: c
 .borrar { grid-row: 2; grid-column: 4; justify-self: end; align-self: end; }
 
 /* ---------- Barra inferior ---------- */
-.pie { background: #fff; padding: 5px 12px; display: flex; align-items: center; font-size: 11px; flex: none; }
+.pie { background: #fff; padding: 5px 12px 4px; display: flex; flex-wrap: wrap; align-items: center; font-size: 11px; flex: none; }
 .red { display: inline-flex; align-items: center; margin-right: 28px; }
 .red-punto { width: 10px; height: 10px; border-radius: 50%; background: #9AA5B8; border: .8px solid #00000082; margin: 1px 8px 0 0; }
 .red-texto { font-weight: 700; color: #2E6ED6; }
 .pie-texto { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pie-autor { margin-left: auto; }
+.pie-contacto { flex: 0 0 100%; text-align: center; font-size: 12px; line-height: 1.25; padding-top: 2px; }
 
 /* ---------- Diálogos ---------- */
 .velo { position: fixed; inset: 0; background: rgba(15, 25, 50, .35); display: flex; align-items: center; justify-content: center; z-index: 50; }
