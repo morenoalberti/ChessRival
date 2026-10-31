@@ -11,7 +11,9 @@ function leerIdioma() {
     const guardado = localStorage.getItem(CLAVE);
     if (guardado === 'en' || guardado === 'es') return guardado;
   } catch { /* sin almacenamiento */ }
-  return 'es';
+  const idiomaNavegador = typeof navigator !== 'undefined'
+    ? (navigator.languages?.[0] || navigator.language || '') : '';
+  return /^es(?:-|$)/i.test(idiomaNavegador) ? 'es' : 'en';
 }
 
 export let IDIOMA = leerIdioma();
