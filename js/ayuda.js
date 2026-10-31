@@ -13,7 +13,7 @@ const SECCIONES = [
   ['inicio', 'Primeros pasos', 'Empezar', [
     p('Reúne las partidas de un rival, estúdialas con Stockfish y prepara qué jugarle con blancas y con negras.'),
     h('Tu primera preparación'),
-    pasos('Pega una URL de Chess-Results o Info64 y pulsa «Cargar». También puedes escribir un nombre o ID FIDE y pulsar «Añadir».',
+    pasos('Pega el enlace público de un torneo compatible y pulsa «Cargar». Se mostrarán sus cinco jugadores con mayor rating publicado (puedes cambiar la cantidad con el deslizador). ChessRival admite Chess-Results, Info64, ChessRoster, ChessRegister y VegaResults. También puedes escribir un nombre o ID FIDE y pulsar «Añadir».',
       'Abre la ficha del jugador con doble clic en su tarjeta.',
       'Pulsa «Importar partidas» para buscar sus PGN en las carpetas elegidas o en la MegaDatabase conectada.',
       'Pulsa «Analizar» y consulta sus aperturas, debilidades y preparación.'),
@@ -22,7 +22,7 @@ const SECCIONES = [
   ['principal', 'Pantalla principal y torneos', 'Empezar', [
     p('Aquí se reúnen las tarjetas de tus jugadores. Desde esta pantalla puedes cargar torneos, añadir rivales y conectar la MegaDatabase.'),
     h('Cabecera y accesos'),
-    lista('Caja de búsqueda: admite la URL de un torneo, el nombre de un jugador o su ID FIDE.',
+    lista('Caja de búsqueda: admite la URL pública de un torneo de Chess-Results, Info64, ChessRoster, ChessRegister o VegaResults, el nombre de un jugador o su ID FIDE.',
       '«Cargar» trae un torneo; «Añadir» busca un jugador en la FIDE.',
       'Los avisos de la MegaDatabase y del libro de aperturas se conectan con «Elegir»: ChessRival solo lee esos archivos, nunca los modifica. El libro es el Power Book de ChessBase u otro libro .ctg (necesita los tres archivos .ctg, .ctb y .cto).',
       'Arriba a la derecha, las banderas cambian el idioma de ChessRival (español o inglés) al instante; a su derecha, los iconos abren las copias de seguridad y esta ayuda.'),
@@ -325,8 +325,15 @@ export function abrirAyuda(inicial = 'inicio') {
 }
 
 export function abrirVideo() {
-  const panel = abrirPanel('Vídeo tutorial', `<p class="suave utilidad-intro">Cómo añadir jugadores (nombre, ID FIDE y URL de Chess-Results o Info64), cargar y analizar sus partidas y entender cada apartado del estudio. Los jugadores y datos del vídeo son inventados.</p><video class="tutorial-video" controls playsinline preload="metadata" aria-label="Vídeo tutorial de ChessRival"><source src="assets/Video/${IDIOMA === 'en' ? 'Tutorial-en' : 'Tutorial'}.mp4" type="video/mp4"></video><p class="error" data-error-video hidden>No se ha podido reproducir el vídeo.</p>`, 'panel-video');
+  const textoIntro = IDIOMA === 'en'
+    ? 'How to find tournaments, open a player profile and explore their statistics. All names, portraits and video data are fictional.'
+    : 'Cómo buscar torneos, abrir la ficha de un jugador y revisar sus estadísticas. Los nombres, fotos y datos del vídeo son ficticios.';
+  const etiquetaVideo = IDIOMA === 'en' ? 'ChessRival video tutorial' : 'Vídeo tutorial de ChessRival';
+  const textoError = IDIOMA === 'en' ? 'The video could not be played.' : 'No se ha podido reproducir el vídeo.';
+  const panel = abrirPanel('Vídeo tutorial', `<p class="suave utilidad-intro">${textoIntro}</p><video class="tutorial-video" controls playsinline autoplay preload="auto" aria-label="${etiquetaVideo}"><source src="assets/Video/${IDIOMA === 'en' ? 'Tutorial-en' : 'Tutorial'}.mp4" type="video/mp4"></video><p class="error" data-error-video hidden>${textoError}</p>`, 'panel-video');
   if (!panel) return;
   panel.velo.querySelector('source').addEventListener('error', () => { panel.velo.querySelector('[data-error-video]').hidden = false; });
-  panel.velo.querySelector('video').addEventListener('error', () => { panel.velo.querySelector('[data-error-video]').hidden = false; });
+  const video = panel.velo.querySelector('video');
+  video.addEventListener('error', () => { panel.velo.querySelector('[data-error-video]').hidden = false; });
+  video.play().catch(() => {});
 }

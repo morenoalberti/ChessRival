@@ -1,0 +1,1 @@
+# ChessRival uses only the Python standard library on Render.
