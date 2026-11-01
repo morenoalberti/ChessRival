@@ -80,6 +80,7 @@ async function iniciar() {
     return;
   }
 
+  window.pulseTrack?.('abrir_ficha');
   if (jugador.demostracion) $('avisoDemoFicha')?.classList.remove('oculto');
   montarCabecera();
   cargarFoto();

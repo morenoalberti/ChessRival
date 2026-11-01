@@ -268,6 +268,8 @@ export function abrirImportar(jugador) {
       const progreso = $('[data-progreso]');
       progreso.hidden = false;
       ponerProgreso('Importando…');
+      const pulseDone=window.pulseOperation?.('importar_partidas')||(()=>{});
+      let pulseFailed=false;
       try {
         pintarMega();
 
@@ -290,7 +292,7 @@ export function abrirImportar(jugador) {
                 : `${m.nuevas} nuevas de las ${m.candidatas} partidas que coinciden con su nombre y ELO${m.yaEstaban ? ` (${m.yaEstaban} ya ${m.yaEstaban === 1 ? 'estaba guardada' : 'estaban guardadas'})` : ''}.`;
             if (m.noLegibles) textoMega += ` ${m.noLegibles} no se han podido leer.`;
             resultado = { ...(resultado ?? {}), mega: m };
-          } catch (ex) { textoMega = `no se pudo leer (${ex.message}).`; }
+          } catch (ex) { pulseFailed=true; textoMega = `no se pudo leer (${ex.message}).`; }
         }
         ocupado = false;
         cerrado = true;
@@ -301,9 +303,12 @@ export function abrirImportar(jugador) {
         if (textoMega !== null) partes.push(`•  MegaDatabase: ${textoMega}`);
         if (textoPgn !== null) partes.push(`•  Archivos PGN: ${textoPgn}`);
         await informar('Importación terminada', `Partidas importadas de ${nombreConTitulo(jugador)}:\n\n${partes.join('\n\n') || 'No había nada que importar.'}`);
+        const processed=(resultado?.pgn?.nuevas||0)+(resultado?.pgn?.repetidas||0)+(resultado?.mega?.nuevas||0)+(resultado?.mega?.yaEstaban||0);
+        pulseDone(processed>0?'ok':pulseFailed?'error':'sin_resultados');
         resolver(resultado);
       } catch (ex) {
         ocupado = false;
+        pulseDone('error');
         ponerProgreso(`No se pudo importar: ${ex.message}`);
         pintarLista();
       }

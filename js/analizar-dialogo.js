@@ -139,6 +139,7 @@ export function abrirAnalizar(jugador, { muestra = null } = {}) {
       $('[data-barra]').hidden = false;
       $('[data-estado]').textContent = `Arrancando ${NOMBRE_MOTOR}…`;
 
+      const pulseDone=window.pulseOperation?.('analizar_partidas')||(()=>{});
       const motores = [];
       try {
         const n = Math.min(PARALELO, lista.length);
@@ -163,11 +164,12 @@ export function abrirAnalizar(jugador, { muestra = null } = {}) {
         const seg = (performance.now() - inicio) / 1000;
         if (analizadas >= 3) { await guardarAjuste('analisis_seg_partida', (seg / analizadas).toFixed(1)); await guardarAjuste('analisis_seg_prof', String(prof)); }
         $('[data-estado]').textContent = `Listo: ${analizadas} partidas analizadas en ${Math.floor(seg / 60)}:${String(Math.round(seg % 60)).padStart(2, '0')}.`;
+        pulseDone(analizadas>0?'ok':'sin_resultados');
         terminar();
         setTimeout(cerrar, 900);
       } catch (ex) {
-        if (ex?.name === 'AbortError') { $('[data-estado]').textContent = 'Análisis cancelado. Lo que ya estaba analizado se ha guardado.'; terminar(); setTimeout(cerrar, 1100); }
-        else { $('[data-estado]').textContent = ex.message; terminar(); }
+        if (ex?.name === 'AbortError') { pulseDone('cancelado'); $('[data-estado]').textContent = 'Análisis cancelado. Lo que ya estaba analizado se ha guardado.'; terminar(); setTimeout(cerrar, 1100); }
+        else { pulseDone('error'); $('[data-estado]').textContent = ex.message; terminar(); }
       } finally { motores.forEach(m => m.cerrar()); }
     });
   });

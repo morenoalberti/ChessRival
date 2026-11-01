@@ -626,6 +626,7 @@ async function cargar() {
   if (!texto) return;
   if (!fuentes.esUrl(texto)) { await anadirJugador(texto); return; }
 
+  const pulseDone=window.pulseOperation?.('buscar_rival')||(()=>{});
   await salirDeDemostracion(true);
 
   cargandoURL = true; actualizarBotonCargar();
@@ -639,6 +640,7 @@ async function cargar() {
     const clave = fuentes.claveTorneo(texto);
     if (abiertos.length >= LIMITE_TORNEOS && abiertos.every(t => fuentes.claveTorneo(t.url) !== clave)) {
       mostrarEstado(`Ya hay ${LIMITE_TORNEOS} torneos abiertos: quita alguna pestaña con ✕ antes de abrir otro.`);
+      pulseDone('cancelado');
       el.pie.textContent = 'Límite de torneos alcanzado';
       return;
     }
@@ -647,7 +649,9 @@ async function cargar() {
     await refrescarPestanas(id);
     await cargarVista();
     await db.guardarTorneoActual(id);
+    pulseDone(torneo.jugadores?.length?'ok':'sin_resultados');
   } catch (ex) {
+    pulseDone('error');
     mostrarEstado(ex.message);
     el.pie.textContent = ex instanceof fuentes.SinServidor ? 'Servidor intermedio sin configurar' : 'Error al cargar';
   } finally {
@@ -656,6 +660,7 @@ async function cargar() {
 }
 
 async function anadirJugador(texto) {
+  const pulseDone=window.pulseOperation?.('buscar_rival')||(()=>{});
   await salirDeDemostracion(true);
   cargandoURL = true; actualizarBotonCargar();
   mostrarEstado(`Buscando «${texto}» en la FIDE…`, true, 1);
@@ -663,6 +668,7 @@ async function anadirJugador(texto) {
   try {
     const candidatos = await fuentes.buscarFide(texto);
     if (candidatos.length === 0) {
+      pulseDone('sin_resultados');
       await informar('Jugador no encontrado',
         `No hay ningún jugador en la FIDE que encaje con «${texto}». Prueba con el apellido y el nombre, o con su ID FIDE.`);
       el.pie.textContent = 'Jugador no encontrado';
@@ -670,7 +676,7 @@ async function anadirJugador(texto) {
     }
     // Si solo encaja uno se añade directamente; si hay duda, se deja elegir con sus datos de la FIDE.
     const elegido = candidatos.length === 1 ? candidatos[0] : await elegirJugador(texto, candidatos, urlBandera);
-    if (!elegido) { el.pie.textContent = ''; return; }
+    if (!elegido) { pulseDone('cancelado'); el.pie.textContent = ''; return; }
 
     // Va a la pestaña abierta; desde «Todos» va a «Jugadores».
     const torneoId = torneoActual ?? await db.torneoJugadoresId();
@@ -679,15 +685,17 @@ async function anadirJugador(texto) {
       fideTitle: normalizarTitulosFide(elegido.titulo),
       verificado: true
     }, torneoId);
-    if (!ok) { await informar('Ya está', `${nombreConTitulo(elegido)} ya tiene su tarjeta en esta pestaña.`); el.pie.textContent = ''; return; }
+    if (!ok) { pulseDone('ok'); await informar('Ya está', `${nombreConTitulo(elegido)} ya tiene su tarjeta en esta pestaña.`); el.pie.textContent = ''; return; }
 
     el.urlBox.value = '';
     actualizarBotonCargar();
     await refrescarPestanas(torneoId);
     await cargarVista();
     await db.guardarTorneoActual(torneoActual);
+    pulseDone('ok');
     el.pie.textContent = `${nombreConTitulo(elegido)} añadido.`;
   } catch (ex) {
+    pulseDone('error');
     mostrarEstado(ex.message);
     el.pie.textContent = ex instanceof fuentes.SinServidor ? 'Servidor intermedio sin configurar' : 'Error al añadir el jugador';
   } finally {
