@@ -302,9 +302,9 @@ export function abrirImportar(jugador) {
         const partes = [];
         if (textoMega !== null) partes.push(`•  MegaDatabase: ${textoMega}`);
         if (textoPgn !== null) partes.push(`•  Archivos PGN: ${textoPgn}`);
-        await informar('Importación terminada', `Partidas importadas de ${nombreConTitulo(jugador)}:\n\n${partes.join('\n\n') || 'No había nada que importar.'}`);
-        const processed=(resultado?.pgn?.nuevas||0)+(resultado?.pgn?.repetidas||0)+(resultado?.mega?.nuevas||0)+(resultado?.mega?.yaEstaban||0);
+        const processed=Object.values(resultado||{}).reduce((total,result)=>total+(result.nuevas||0)+(result.repetidas||0)+(result.yaEstaban||0),0);
         pulseDone(processed>0?'ok':pulseFailed?'error':'sin_resultados');
+        await informar('Importación terminada', `Partidas importadas de ${nombreConTitulo(jugador)}:\n\n${partes.join('\n\n') || 'No había nada que importar.'}`);
         resolver(resultado);
       } catch (ex) {
         ocupado = false;
