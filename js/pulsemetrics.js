@@ -10,5 +10,8 @@
   script.defer = true;
   script.src = 'https://pulsemetrics.chessrival.net/script.js';
   script.setAttribute('data-site-id', '5ef07ac4-6c43-4235-938d-dc7ff4375bcd');
+  // Count use of features, without recording player names, searches or game data.
+  var actions = {cargarBtn:'buscar_rival',megaBtn:'conectar_base_partidas',importarBtn:'abrir_importacion',analizarBtn:'analizar_partidas',guardarBtn:'guardar_partida'};
+  Object.keys(actions).forEach(function(id) { var button=document.getElementById(id); if(button)button.setAttribute('data-pulse-event',actions[id]); });
   document.head.appendChild(script);
 })();
