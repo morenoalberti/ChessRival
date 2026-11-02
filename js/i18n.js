@@ -1,4 +1,4 @@
-// Idiomas de ChessRival: español (el original) e inglés.
+// Idiomas de ChessRival: español (el original), inglés, alemán, francés e italiano.
 // El texto de la aplicación está escrito en español; en inglés se traduce lo que se pone en pantalla con un diccionario
 // (js/i18n-en.js): frases exactas y plantillas con huecos «{}» para las que llevan números o nombres.
 // Un observador del documento traduce cada texto en cuanto aparece, también el que se crea después con JavaScript.
@@ -6,18 +6,23 @@
 const CLAVE = 'chessrival_idioma';
 const HAY_NAVEGADOR = typeof document !== 'undefined' && typeof window !== 'undefined';   // en las pruebas con Node no hay página
 
+export const IDIOMAS = ['es', 'en', 'de', 'fr', 'it', 'ru'];
+const LOCALES = { es: 'es-ES', en: 'en-GB', de: 'de-DE', fr: 'fr-FR', it: 'it-IT', ru: 'ru-RU' };
+export const NOMBRES_IDIOMA = { es: 'español', en: 'inglés', de: 'alemán', fr: 'francés', it: 'italiano', ru: 'ruso' };
+
 function leerIdioma() {
   try {
     const guardado = localStorage.getItem(CLAVE);
-    if (guardado === 'en' || guardado === 'es') return guardado;
+    if (IDIOMAS.includes(guardado)) return guardado;
   } catch { /* sin almacenamiento */ }
   const idiomaNavegador = typeof navigator !== 'undefined'
     ? (navigator.languages?.[0] || navigator.language || '') : '';
-  return /^es(?:-|$)/i.test(idiomaNavegador) ? 'es' : 'en';
+  const propio = /^(es|de|fr|it|ru)(?:-|$)/i.exec(idiomaNavegador);
+  return propio ? propio[1].toLowerCase() : 'en';          // cualquier otro idioma del navegador: inglés
 }
 
 export let IDIOMA = leerIdioma();
-export let LOCALE = IDIOMA === 'en' ? 'en-GB' : 'es-ES';
+export let LOCALE = LOCALES[IDIOMA];
 if (HAY_NAVEGADOR) document.documentElement.lang = IDIOMA;
 
 // Nombres de aperturas: la aplicación parte de los nombres ingleses de Lichess y los pasa al español; aquí se anota cada pareja para poder volver al inglés.
@@ -30,15 +35,15 @@ export const decimal = (n, d = 1) => Number(n).toLocaleString(LOCALE, { minimumF
 
 /** Cambia el idioma en caliente: se traduce (o se restaura) lo que hay en pantalla sin recargar la página. */
 export async function cambiarIdioma(nuevo, { avisar = true } = {}) {
-  if (nuevo === IDIOMA || (nuevo !== 'en' && nuevo !== 'es')) return;
+  if (nuevo === IDIOMA || !IDIOMAS.includes(nuevo)) return;
   try { localStorage.setItem(CLAVE, nuevo); } catch { /* sin almacenamiento */ }
   if (avisar) { try { canal?.postMessage(nuevo); } catch { /* sin canal */ } }
-  if (nuevo === 'en') await cargarDiccionario();
-  IDIOMA = nuevo; LOCALE = nuevo === 'en' ? 'en-GB' : 'es-ES';
-  document.documentElement.lang = IDIOMA;
+  if (nuevo !== 'es') await cargarDiccionario(nuevo);
   observador?.disconnect(); pendientes.clear();
-  if (IDIOMA === 'en') traducirNodo(document.documentElement);
-  else restaurarNodo(document.documentElement);
+  restaurarNodo(document.documentElement);                // primero vuelve todo al español: de ahí se traduce a cualquier idioma
+  IDIOMA = nuevo; LOCALE = LOCALES[nuevo];
+  document.documentElement.lang = IDIOMA;
+  if (IDIOMA !== 'es') traducirNodo(document.documentElement);
   observar();
   window.dispatchEvent(new CustomEvent('chessrival-idioma', { detail: IDIOMA }));
 }
@@ -61,7 +66,7 @@ function aExpresion(plantilla) {
 
 /** Traduce un texto (una frase entera o una con huecos). Si no se conoce, lo devuelve igual. */
 export function t(texto) {
-  if (IDIOMA !== 'en' || typeof texto !== 'string' || !texto.trim()) return texto;
+  if (IDIOMA === 'es' || typeof texto !== 'string' || !texto.trim()) return texto;
   const lado = /^(\s*)([\s\S]*?)(\s*)$/.exec(texto);
   const [, antes, centro, despues] = lado;
   const limpio = centro.replace(/\s+/g, ' ');           // los saltos de línea y espacios repetidos del HTML no cuentan
@@ -144,14 +149,24 @@ function observar() {
   observador?.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ATRIBUTOS });
 }
 
-let diccionarioCargado = null;
-async function cargarDiccionario() {
-  if (diccionarioCargado) return;
-  const datos = (await import('./i18n-en.js')).default;
-  exactas = new Map(Object.entries(datos.exactas));
-  plantillas = Object.entries(datos.plantillas).map(([es, en]) => ({ es, en, re: aExpresion(es) })).sort((a, b) => b.es.length - a.es.length);
-  nombres = (await import('./i18n-en-aperturas.js')).crearTraductorNombres();
-  diccionarioCargado = true;
+/** Identificador corto de un texto español: así los idiomas nuevos solo guardan «identificador → traducción». */
+export function claveDe(texto) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < texto.length; i++) { h ^= texto.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(36);
+}
+
+let diccionarioCargado = null;     // el idioma cuyo diccionario está en uso
+async function cargarDiccionario(idioma) {
+  if (diccionarioCargado === idioma) return;
+  const datos = (await import('./i18n-en.js')).default;       // el inglés trae todos los textos españoles; lo que falte en otro idioma se queda en inglés
+  let valores = null;
+  if (idioma !== 'en') valores = (await import(`./i18n-${idioma}.js`)).default;
+  const trad = (es, en) => (valores && valores[claveDe(es)]) || en;
+  exactas = new Map(Object.entries(datos.exactas).map(([es, en]) => [es, trad(es, en)]));
+  plantillas = Object.entries(datos.plantillas).map(([es, en]) => { const d = trad(es, en); return { es, en: d, re: aExpresion(es) }; }).sort((a, b) => b.es.length - a.es.length);
+  nombres ??= (await import('./i18n-en-aperturas.js')).crearTraductorNombres();     // los nombres de aperturas van en inglés en todos los idiomas
+  diccionarioCargado = idioma;
 }
 
 /** Apunta los nodos que han cambiado, para traducirlos en cuanto toque. */
@@ -164,7 +179,7 @@ function anotar(cambios) {
 
 function crearObservador() {
   observador = new MutationObserver((cambios) => {
-    if (IDIOMA !== 'en') return;
+    if (IDIOMA === 'es') return;
     anotar(cambios);
     if (!programado) { programado = true; queueMicrotask(vaciar); }
   });
@@ -173,9 +188,9 @@ function crearObservador() {
 
 // Arranque: si el idioma guardado es el inglés, se carga el diccionario y se traduce lo que haya.
 if (HAY_NAVEGADOR) crearObservador();
-if (HAY_NAVEGADOR && IDIOMA === 'en') {
-  cargarDiccionario().then(() => traducirNodo(document.documentElement))
-    .catch(e => console.warn('ChessRival: no se pudo cargar el inglés', e));
+if (HAY_NAVEGADOR && IDIOMA !== 'es') {
+  cargarDiccionario(IDIOMA).then(() => traducirNodo(document.documentElement))
+    .catch(e => console.warn('ChessRival: no se pudo cargar el idioma', e));
 }
 
 // Para comprobar qué falta por traducir: en la consola, «textosSinTraducir()».

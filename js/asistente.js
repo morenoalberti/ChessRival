@@ -1,7 +1,7 @@
 // El asistente de IA (Services/Asistente/AsistenteIa.cs y ResumenJugador.cs): se le pasa un resumen con los datos ya calculados
 // (resultados, aperturas, debilidades…) y la conversación; no recibe las partidas enteras. Las preguntas pasan por el servidor
 // intermedio, que las reenvía a OpenAI o Anthropic con la clave del usuario (no la guarda).
-import { LOCALE, IDIOMA, t as tr } from './i18n.js';
+import { LOCALE, IDIOMA, NOMBRES_IDIOMA, t as tr } from './i18n.js';
 import { PROXY_URL } from './config.js';
 import { leerAjuste, guardarAjuste } from './db.js';
 
@@ -96,7 +96,7 @@ const INSTRUCCIONES =
 export async function preguntar(config, resumen, conversacion) {
   const datos = await llamar('/api/ia/preguntar', {
     metodo: 'POST', clave: config.clave,
-    cuerpo: { proveedor: config.proveedor, modelo: config.modelo, sistema: `${INSTRUCCIONES.replace('@IDIOMA@', IDIOMA === 'en' ? 'inglés' : 'español')}\n\nRESUMEN DEL JUGADOR:\n${resumen}`, mensajes: conversacion.map(m => ({ rol: m[0], texto: m[1] })) }
+    cuerpo: { proveedor: config.proveedor, modelo: config.modelo, sistema: `${INSTRUCCIONES.replace('@IDIOMA@', NOMBRES_IDIOMA[IDIOMA])}\n\nRESUMEN DEL JUGADOR:\n${resumen}`, mensajes: conversacion.map(m => ({ rol: m[0], texto: m[1] })) }
   });
   return (datos.texto ?? '').trim();
 }

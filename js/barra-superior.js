@@ -1,4 +1,7 @@
-import { IDIOMA, cambiarIdioma } from './i18n.js';
+import { IDIOMA, IDIOMAS, cambiarIdioma } from './i18n.js';
+
+const BANDERAS = { es: ['Español', 'es'], en: ['English', 'gb'], de: ['Deutsch', 'de'], fr: ['Français', 'fr'], it: ['Italiano', 'it'], ru: ['Русский', 'ru'] };
+const botonesIdioma = IDIOMAS.map(i => `<button type="button" class="bandera${IDIOMA === i ? ' activa' : ''}" data-idioma="${i}" title="${BANDERAS[i][0]}" aria-label="${BANDERAS[i][0]}" aria-pressed="${IDIOMA === i}"><img src="https://flagcdn.com/w40/${BANDERAS[i][1]}.png" alt="" width="24" height="16" draggable="false"></button>`).join('\n    ');
 import { svg } from './iconos.js';
 import { abrirCopias } from './copias-dialogo.js';
 import { abrirAyuda, abrirVideo } from './ayuda.js';
@@ -9,8 +12,7 @@ barra.className = 'barra-superior';
 barra.innerHTML = `<span class="barra-marca"><img src="assets/icon.png" alt="" width="21" height="21">ChessRival 1.0</span>
   <nav aria-label="Opciones de la aplicación">
     <span class="idiomas" role="group" aria-label="Idioma">
-    <button type="button" class="bandera${IDIOMA === 'es' ? ' activa' : ''}" data-idioma="es" title="Español" aria-label="Español" aria-pressed="${IDIOMA === 'es'}"><img src="https://flagcdn.com/w40/es.png" alt="" width="24" height="16" draggable="false"></button>
-    <button type="button" class="bandera${IDIOMA === 'en' ? ' activa' : ''}" data-idioma="en" title="English" aria-label="English" aria-pressed="${IDIOMA === 'en'}"><img src="https://flagcdn.com/w40/gb.png" alt="" width="24" height="16" draggable="false"></button>
+    ${botonesIdioma}
     </span>
     <button type="button" data-copias title="Copias de seguridad" aria-label="Copias de seguridad">${svg('copias', 22)}</button>
     <button type="button" data-video title="Vídeo tutorial" aria-label="Vídeo tutorial">${svg('video', 22)}</button>

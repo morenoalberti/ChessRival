@@ -4,7 +4,7 @@ import { convertirFiguras } from './figuritas.js';
 import * as Aperturas from './aperturas.js';
 import { nombreConTitulo, normalizarTitulo } from './nombre-jugador.js';
 
-import { IDIOMA } from './i18n.js';
+import { IDIOMA, LOCALE } from './i18n.js';
 const MESES_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
@@ -74,7 +74,7 @@ export class PartidaGuardada {
 
   get fechaLarga() {
     const p = this.fecha.split('.').map(Number);
-    if (p.length === 3 && p.every(Number.isInteger) && p[1] >= 1 && p[1] <= 12 && p[2] >= 1 && p[2] <= 31) return IDIOMA === 'en' ? `${p[2]} ${MESES_EN[p[1] - 1]} ${p[0]}` : `${p[2]} de ${MESES[p[1] - 1]} de ${p[0]}`;
+    if (p.length === 3 && p.every(Number.isInteger) && p[1] >= 1 && p[1] <= 12 && p[2] >= 1 && p[2] <= 31) return IDIOMA === 'es' ? `${p[2]} de ${MESES[p[1] - 1]} de ${p[0]}` : IDIOMA === 'en' ? `${p[2]} ${MESES_EN[p[1] - 1]} ${p[0]}` : new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(Date.UTC(p[0], p[1] - 1, p[2]));
     return this.fechaMostrada;
   }
 

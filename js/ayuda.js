@@ -293,7 +293,7 @@ export function abrirAyuda(inicial = 'inicio') {
     const posicion = filtradas.indexOf(s);
     $('[data-anterior]').disabled = posicion <= 0;
     $('[data-siguiente]').disabled = posicion >= filtradas.length - 1;
-    $('[data-pagina]').textContent = `${secciones.indexOf(s) + 1} ${IDIOMA === 'en' ? 'of' : 'de'} ${secciones.length}`;
+    $('[data-pagina]').textContent = `${secciones.indexOf(s) + 1} ${DE[IDIOMA]} ${secciones.length}`;
     contenido.scrollTop = 0;
   }
   function pintar(busqueda = '') {
@@ -324,13 +324,19 @@ export function abrirAyuda(inicial = 'inicio') {
   pintar();
 }
 
+const DE = { es: 'de', en: 'of', de: 'von', fr: 'sur', it: 'di', ru: 'из' };
+const VIDEO = {
+  es: { intro: 'Cómo buscar torneos, abrir la ficha de un jugador y revisar sus estadísticas. Los nombres, fotos y datos del vídeo son ficticios.', etiqueta: 'Vídeo tutorial de ChessRival', error: 'No se ha podido reproducir el vídeo.' },
+  en: { intro: 'How to find tournaments, open a player profile and explore their statistics. All names, portraits and video data are fictional.', etiqueta: 'ChessRival video tutorial', error: 'The video could not be played.' },
+  de: { intro: 'So findest du Turniere, öffnest das Profil eines Spielers und siehst dir seine Statistiken an. Das Video ist auf Englisch; alle Namen, Fotos und Daten darin sind erfunden.', etiqueta: 'ChessRival-Videotutorial', error: 'Das Video konnte nicht abgespielt werden.' },
+  fr: { intro: 'Comment trouver des tournois, ouvrir la fiche d’un joueur et consulter ses statistiques. La vidéo est en anglais ; les noms, photos et données y sont fictifs.', etiqueta: 'Tutoriel vidéo de ChessRival', error: 'La vidéo n’a pas pu être lue.' },
+  it: { intro: 'Come trovare tornei, aprire la scheda di un giocatore e consultarne le statistiche. Il video è in inglese; nomi, foto e dati sono fittizi.', etiqueta: 'Video tutorial di ChessRival', error: 'Non è stato possibile riprodurre il video.' },
+  ru: { intro: 'Как найти турниры, открыть карточку игрока и посмотреть его статистику. Видео на английском; все имена, фото и данные в нём вымышлены.', etiqueta: 'Видеоурок ChessRival', error: 'Не удалось воспроизвести видео.' }
+};
+
 export function abrirVideo() {
-  const textoIntro = IDIOMA === 'en'
-    ? 'How to find tournaments, open a player profile and explore their statistics. All names, portraits and video data are fictional.'
-    : 'Cómo buscar torneos, abrir la ficha de un jugador y revisar sus estadísticas. Los nombres, fotos y datos del vídeo son ficticios.';
-  const etiquetaVideo = IDIOMA === 'en' ? 'ChessRival video tutorial' : 'Vídeo tutorial de ChessRival';
-  const textoError = IDIOMA === 'en' ? 'The video could not be played.' : 'No se ha podido reproducir el vídeo.';
-  const panel = abrirPanel('Vídeo tutorial', `<p class="suave utilidad-intro">${textoIntro}</p><video class="tutorial-video" controls playsinline autoplay preload="auto" aria-label="${etiquetaVideo}"><source src="assets/Video/${IDIOMA === 'en' ? 'Tutorial-en' : 'Tutorial'}.mp4" type="video/mp4"></video><p class="error" data-error-video hidden>${textoError}</p>`, 'panel-video');
+  const x = VIDEO[IDIOMA] ?? VIDEO.en;
+  const panel = abrirPanel('Vídeo tutorial', `<p class="suave utilidad-intro">${x.intro}</p><video class="tutorial-video" controls playsinline autoplay preload="auto" aria-label="${x.etiqueta}"><source src="assets/Video/${IDIOMA === 'es' ? 'Tutorial' : 'Tutorial-en'}.mp4" type="video/mp4"></video><p class="error" data-error-video hidden>${x.error}</p>`, 'panel-video');   // el vídeo solo existe en español y en inglés
   if (!panel) return;
   panel.velo.querySelector('source').addEventListener('error', () => { panel.velo.querySelector('[data-error-video]').hidden = false; });
   const video = panel.velo.querySelector('video');
