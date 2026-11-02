@@ -2,7 +2,7 @@
 import { LOCALE } from './i18n.js';
 import { ponerCargando } from './cargando.js';
 import * as db from './db.js';
-import { svg, contenidoBoton, pintarIconosFijos } from './iconos.js';
+import { svg, svgTrazo, contenidoBoton, pintarIconosFijos } from './iconos.js';
 import { preguntar, informar, elegirJugador, iniciales } from './dialogos.js';
 import { urlBandera } from './banderas.js';
 import * as fuentes from './fuentes.js';
@@ -274,9 +274,11 @@ function mostrarBienvenida() {
       </div>
     </div>
     <ol class="bienvenida-pasos">
-      <li><b>1</b><div><strong>Busca a tu rival</strong><span>Pega una URL pública de Chess-Results, Info64, ChessRoster, ChessRegister o VegaResults para cargar a los jugadores con mayor rating publicado, o escribe el nombre o el ID FIDE de un jugador.</span></div></li>
-      <li><b>2</b><div><strong>Importa sus partidas</strong><span>Abre su ficha con doble clic en su tarjeta y pulsa «Importar partidas»: con archivos PGN o desde tu MegaDatabase.</span></div></li>
-      <li><b>3</b><div><strong>Analiza y prepara</strong><span>Stockfish revisa sus partidas y te dice cómo juega y qué te conviene jugarle.</span></div></li>
+      <li class="paso-azul"><div class="paso-cab"><i class="paso-ico">${svgTrazo('M11,4 A7,7 0 1 1 10.99,4 Z M16,16 L21,21', 28)}</i><div><small>PASO 1</small><strong>Busca a tu rival</strong></div></div><span>Pega la URL de un torneo para cargar a los jugadores con mayor rating, o escribe el nombre o el ID FIDE de un jugador.</span></li>
+      <li class="paso-flecha" aria-hidden="true">›</li>
+      <li class="paso-coral"><div class="paso-cab"><i class="paso-ico">${svgTrazo('M12,4 V15 M7,10 L12,15 L17,10 M5,20 H19', 28)}</i><div><small>PASO 2</small><strong>Importa sus partidas</strong></div></div><span>Abre su ficha con doble clic en su tarjeta y pulsa «Importar partidas»: con archivos PGN o desde tu MegaDatabase.</span></li>
+      <li class="paso-flecha" aria-hidden="true">›</li>
+      <li class="paso-verde"><div class="paso-cab"><i class="paso-ico">${svgTrazo('M12,3 A9,9 0 1 1 11.99,3 Z M15.5,8.5 L13.5,13.5 L8.5,15.5 L10.5,10.5 Z', 28)}</i><div><small>PASO 3</small><strong>Analiza y prepara</strong></div></div><span>Stockfish revisa sus partidas y te dice cómo juega, dónde falla y qué te conviene jugarle con blancas y con negras.</span></li>
     </ol>
   </div>`;
 }

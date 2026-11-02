@@ -4,6 +4,12 @@ export const exactas = {
   'Licencias y créditos': 'Licences and credits',
   'Vídeo tutorial': 'Video tutorial',
   'Cambiar': 'Change',
+  "PASO 1": "STEP 1",
+  "PASO 2": "STEP 2",
+  "PASO 3": "STEP 3",
+  "Pega la URL de un torneo para cargar a los jugadores con mayor rating, o escribe el nombre o el ID FIDE de un jugador.": "Paste a tournament URL to load the highest-rated players, or type a player’s name or FIDE ID.",
+  "Stockfish revisa sus partidas y te dice cómo juega, dónde falla y qué te conviene jugarle con blancas y con negras.": "Stockfish reviews their games and tells you how they play, where they fail and what to play against them with White and Black.",
+  "Archivo PGN": "PGN file",
   'Cambiar o cargar Mega Database': 'Change or load Mega Database',
   'Cambiar o cargar PowerBook': 'Change or load PowerBook',
   // Barra superior y marca
