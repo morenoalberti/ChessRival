@@ -4,6 +4,8 @@ export const exactas = {
   'Licencias y créditos': 'Licences and credits',
   'Vídeo tutorial': 'Video tutorial',
   'Cambiar': 'Change',
+  'Cambiar o cargar Mega Database': 'Change or load Mega Database',
+  'Cambiar o cargar PowerBook': 'Change or load PowerBook',
   // Barra superior y marca
   'Opciones de la aplicación': 'Application options',
   'Español': 'Español',

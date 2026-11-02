@@ -729,16 +729,16 @@ function pintarMega() {
   const t = el.megaText, e = mega.estado;
   if (e.base) {
     t.className = 'banner-texto recortar'; t.textContent = `${e.base.nombre} · ${e.base.totalPartidas.toLocaleString(LOCALE)} partidas`; t.title = e.base.nombre;
-    el.megaBtn.innerHTML = contenidoBoton('cambiar', 'Cambiar');
+    el.megaBtn.innerHTML = contenidoBoton('cambiar', 'Cambiar'); el.megaBtn.title = 'Cambiar o cargar Mega Database';
   } else if (e.pendiente) {
     t.className = 'banner-texto recortar azul'; t.textContent = `${e.nombre || 'MegaDatabase'} · pulsa «Permitir» para abrirla`; t.title = 'El navegador pide confirmar el acceso a los archivos de la base cada vez que abres la página.';
-    el.megaBtn.innerHTML = contenidoBoton('visto', 'Permitir');
+    el.megaBtn.innerHTML = contenidoBoton('visto', 'Permitir'); el.megaBtn.title = '';
   } else if (e.error) {
     t.className = 'banner-texto recortar error'; t.textContent = 'MegaDatabase no disponible'; t.title = e.error;
-    el.megaBtn.innerHTML = contenidoBoton('carpeta', 'Elegir');
+    el.megaBtn.innerHTML = contenidoBoton('carpeta', 'Elegir'); el.megaBtn.title = '';
   } else {
     t.className = 'banner-texto recortar suave'; t.textContent = 'MegaDatabase sin elegir'; t.title = '';
-    el.megaBtn.innerHTML = contenidoBoton('carpeta', 'Elegir');
+    el.megaBtn.innerHTML = contenidoBoton('carpeta', 'Elegir'); el.megaBtn.title = '';
   }
 }
 /** Libro de aperturas: sin elegir, abierto, con error o a la espera de que el navegador deje volver a abrir sus archivos. */
@@ -746,17 +746,17 @@ function pintarLibro() {
   const t = el.libroText, e = libro.estado;
   if (e.libro) {
     t.className = 'banner-texto recortar'; t.textContent = e.nombre; t.title = e.nombre;
-    el.libroBtn.innerHTML = contenidoBoton('cambiar', 'Cambiar');
+    el.libroBtn.innerHTML = contenidoBoton('cambiar', 'Cambiar'); el.libroBtn.title = 'Cambiar o cargar PowerBook';
   } else if (e.pendiente) {
     t.className = 'banner-texto recortar azul'; t.textContent = `${e.nombre || 'Libro de aperturas'} · pulsa «Permitir» para abrirlo`;
     t.title = 'El navegador pide confirmar el acceso a los archivos del libro cada vez que abres la página.';
-    el.libroBtn.innerHTML = contenidoBoton('visto', 'Permitir');
+    el.libroBtn.innerHTML = contenidoBoton('visto', 'Permitir'); el.libroBtn.title = '';
   } else if (e.error) {
     t.className = 'banner-texto recortar error'; t.textContent = 'Libro de aperturas no disponible'; t.title = e.error;
-    el.libroBtn.innerHTML = contenidoBoton('carpeta', 'Elegir');
+    el.libroBtn.innerHTML = contenidoBoton('carpeta', 'Elegir'); el.libroBtn.title = '';
   } else {
     t.className = 'banner-texto recortar suave'; t.textContent = 'Libro de aperturas sin elegir'; t.title = '';
-    el.libroBtn.innerHTML = contenidoBoton('carpeta', 'Elegir');
+    el.libroBtn.innerHTML = contenidoBoton('carpeta', 'Elegir'); el.libroBtn.title = '';
   }
 }
 
