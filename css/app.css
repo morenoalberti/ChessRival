@@ -195,8 +195,9 @@ svg.icono { display: inline-block; vertical-align: middle; fill: none; stroke: c
 .red-punto { width: 10px; height: 10px; border-radius: 50%; background: #9AA5B8; border: .8px solid #00000082; margin: 1px 8px 0 0; }
 .red-texto { font-weight: 700; color: #2E6ED6; }
 .pie-texto { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pie-autor { margin-left: auto; }
-.pie-contacto { flex: 0 0 100%; text-align: center; font-size: 12px; line-height: 1.25; padding-top: 2px; }
+.pie-autor { margin-left: auto; order: 3; }
+.pie-contacto { flex: none; order: 2; margin: 0 14px; font-size: 11px; white-space: nowrap; }
+.pie-ficha .pie-contacto { flex: 0 0 100%; order: 0; margin: 0; text-align: center; font-size: 12px; line-height: 1.25; padding-top: 2px; }
 
 /* ---------- Diálogos ---------- */
 .velo { position: fixed; inset: 0; background: rgba(15, 25, 50, .35); display: flex; align-items: center; justify-content: center; z-index: 50; }
@@ -432,9 +433,10 @@ button.candidato:hover, button.candidato:focus-visible { background: #EAF1FF; ou
 .bienvenida-sub { margin: 0 0 18px; color: var(--texto-suave); font-size: 16px; }
 .bienvenida-botones { display: flex; flex-wrap: wrap; gap: 8px; }
 .bienvenida-pasos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-.bienvenida-pasos li { display: flex; flex-direction: column; gap: 10px; background: #fff; border: 1.5px solid #CFE0FF; border-radius: 14px; padding: 16px 18px 18px; box-shadow: 0 2px 8px rgba(47, 111, 224, .07); transition: transform .15s, box-shadow .15s; }
-.bienvenida-pasos li:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(47, 111, 224, .15); }
-.bienvenida-pasos b { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--azul); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.bienvenida-pasos li { display: flex; flex-direction: column; gap: 10px; position: relative; overflow: hidden; background: linear-gradient(180deg, #fff 0%, #EEF4FF 100%); border: 1.5px solid #BFD3FA; border-radius: 14px; padding: 18px 18px 18px; box-shadow: 0 1px 0 #fff inset, 0 4px 10px rgba(47, 111, 224, .12), 0 12px 24px -8px rgba(47, 111, 224, .22); transition: transform .18s, box-shadow .18s; }
+.bienvenida-pasos li::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: linear-gradient(90deg, #2F6FE0, #6FA0F5); }
+.bienvenida-pasos li:hover { transform: translateY(-3px); box-shadow: 0 1px 0 #fff inset, 0 8px 16px rgba(47, 111, 224, .18), 0 18px 32px -8px rgba(47, 111, 224, .32); }
+.bienvenida-pasos b { flex: none; width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, #5B94F5, #2F6FE0); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; box-shadow: 0 3px 8px rgba(47, 111, 224, .45), 0 0 0 3px rgba(47, 111, 224, .15); }
 .bienvenida-pasos strong { display: block; font-size: 15px; margin-bottom: 3px; }
 .bienvenida-pasos span { display: block; font-size: 12.5px; color: var(--texto-suave); line-height: 1.5; }
 @media (max-width: 760px) {
