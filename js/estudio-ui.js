@@ -54,7 +54,7 @@ function jugadoresDeLaPartida(p, jugador) {
   return `${blancas} - ${negras}`;
 }
 const referencia = (p, ply) => `Partida #${p.id} · ${p.fechaMostrada || 'sin fecha'} · contra ${p.rivalConTitulo || p.rival || 'rival desconocido'} · Jugador estudiado: ${p.colorJugador === 'B' ? 'blancas' : 'negras'} · Rival: ${p.colorJugador === 'B' ? 'negras' : 'blancas'} · jugada ${Math.ceil(ply / 2)}${ply % 2 ? '.' : '…'}`;
-const muestra = (m, conCantidad = true) => `<span class="estudio-fiabilidad" title="Nivel descriptivo según el número de partidas independientes; no es una probabilidad">Fiabilidad ${m.nivel.toLowerCase()}${conCantidad ? ` · ${cuenta(m.partidas, 'partida', 'partidas')}` : ''}</span>`;
+const muestra = (m, conCantidad = true) => `<span class="estudio-fiabilidad" title="Nivel descriptivo según el número de partidas independientes; no es una probabilidad"><span>Fiabilidad ${m.nivel.toLowerCase()}</span>${conCantidad ? ` · <span>${cuenta(m.partidas, 'partida', 'partidas')}</span>` : ''}</span>`;
 const nombreLinea = g => `${g.apertura}${g.eco ? ` · ${g.eco}` : ''}`;
 const posicionTexto = g => `${nombreLinea(g)}. Línea: ${convertirFiguras(g.lineaLlegada)}`;
 const posicionHtml = (g, jugador) => `<span class="estudio-apertura"><b>${esc(g.apertura)}</b>${g.eco ? `<span class="suave"> · ECO ${esc(g.eco)}</span>` : ''}</span><span class="estudio-jugadores">${esc(textoColoresDeLinea(jugador, g.color))}</span><span class="estudio-posicion">Línea: ${jugadaHtml(g.lineaLlegada)}${g.transposiciones > 1 ? `<span class="suave"> · Ejemplo entre ${g.transposiciones} órdenes de llegada</span>` : ''}</span>`;

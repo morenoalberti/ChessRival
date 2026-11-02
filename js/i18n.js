@@ -71,6 +71,7 @@ export function t(texto) {
   const [, antes, centro, despues] = lado;
   const limpio = centro.replace(/\s+/g, ' ');           // los saltos de línea y espacios repetidos del HTML no cuentan
   let r = traducirCentro(limpio);
+  if (r === limpio && centro.includes('\n')) r = centro.split('\n').map(l => l.trim() ? traducirCentro(l.replace(/\s+/g, ' ').trim()) : l).join('\n');   // ayudas de varias líneas: cada línea por su lado
   if (nombres) r = nombres(r);                          // los nombres de aperturas, que van dentro de otras frases
   return r === limpio ? texto : antes + r + despues;
 }
@@ -84,7 +85,7 @@ function traducirCentro(centro, profundidad = 0) {
     if (!m) continue;
     let i = 0;
     // Los huecos se traducen a su vez: «las {}» → «blancas» → «white».
-    return p.en.replace(/\{\}/g, () => { const g = m[++i] ?? ''; return traducirCentro(g, profundidad + 1); });
+    return p.en.replace(/\{\}/g, () => { const g = m[++i] ?? '', [, a, c, d] = /^(\s*)([\s\S]*?)(\s*)$/.exec(g); return a + traducirCentro(c, profundidad + 1) + d; });
   }
   return centro;
 }

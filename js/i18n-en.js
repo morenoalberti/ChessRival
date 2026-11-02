@@ -6,8 +6,9 @@ import * as estudio from './i18n-en-estudio.js';
 import * as comun from './i18n-en-comun.js';
 import * as ayuda from './i18n-en-ayuda.js';
 import * as quejugar from './i18n-en-quejugar.js';
+import * as extra from './i18n-en-extra.js';
 
-const partes = [principal, ficha, visor, estudio, comun, ayuda, quejugar];
+const partes = [principal, ficha, visor, estudio, comun, ayuda, quejugar, extra];
 export default {
   exactas: Object.assign({}, ...partes.map(p => p.exactas)),
   plantillas: Object.assign({}, ...partes.map(p => p.plantillas))

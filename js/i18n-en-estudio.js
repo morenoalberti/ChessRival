@@ -217,7 +217,6 @@ export const plantillas = {
   'Negras: {}': 'Black: {}',
   // Informe / estudio
   'Partida #{} · {} · contra {} · Jugador estudiado: {} · Rival: {} · jugada {}{}': 'Game #{} · {} · against {} · Player studied: {} · Opponent: {} · move {}{}',
-  'Fiabilidad {}{}': 'Reliability {}{}',
   '{}. Línea: {}': '{}. Line: {}',
   'Línea: {}{}': 'Line: {}{}',
   'Jugador estudiado: gana {} de {} partidas ({}). Tablas: {} · Derrotas: {}': 'Player studied: wins {} of {} games ({}). Draws: {} · Losses: {}',
