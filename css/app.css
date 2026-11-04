@@ -443,13 +443,33 @@ button.candidato:hover, button.candidato:focus-visible { background: #EAF1FF; ou
 .bienvenida-pasos small { display: block; font-size: 11px; font-weight: 800; letter-spacing: .12em; color: #2F6FE0; }
 .bienvenida-pasos strong { display: block; font-size: 17px; }
 .bienvenida-pasos li > span { display: block; flex: 1; font-size: 12.8px; color: var(--texto-suave); line-height: 1.5; }
-.paso-coral::before { background: linear-gradient(90deg, #F26A5B, #F59A8E) !important; } .paso-coral .paso-ico { background: linear-gradient(135deg, #F7867A, #E2503F); } .paso-coral small { color: #D8493B; } .paso-coral .paso-verde::before { background: linear-gradient(90deg, #1E8E4F, #3FB872) !important; } .paso-verde .paso-ico { background: linear-gradient(135deg, #3FB872, #1E8E4F); } .paso-verde small { color: #1E8E4F; } .paso-verde @media (max-width: 760px) {
+.paso-coral::before { background: linear-gradient(90deg, #F26A5B, #F59A8E) !important; } .paso-coral .paso-ico { background: linear-gradient(135deg, #F7867A, #E2503F); } .paso-coral small { color: #D8493B; } .paso-coral .paso-verde::before { background: linear-gradient(90deg, #1E8E4F, #3FB872) !important; } .paso-verde .paso-ico { background: linear-gradient(135deg, #3FB872, #1E8E4F); } .paso-verde small { color: #1E8E4F; }
+@media (max-width: 760px) {
   .bienvenida-hero { flex-direction: column; text-align: center; gap: 18px; }
   .bienvenida-botones { justify-content: center; }
   .bienvenida-pasos { grid-template-columns: 1fr; gap: 10px; }
   .paso-flecha { display: none; }
   }
 @media (max-width: 560px) { .bienvenida-botones .btn { flex: 1 1 100%; } }
+
+/* ---------- Móvil: la página ya no exige 760 px de ancho ---------- */
+@media (max-width: 760px) {
+  body { min-width: 0; }
+  #raiz { height: auto; min-height: 100vh; }
+  .principal { padding: 12px 12px 10px; }
+  .cabecera { flex-wrap: wrap; gap: 8px; }
+  .marca { flex: 1 1 100%; max-width: none; margin-right: 0; }
+  .titulo { font-size: 22px; }
+  .url-caja { flex: 1 1 0; min-width: 0; }
+  #cargarBtn { margin-left: 0; padding: 6px 14px; }
+  .banners { margin-bottom: 8px; }
+  .tarjetas { grid-template-columns: minmax(0, 1fr); }
+  .scroll-tarjetas { overflow-y: visible; }
+  .pie { justify-content: space-between; gap: 4px 12px; }
+  .pie-contacto { position: static; transform: none; order: 4; }
+  .pie-autor { margin-left: 0; }
+  .red { margin-right: 12px; }
+}
 
 /* Como una aplicación de escritorio: no se selecciona el texto de la pantalla (los cuadros de escritura y las respuestas de la IA, sí) */
 body { -webkit-user-select: none; user-select: none; }

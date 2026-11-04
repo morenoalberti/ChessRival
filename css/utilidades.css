@@ -6,6 +6,11 @@
 .barra-superior button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 30px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: var(--azul); cursor: pointer; }
 .barra-superior button:hover { background: #EAF1FF; }
 .ficha > .barra-superior, .visor > .barra-superior { margin: -8px -8px 8px; }
+/* Móvil: sin el nombre, la barra con las banderas cabe en pantallas estrechas */
+@media (max-width: 520px) {
+  .barra-marca { display: none; }
+  .barra-superior { justify-content: flex-end; padding: 0 6px; }
+}
 .utilidad-panel { width: 800px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; }
 .utilidad-panel .dialogo-cab { flex: none; gap: 10px; }
 .utilidad-panel .dialogo-cab > span { flex: 1; }
