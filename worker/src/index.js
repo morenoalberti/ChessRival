@@ -10,8 +10,6 @@
 //   GET /api/fide/foto?id=…      → la imagen del perfil de la FIDE (404 si no tiene)
 import { parse } from 'node-html-parser';
 import { normalizarTitulosFide } from '../../js/titulos-fide.js';
-import { consultarTwic, sincronizarTwic } from './twic.js';
-import { consultarLumbra, guardarLumbraLote } from './lumbra.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ChessRival/1.0';
 
@@ -721,64 +719,10 @@ async function modelosIa(proveedor, request) {
 // ---------- Enrutado ----------
 
 export default {
-  scheduled(_evento, env, ctx) {
-    ctx.waitUntil(sincronizarTwic(env));
-  },
-  async fetch(request, env, ctx) {
+  async fetch(request, env) {
     const cors = cabecerasCors(request, env);
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     const ruta = new URL(request.url);
-    // Herramienta de demostración: solo existe con la configuración LOCAL y una petición de loopback.
-    if (ruta.pathname === '/__twic/actualizar' && request.method === 'POST') {
-      if (env.TWIC_LOCAL !== '1' || !['127.0.0.1', 'localhost'].includes(ruta.hostname)) return json({ error: 'No encontrado' }, cors, { status: 404 });
-      if (request.headers.get('Origin') && request.headers.get('Origin') !== ruta.origin) return json({ error: 'Origen no permitido' }, cors, { status: 403 });
-      try { return json(await sincronizarTwic(env), cors); }
-      catch (e) { return json({ error: e.message }, cors, { status: 502 }); }
-    }
-    if (ruta.pathname.startsWith('/__lumbra/') && env.TWIC_LOCAL === '1' && ['127.0.0.1', 'localhost'].includes(ruta.hostname)) {
-      if (request.headers.get('Origin') && request.headers.get('Origin') !== ruta.origin) return json({ error: 'Origen no permitido' }, cors, { status: 403 });
-      if (!env.LUMBRA_DB) return json({ error: 'No hay una base Lumbra local configurada.' }, cors, { status: 503 });
-      if (ruta.pathname === '/__lumbra/lote' && request.method === 'POST') {
-        try {
-          const cuerpo = await request.text();
-          if (cuerpo.length > 1900000) return json({ error: 'El lote supera el tamaño permitido.' }, cors, { status: 413 });
-          const datos = JSON.parse(cuerpo);
-          if (!Array.isArray(datos.partidas) || datos.partidas.length > 250 || datos.partidas.some(g =>
-            !g || typeof g.id !== 'string' || g.id.length > 80 || !/^\d{4}-\d{2}-\d{2}$/.test(g.date) ||
-            typeof g.pgn !== 'string' || g.pgn.length > 50000 || typeof g.white !== 'string' || typeof g.black !== 'string'))
-            return json({ error: 'El lote de partidas Lumbra no es válido.' }, cors, { status: 400 });
-          const guardadas = await guardarLumbraLote(env.LUMBRA_DB, datos.partidas);
-          return json({ guardadas }, cors);
-        } catch (e) { return json({ error: e.message || 'No se pudo guardar el lote de Lumbra.' }, cors, { status: 400 }); }
-      }
-      if (ruta.pathname === '/__lumbra/iniciar' && request.method === 'POST') {
-        await env.LUMBRA_DB.batch([
-          env.LUMBRA_DB.prepare('DELETE FROM lumbra_games'),
-          env.LUMBRA_DB.prepare('DELETE FROM lumbra_meta')
-        ]);
-        return json({ iniciado: true }, cors);
-      }
-      if (ruta.pathname === '/__lumbra/finalizar' && request.method === 'POST') {
-        const datos = await request.json().catch(() => ({}));
-        const version = String(datos.version ?? '').slice(0, 30);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(version)) return json({ error: 'Versión Lumbra no válida.' }, cors, { status: 400 });
-        await env.LUMBRA_DB.batch([
-          env.LUMBRA_DB.prepare("INSERT INTO lumbra_meta(key,value) VALUES ('version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(version),
-          env.LUMBRA_DB.prepare("INSERT INTO lumbra_meta(key,value) VALUES ('completa','1') ON CONFLICT(key) DO UPDATE SET value=excluded.value")
-        ]);
-        return json({ completa: true, version }, cors);
-      }
-      if (ruta.pathname === '/__lumbra/estado' && request.method === 'GET') {
-        const [cuenta, fechas, version, completa] = await Promise.all([
-          env.LUMBRA_DB.prepare('SELECT count(*) n FROM lumbra_games').first(),
-          env.LUMBRA_DB.prepare('SELECT min(game_date) desde, max(game_date) hasta FROM lumbra_games').first(),
-          env.LUMBRA_DB.prepare("SELECT value FROM lumbra_meta WHERE key='version'").first(),
-          env.LUMBRA_DB.prepare("SELECT value FROM lumbra_meta WHERE key='completa'").first()
-        ]);
-        return json({ partidas: cuenta.n, ...fechas, version: version?.value ?? '', completa: completa?.value === '1' }, cors);
-      }
-      return json({ error: 'No encontrado' }, cors, { status: 404 });
-    }
     const esPost = request.method === 'POST' && ruta.pathname === '/api/ia/preguntar';
     if (request.method !== 'GET' && !esPost) return json({ error: 'Método no permitido' }, cors, { status: 405 });
 
@@ -786,25 +730,6 @@ export default {
     const p = url.searchParams;
     try {
       switch (url.pathname) {
-        case '/api/twic/jugador': {
-          // Clave canónica y sin Origin: la caché comparte resultados públicos, nunca datos personales.
-          const cacheUrl = new URL('/api/twic/jugador', url.origin);
-          for (const k of ['name', 'fideId', 'cursor']) cacheUrl.searchParams.set(k, (p.get(k) ?? '').trim().slice(0, 200));
-          const cache = env.TWIC_LOCAL === '1' ? null : globalThis.caches?.default;
-          let respuesta = await cache?.match(cacheUrl.href);
-          if (!respuesta) {
-            const datos = await consultarTwic(env, cacheUrl.searchParams);
-            const status = datos.estado === 'limite' ? 429 : datos.estado === 'error' ? 400 : 200;
-            respuesta = json(datos, {}, { status, 'Cache-Control': cache && status === 200 && datos.estado !== 'sin_configurar' ? 'public, max-age=300' : 'no-store' });
-            if (cache && status === 200 && datos.estado !== 'sin_configurar') ctx?.waitUntil(cache.put(cacheUrl.href, respuesta.clone()));
-          }
-          return new Response(respuesta.body, { status: respuesta.status, headers: { ...Object.fromEntries(respuesta.headers), ...cors } });
-        }
-        case '/api/lumbra/jugador': {
-          const datos = await consultarLumbra(env, p);
-          const status = datos.estado === 'error' ? 400 : 200;
-          return json(datos, cors, { status, 'Cache-Control': 'no-store' });
-        }
         case '/api/torneo': {
           const top = Math.max(1, Math.min(MAX_JUGADORES, parseInt(p.get('top') ?? '5', 10) || MAX_JUGADORES));
           return json(await cargarTorneo(p.get('url'), top), cors, { 'Cache-Control': 'public, max-age=60' });
