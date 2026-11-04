@@ -36,6 +36,8 @@
   <link rel="stylesheet" href="css/fide-tarjetas.css">
   <script defer src="https://metricas.chessrival.net/script.js" data-website-id="e6054212-20ff-4c0c-82af-b148ab1e9291"></script>
   <script defer src="js/pulsemetrics.js"></script>
+  <!-- Sin selector de carpetas (móviles, Firefox, Safari) no se puede elegir la MegaDatabase ni el libro: se ocultan -->
+  <script>if (!('showDirectoryPicker' in window)) document.documentElement.classList.add('sin-carpetas');</script>
 </head>
 <body>
   <div id="raiz">
