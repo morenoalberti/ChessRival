@@ -452,6 +452,10 @@ button.candidato:hover, button.candidato:focus-visible { background: #EAF1FF; ou
   }
 @media (max-width: 560px) { .bienvenida-botones .btn { flex: 1 1 100%; } }
 
+/* Navegadores sin selector de carpetas: la MegaDatabase y el libro de aperturas no se pueden elegir, así que no se muestran */
+.sin-carpetas #megaBanner, .sin-carpetas #libroBanner { display: none; }
+.sin-carpetas .banners { grid-template-columns: 1fr; }
+
 /* ---------- Móvil: la página ya no exige 760 px de ancho ---------- */
 @media (max-width: 760px) {
   body { min-width: 0; }
