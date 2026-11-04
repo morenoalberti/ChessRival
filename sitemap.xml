@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://chessrival.net/</loc>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://chessrival.net/acerca.html</loc>
+    <xhtml:link rel="alternate" hreflang="es" href="https://chessrival.net/acerca.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://chessrival.net/about.html"/>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://chessrival.net/about.html</loc>
+    <xhtml:link rel="alternate" hreflang="es" href="https://chessrival.net/acerca.html"/>
+    <xhtml:link rel="alternate" hreflang="en" href="https://chessrival.net/about.html"/>
+    <priority>0.8</priority>
+  </url>
+</urlset>
