@@ -39,10 +39,6 @@ En «Importar partidas», «Archivos PGN» abre un selector de archivos .pgn (un
 
 El visor se abre desde la ficha en una ventana de 1160 × 917 píxeles, centrada horizontalmente y alineada con el borde inferior del área útil del monitor. Se reduce si no cabe en la pantalla y se puede mover o redimensionar después. El navegador debe permitir las ventanas emergentes de ChessRival.
 
-La nueva tarjeta «TWIC · Último año» consulta un índice compartido en Cloudflare D1 para las entregas de los últimos 12 meses. No descarga el histórico desde el navegador. Muestra fecha, número de partidas y cobertura parcial; solo guarda al pulsar «Importar» y une duplicados con las otras fuentes. La activación remota está pendiente: sin el binding D1 la tarjeta lo indica y permite seguir usando las otras fuentes. Hay una demostración local sin contratar servicios y una guía de activación y límites en [worker/TWIC.md](worker/TWIC.md).
-
-La tarjeta «Lumbra’s Gigabase · último año» permite evaluar en privado la colección OTB reciente. Su ensayo local indexa los PGN oficiales de 2025 y 2026, filtra por fecha e ID FIDE y conserva la calidad y procedencia etiquetadas por Lumbra. La prueba no está publicada ni conectada a una base remota; instrucciones y condiciones en [worker/LUMBRA.md](worker/LUMBRA.md).
-
 ## Estudio del jugador
 
 La ficha estudia siempre todas las partidas importadas del jugador. Las fechas futuras se excluyen y las incompletas no entran en los periodos recientes. Los datos FIDE de la parte superior son globales; no dependen de las partidas importadas.

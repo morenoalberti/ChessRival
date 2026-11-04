@@ -7,8 +7,6 @@ import { leerArchivo, importar, mensaje } from './importador.js';
 import { leerCarpetaPgn, elegirCarpetaPgn, permitirCarpetaPgn, buscarPgnEnCarpeta, agruparCarpetasPgn, repartirPgn } from './importar-carpetas.js';
 import * as mega from './mega.js';
 import { nombreConTitulo } from './nombre-jugador.js';
-import { buscarTwic } from './twic.js';
-import { buscarLumbra } from './lumbra.js';
 
 const esc = (t) => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const tam = (b) => b > 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
@@ -23,8 +21,6 @@ export function abrirImportar(jugador) {
     const previo = document.activeElement;
     let lecturas = [], ocupado = false, cerrado = false, iniciando = true, leyendoPgn = false, resultado = null;
     let megaBuscando = false, megaResultado = null, megaError = '', megaProgreso = '';
-    let twicBuscando = false, twicResultado = null, twicError = '';
-    let lumbraBuscando = false, lumbraResultado = null, lumbraError = '';
     const control = new AbortController();
     const carpetas = Object.fromEntries(FUENTES_PGN.map(f => [f.id, { carpeta: null, buscando: false, pendiente: false, error: '', errores: [] }]));
     const leyendo = () => iniciando || leyendoPgn || Object.values(carpetas).some(c => c.buscando);
@@ -35,7 +31,7 @@ export function abrirImportar(jugador) {
       <div class="dialogo dialogo-importar" role="dialog" aria-modal="true" aria-label="Importar partidas">
         <div class="dialogo-cab"><img src="assets/icon.png" alt=""><span>Importar partidas · ${esc(nombreConTitulo(jugador))}</span></div>
         <div class="importar-cuerpo">
-          <p class="importar-intro">Se buscan sus partidas en las carpetas elegidas, la MegaDatabase conectada y TWIC. También puedes elegir archivos PGN. Pulsa «Importar» para guardarlas.</p>
+          <p class="importar-intro">Se buscan sus partidas en las carpetas elegidas y en la MegaDatabase conectada. También puedes elegir archivos PGN. Pulsa «Importar» para guardarlas.</p>
 
           <div class="importar-caja">
             <div class="importar-fila">
@@ -70,27 +66,7 @@ export function abrirImportar(jugador) {
             <div class="importar-recuento" data-mega-recuento aria-live="polite" hidden></div>
           </div>
 
-          <div class="importar-caja" data-fuente="lumbra">
-            <div class="importar-fila">
-              <div class="importar-texto"><b>Lumbra’s Gigabase · último año</b><span class="suave">Partidas OTB recientes · prueba privada</span></div>
-              <button type="button" class="btn btn-secundario btn-chico" data-lumbra-reintentar hidden></button>
-            </div>
-            <div class="importar-zona suave" data-lumbra-estado role="status">Buscando partidas en Lumbra’s Gigabase…</div>
-            <div class="importar-recuento" data-lumbra-recuento aria-live="polite" hidden></div>
-            <div class="importar-nota suave" data-lumbra-version hidden></div>
-          </div>
-
-          <div class="importar-caja" data-fuente="twic">
-            <div class="importar-fila">
-              <div class="importar-texto"><b>TWIC · Último año</b><span class="suave">Entregas semanales de los últimos 12 meses.</span></div>
-              <button type="button" class="btn btn-secundario btn-chico" data-twic-reintentar hidden></button>
-            </div>
-            <div class="importar-zona suave" data-twic-estado role="status">Buscando partidas en TWIC…</div>
-            <div class="importar-recuento" data-twic-recuento aria-live="polite" hidden></div>
-            <div class="importar-nota suave" data-twic-fecha hidden></div>
-          </div>
-
-          <p class="importar-nota suave">Al importar, las partidas repetidas entre PGN, MegaDatabase, TWIC y Lumbra se guardan una sola vez.</p>
+          <p class="importar-nota suave">Al importar, las partidas repetidas entre PGN y MegaDatabase se guardan una sola vez.</p>
           <p class="importar-progreso" data-progreso hidden></p>
           <div class="importar-botones">
             <button type="button" class="btn btn-primario" data-importar disabled></button>
@@ -102,21 +78,17 @@ export function abrirImportar(jugador) {
     const $ = (s) => velo.querySelector(s);
     const pintarCargando = () => {
       const panel = $('.dialogo-importar');
-      const activo = !cerrado && (ocupado || leyendo() || megaBuscando || twicBuscando || lumbraBuscando);
+      const activo = !cerrado && (ocupado || leyendo() || megaBuscando);
       panel.setAttribute('aria-busy', String(activo));
       if (!activo) { quitarCargando(panel); return; }
       const texto = ocupado ? ($('[data-progreso]').textContent || 'Importando…')
         : megaBuscando ? (megaProgreso || 'Buscando partidas en la MegaDatabase…')
-        : twicBuscando ? 'Buscando partidas en TWIC…'
-        : lumbraBuscando ? 'Buscando partidas en Lumbra’s Gigabase…'
         : leyendoPgn || iniciando ? 'Leyendo archivos…' : 'Buscando PGN del jugador…';
       mostrarCargando(panel, texto);
     };
     const ponerProgreso = texto => { $('[data-progreso]').textContent = texto; pintarCargando(); };
     $('[data-elegir-pgn]').innerHTML = contenidoBoton('carpeta', 'Elegir archivos');
     $('[data-mega-reintentar]').innerHTML = contenidoBoton('reiniciar', 'Reintentar');
-    $('[data-twic-reintentar]').innerHTML = contenidoBoton('reiniciar', 'Reintentar');
-    $('[data-lumbra-reintentar]').innerHTML = contenidoBoton('reiniciar', 'Reintentar');
     for (const f of FUENTES_PGN) {
       $(`[data-cambiar="${f.id}"]`).innerHTML = contenidoBoton('carpeta', 'Cambiar');
       $(`[data-permitir="${f.id}"]`).innerHTML = contenidoBoton('visto', 'Permitir');
@@ -170,82 +142,8 @@ export function abrirImportar(jugador) {
       $('[data-cerrar]').disabled = ocupado;
       $('[data-mega-permiso]').disabled = ocupado || megaBuscando;
       $('[data-mega-reintentar]').disabled = ocupado || megaBuscando;
-      $('[data-twic-reintentar]').disabled = ocupado || twicBuscando;
-      $('[data-lumbra-reintentar]').disabled = ocupado || lumbraBuscando;
-      $('[data-importar]').disabled = ocupado || leyendo() || megaBuscando || twicBuscando || lumbraBuscando || !(lecturas.some(l => l.suyas > 0) || megaResultado?.partidas.length);
+      $('[data-importar]').disabled = ocupado || leyendo() || megaBuscando || !(lecturas.some(l => l.suyas > 0) || megaResultado?.partidas.length);
       pintarCargando();
-    };
-
-    const pintarTwic = () => {
-      const t = $('[data-twic-estado]'), r = twicResultado;
-      t.classList.toggle('importar-error', Boolean(twicError));
-      t.textContent = twicBuscando ? 'Buscando partidas en TWIC…' : twicError ? `No se pudo consultar TWIC: ${twicError}`
-        : !r || r.estado === 'sin_configurar' ? 'TWIC está pendiente de activar en el servidor.'
-        : r.estado === 'preparando' ? 'Se está preparando el histórico de TWIC. Puedes importar de las otras fuentes.'
-        : r.partidas.length ? 'Partidas del jugador preparadas para importar.'
-        : r.estado === 'parcial' ? 'Sin partidas del jugador en las entregas revisadas. El histórico aún está incompleto.'
-        : 'No se encontraron partidas de este jugador en TWIC durante este periodo.';
-      const recuento = $('[data-twic-recuento]');
-      recuento.hidden = !r?.revisadas || twicBuscando;
-      recuento.textContent = r ? `${r.partidas.length.toLocaleString(LOCALE)} partidas del jugador · ${r.revisadas} de ${r.entregas} entregas revisadas`
-        + (r.limitada ? ' · Se muestran las primeras 2.000 partidas.' : '') : '';
-      const fecha = $('[data-twic-fecha]');
-      fecha.hidden = !r?.ultimaEntrega || twicBuscando;
-      const formato = d => new Date(`${d}T12:00:00Z`).toLocaleDateString(LOCALE, { day: 'numeric', month: 'long', year: 'numeric' });
-      fecha.textContent = r?.ultimaEntrega ? `Última entrega: ${formato(r.ultimaEntrega)} · Desde ${formato(r.desde)}`
-        + (r.estado === 'parcial' ? ' · Histórico en preparación.' : '') + (r.errores ? ' · Hay entregas pendientes de reintentar.' : '') : '';
-      if (r?.desactualizada && !twicBuscando) {
-        fecha.hidden = false;
-        fecha.textContent += (fecha.textContent ? ' · ' : '') + 'La actualización de TWIC está pendiente de comprobar.';
-      }
-      $('[data-twic-reintentar]').hidden = twicBuscando || (!twicError && r?.estado !== 'parcial' && r?.estado !== 'preparando');
-      pintarLista();
-    };
-
-    const buscarEnTwic = async () => {
-      if (cerrado || ocupado || twicBuscando) return;
-      twicBuscando = true; twicError = ''; pintarTwic();
-      try {
-        const r = await buscarTwic(jugador, () => {}, control.signal);
-        if (cerrado) return;
-        twicResultado = r;
-        lecturas = lecturas.filter(l => l.tarjeta !== 'twic');
-        if (r.partidas.length) lecturas.push({ tarjeta: 'twic', fuente: 'TWIC', archivo: { name: 'TWIC.pgn' }, partidas: r.partidas, suyas: r.partidas.length, total: r.partidas.length });
-      } catch (e) { if (e.name !== 'AbortError') twicError = e.message; }
-      finally { twicBuscando = false; if (!cerrado) pintarTwic(); }
-    };
-
-    const pintarLumbra = () => {
-      const estado = $('[data-lumbra-estado]'), r = lumbraResultado;
-      estado.classList.toggle('importar-error', Boolean(lumbraError));
-      estado.textContent = lumbraBuscando ? 'Buscando partidas en Lumbra’s Gigabase…' : lumbraError ? `No se pudo consultar Lumbra’s Gigabase: ${lumbraError}`
-        : !r || r.estado === 'sin_configurar' ? 'Lumbra’s Gigabase está pendiente de preparar en este equipo.'
-        : r.estado === 'preparando' ? 'Se está preparando el índice local de Lumbra. Puedes importar de las otras fuentes.'
-        : r.partidas.length ? 'Partidas del jugador preparadas para importar.'
-        : 'No se encontraron partidas de este jugador en Lumbra’s Gigabase durante este periodo.';
-      const recuento = $('[data-lumbra-recuento]');
-      recuento.hidden = !r?.juegosIndexados || lumbraBuscando;
-      recuento.textContent = r ? `${r.partidas.length.toLocaleString(LOCALE)} partidas del jugador · ${r.juegosIndexados.toLocaleString(LOCALE)} partidas indexadas`
-        + (r.limitada ? ' · Se muestran las primeras 2.000 partidas.' : '') : '';
-      const version = $('[data-lumbra-version]');
-      version.hidden = !r?.version || lumbraBuscando;
-      const fecha = value => value ? new Date(`${value}T12:00:00Z`).toLocaleDateString(LOCALE, { day: 'numeric', month: 'long', year: 'numeric' }) : '';
-      version.textContent = r?.version ? `Última partida: ${fecha(r.ultimaPartida)} · Versión de Lumbra: ${r.version} · Desde ${fecha(r.desde)}` : '';
-      $('[data-lumbra-reintentar]').hidden = lumbraBuscando || (!lumbraError && r?.estado !== 'preparando');
-      pintarLista();
-    };
-
-    const buscarEnLumbra = async () => {
-      if (cerrado || ocupado || lumbraBuscando) return;
-      lumbraBuscando = true; lumbraError = ''; pintarLumbra();
-      try {
-        const r = await buscarLumbra(jugador, () => {}, control.signal);
-        if (cerrado) return;
-        lumbraResultado = r;
-        lecturas = lecturas.filter(l => l.tarjeta !== 'lumbra');
-        if (r.partidas.length) lecturas.push({ tarjeta: 'lumbra', fuente: 'Lumbra’s Gigabase', archivo: { name: 'Lumbra-Gigabase.pgn' }, partidas: r.partidas, suyas: r.partidas.length, total: r.partidas.length });
-      } catch (e) { if (e.name !== 'AbortError') lumbraError = e.message; }
-      finally { lumbraBuscando = false; if (!cerrado) pintarLumbra(); }
     };
 
     // Estado de la MegaDatabase: conectada, a la espera del permiso del navegador o sin elegir.
@@ -308,7 +206,7 @@ export function abrirImportar(jugador) {
     const revisarCarpetas = async () => {
       if (cerrado) return;
       iniciando = true;
-      lecturas = lecturas.filter(l => ['pgn', 'twic', 'lumbra'].includes(l.tarjeta));
+      lecturas = lecturas.filter(l => l.tarjeta === 'pgn');
       for (const estado of Object.values(carpetas).filter(c => c.carpeta)) {
         estado.buscando = true; estado.pendiente = false; estado.error = ''; estado.errores = [];
       }
@@ -364,7 +262,7 @@ export function abrirImportar(jugador) {
     velo.addEventListener('mousedown', (e) => { if (e.target === velo) cerrar(); });
 
     $('[data-importar]').addEventListener('click', async () => {
-      if (ocupado || leyendo() || megaBuscando || twicBuscando || lumbraBuscando) return;
+      if (ocupado || leyendo() || megaBuscando) return;
       ocupado = true;
       pintarLista();
       const progreso = $('[data-progreso]');
@@ -375,27 +273,13 @@ export function abrirImportar(jugador) {
       try {
         pintarMega();
 
-        let textoMega = null, textoPgn = null, textoTwic = null, textoLumbra = null;
-        const aImportar = lecturas.filter(l => l.suyas > 0 && !['twic', 'lumbra'].includes(l.tarjeta));
+        let textoMega = null, textoPgn = null;
+        const aImportar = lecturas.filter(l => l.suyas > 0);
         if (aImportar.length) {
           ponerProgreso('Importando de los archivos PGN…');
           const r = await importar(jugador, aImportar, 'PGN', ponerProgreso);
           textoPgn = mensaje(nombreConTitulo(jugador), r);
           resultado = { ...(resultado ?? {}), pgn: r };
-        }
-        const deTwic = lecturas.filter(l => l.tarjeta === 'twic' && l.suyas > 0);
-        if (deTwic.length) {
-          ponerProgreso('Importando de TWIC…');
-          const r = await importar(jugador, deTwic, 'TWIC', ponerProgreso);
-          textoTwic = mensaje(nombreConTitulo(jugador), r);
-          resultado = { ...(resultado ?? {}), twic: r };
-        }
-        const deLumbra = lecturas.filter(l => l.tarjeta === 'lumbra' && l.suyas > 0);
-        if (deLumbra.length) {
-          ponerProgreso('Importando de Lumbra’s Gigabase…');
-          const r = await importar(jugador, deLumbra, 'Lumbra’s Gigabase', ponerProgreso);
-          textoLumbra = mensaje(nombreConTitulo(jugador), r);
-          resultado = { ...(resultado ?? {}), lumbra: r };
         }
         if (megaResultado) {
           try {
@@ -418,8 +302,6 @@ export function abrirImportar(jugador) {
         const partes = [];
         if (textoMega !== null) partes.push(`•  MegaDatabase: ${textoMega}`);
         if (textoPgn !== null) partes.push(`•  Archivos PGN: ${textoPgn}`);
-        if (textoTwic !== null) partes.push(`•  TWIC: ${textoTwic}`);
-        if (textoLumbra !== null) partes.push(`•  Lumbra’s Gigabase: ${textoLumbra}`);
         const processed=Object.values(resultado||{}).reduce((total,result)=>total+(result.nuevas||0)+(result.repetidas||0)+(result.yaEstaban||0),0);
         pulseDone(processed>0?'ok':pulseFailed?'error':'sin_resultados');
         await informar('Importación terminada', `Partidas importadas de ${nombreConTitulo(jugador)}:\n\n${partes.join('\n\n') || 'No había nada que importar.'}`);
@@ -444,14 +326,10 @@ export function abrirImportar(jugador) {
       if (!cerrado) { pintarMega(); await buscarMega(); }
     });
     $('[data-mega-reintentar]').addEventListener('click', buscarMega);
-    $('[data-twic-reintentar]').addEventListener('click', buscarEnTwic);
-    $('[data-lumbra-reintentar]').addEventListener('click', buscarEnLumbra);
     document.addEventListener('keydown', teclas, true);
     document.body.appendChild(velo);
     pintarMega();
     buscarMega();
-    buscarEnTwic();
-    buscarEnLumbra();
     $('[data-cerrar]').focus();
     // Al abrir se revisan las carpetas recordadas sin mostrar selectores ni pedir permisos automáticamente.
     Promise.all(FUENTES_PGN.map(async f => {

@@ -5,14 +5,9 @@
   "scripts": {
     "dev": "wrangler dev --port 8787",
     "deploy": "wrangler deploy --var \"ORIGENES_PERMITIDOS:https://chessrival.net,https://www.chessrival.net\"",
-    "test": "node --test test/prueba.mjs test/estudio.mjs test/libro.mjs test/fide-historial.mjs test/fide-fuentes.mjs test/twic.mjs test/lumbra.mjs",
-    "twic:demo": "node scripts/twic-demo.mjs iniciar",
-    "twic:cargar": "node scripts/twic-demo.mjs cargar",
-    "lumbra:cargar": "node scripts/lumbra-demo.mjs cargar",
-    "lumbra:estado": "node scripts/lumbra-demo.mjs estado"
+    "test": "node --test test/prueba.mjs test/estudio.mjs test/libro.mjs test/fide-historial.mjs test/fide-fuentes.mjs"
   },
   "devDependencies": {
-    "7zip-bin": "^5.2.0",
     "fake-indexeddb": "^6.2.5",
     "wrangler": "^4"
   },
