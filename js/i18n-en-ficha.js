@@ -166,21 +166,9 @@ export const exactas = {
   'Ventana bloqueada': 'Window blocked',
 
   // Importar partidas
-  'TWIC · Último año': 'TWIC · Last year',
   'Entregas semanales de los últimos 12 meses.': 'Weekly issues from the last 12 months.',
-  'Buscando partidas en TWIC…': 'Searching for games in TWIC…',
-  'TWIC está pendiente de activar en el servidor.': 'TWIC has not yet been activated on the server.',
-  'Se está preparando el histórico de TWIC. Puedes importar de las otras fuentes.': 'The TWIC archive is being prepared. You can import from other sources.',
   'Partidas del jugador preparadas para importar.': 'The player’s games are ready to import.',
   'Sin partidas del jugador en las entregas revisadas. El histórico aún está incompleto.': 'No games for the player in the reviewed issues. The archive is still incomplete.',
-  'No se encontraron partidas de este jugador en TWIC durante este periodo.': 'No games for this player were found in TWIC during this period.',
-  'Se ha alcanzado el límite diario de consultas TWIC. Inténtalo mañana.': 'The daily TWIC query limit has been reached. Please try tomorrow.',
-  'No se pudo consultar TWIC.': 'Could not query TWIC.',
-  'La respuesta de TWIC no es válida.': 'The TWIC response is invalid.',
-  'TWIC ha repetido una página de resultados.': 'TWIC returned a repeated results page.',
-  'Importando de TWIC…': 'Importing from TWIC…',
-  'Se buscan sus partidas en las carpetas elegidas, la MegaDatabase conectada y TWIC. También puedes elegir archivos PGN. Pulsa «Importar» para guardarlas.': 'Their games are searched in the selected folders, the connected MegaDatabase and TWIC. You can also choose PGN files. Press “Import” to save them.',
-  'Al importar, las partidas repetidas entre archivos PGN, MegaDatabase y TWIC se guardan una sola vez.': 'When importing, duplicate games across PGN files, MegaDatabase and TWIC are saved only once.',
   'Origen sin identificar: se importará como PGN.': 'Unknown source: it will be imported as PGN.',
   'Se buscan sus partidas en las carpetas elegidas y en la MegaDatabase conectada. También puedes elegir archivos PGN. Pulsa «Importar» para guardarlas.': 'Their games are searched in the selected folders and the connected MegaDatabase. You can also choose PGN files. Press “Import” to save them.',
   'Elige uno o varios archivos PGN de tu ordenador.': 'Choose one or more PGN files from your computer.',
@@ -398,13 +386,11 @@ export const exactas = {
 };
 
 export const plantillas = {
-  'No se pudo consultar TWIC: {}': 'Could not query TWIC: {}',
   '{} partidas del jugador · {} de {} entregas revisadas': '{} games for this player · {} of {} issues reviewed',
   '{} partidas del jugador · {} de {} entregas revisadas · Se muestran las primeras 2.000 partidas.': '{} games for this player · {} of {} issues reviewed · Showing the first 2,000 games.',
   'Última entrega: {} · Desde {}': 'Latest issue: {} · Since {}',
   'Última entrega: {} · Desde {} · Histórico en preparación.': 'Latest issue: {} · Since {} · Archive being prepared.',
   'Última entrega: {} · Desde {} · Histórico en preparación. · Hay entregas pendientes de reintentar.': 'Latest issue: {} · Since {} · Archive being prepared. · Some issues need retrying.',
-  '• TWIC: {}': '• TWIC: {}',
   'Buscando los nombres en la base… {} %': 'Searching for names in the database… {} %',
   'Recorriendo las partidas de la base… {} %': 'Scanning the games in the database… {} %',
   'Leyendo las partidas más recientes… {} de {}': 'Reading the most recent games… {} of {}',
