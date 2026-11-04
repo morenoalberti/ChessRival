@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS twic_control (clave TEXT PRIMARY KEY, valor TEXT NOT NULL);

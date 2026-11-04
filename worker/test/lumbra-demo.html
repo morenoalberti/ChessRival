@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <base href="/">
+  <title>Prueba privada de Lumbra’s Gigabase · ChessRival</title>
+  <link rel="icon" href="/assets/icon.png">
+  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/ficha.css">
+  <link rel="stylesheet" href="/css/ficha-datos.css">
+  <link rel="stylesheet" href="/css/utilidades.css">
+</head>
+<body>
+  <main style="padding:24px;max-width:760px;margin:auto">
+    <h1>Prueba privada de Lumbra’s Gigabase</h1>
+    <p>La búsqueda usa la colección OTB local del último año. Solo guarda partidas si pulsas «Importar».</p>
+    <div class="formulario">
+      <label for="nombre">Nombre del jugador</label>
+      <input id="nombre" value="Nakamura, Hikaru" autocomplete="off">
+      <label for="fide">ID FIDE</label>
+      <input id="fide" value="2016192" inputmode="numeric" autocomplete="off">
+      <button class="btn btn-primario" id="buscar">Abrir importación</button>
+      <a class="btn btn-secundario" href="/index.html">ChessRival</a>
+      <p class="suave" id="error" role="status" hidden></p>
+    </div>
+  </main>
+  <script type="module">
+    import { abrirImportar } from '/js/importar-dialogo.js';
+    document.getElementById('buscar').addEventListener('click', () => {
+      const name = document.getElementById('nombre').value.trim();
+      const fideId = document.getElementById('fide').value.trim();
+      if (!name && !fideId) { document.getElementById('error').textContent = 'Escribe un nombre o un ID FIDE.'; document.getElementById('error').hidden = false; return; }
+      document.getElementById('error').hidden = true;
+      abrirImportar({ name, fideId, fideTitle: '' });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# Demostración aislada. NO desplegar este archivo: TWIC_LOCAL solo es para loopback.
+name = "chessrival-twic-local"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+ORIGENES_PERMITIDOS = "http://localhost:8765,http://127.0.0.1:8765"
+TWIC_LOCAL = "1"
+
+[[d1_databases]]
+binding = "TWIC_DB"
+database_name = "chessrival-twic-local"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"
+
+[[d1_databases]]
+binding = "LUMBRA_DB"
+database_name = "chessrival-lumbra-local"
+database_id = "00000000-0000-0000-0000-000000000002"
+migrations_dir = "migrations-lumbra"
