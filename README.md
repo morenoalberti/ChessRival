@@ -130,3 +130,11 @@ La versión 2 del cálculo de análisis distingue mate de tablas. Los análisis 
 ## Publicación
 
 `js/config.js` usa el Worker local en `localhost` y `127.0.0.1`. Para otro alojamiento hay que configurar la URL del Worker desplegado y ajustar `ORIGENES_PERMITIDOS` en `worker/wrangler.toml` al origen de la web. La selección local de MegaDatabase mediante `servidor.py` es específica de la ejecución local.
+
+## Estadísticas de visitas
+
+Las páginas públicas cargan `js/analytics.js`, que instala Cloudflare Web Analytics para `chessrival.net` y `www.chessrival.net`. El identificador del sitio es público; no contiene claves API. Solo funciona por HTTPS en esos dominios, respeta Do Not Track y Global Privacy Control y evita cargar el beacon dos veces. No genera estadísticas en local.
+
+Se ha retirado el seguimiento anterior. Las mediciones de botones, operaciones, tiempos activos y desplazamiento de PulseMetrics no se envían a Cloudflare Web Analytics. El historial existente permanece en el servidor anterior y no se migra automáticamente. Las llamadas opcionales de la aplicación a esas mediciones no alteran sus funciones.
+
+Las pruebas deben interceptar el beacon y la recogida. Para seguir viendo las estadísticas nuevas en el programa PulseMetrics se necesita su conexión de lectura a Cloudflare; los códigos públicos de seguimiento no dan acceso a los informes. No dar de baja Hetzner hasta comprobar los demás servicios que aloja.
