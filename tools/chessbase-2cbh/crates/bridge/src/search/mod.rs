@@ -1,0 +1,771 @@
+//! Search, sort and suggestions over a database's game headers
+//! (`docs/search-grammar.md`). Everything built here belongs to one database
+//! generation: a changed database is reopened with fresh [`Indexes`]. All of
+//! it lives within the search memory budget of [`memory`].
+
+mod compare;
+pub mod gate;
+pub mod heads;
+mod members;
+pub mod memory;
+mod names;
+mod order;
+pub mod query;
+mod scan;
+mod slim;
+mod sort;
+mod suggest;
+pub mod workers;
+
+pub use members::{Adding, Members, Position};
+pub use names::FILES_READ as NAME_FILES_READ;
+pub use scan::BATCH_BYTES;
+pub use suggest::{SuggestField, Suggestion, suggest};
+
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, Weak};
+
+use cbformat::view::Base;
+
+use memory::{Allowance, Cancel, Evict, Held, Hold, Refused, Streams};
+use names::{BitSet, Groups, Kind, NameTable, joint_ranks};
+use query::{Field, Query, Sort, SortKey};
+use scan::Control;
+
+use crate::activity::Activity;
+use crate::store::{Head, Store, with_store};
+use crate::sync::lock;
+
+/// Searches whose results are kept for paging.
+const KEPT_RESULTS: usize = 4;
+/// Searches kept as sets of records, for the explorer to narrow positions by
+/// (#268): a set takes a bit a record, 1.5 MB for the Mega Database.
+const KEPT_SETS: usize = 4;
+/// Record numbers kept over all those results: 128 MiB.
+const KEPT_NUMBERS: usize = 32 << 20;
+
+type Slot<T> = Mutex<Option<Arc<T>>>;
+type OrderSlot = Slot<Held<Vec<u32>>>;
+/// Record numbers in the order a list shows them, with the memory they hold.
+pub type Numbers = Arc<Held<Vec<u32>>>;
+
+/// What has been built for one generation of one database.
+#[derive(Default)]
+pub struct Indexes {
+    players: Slot<NameTable>,
+    tournaments: Slot<NameTable>,
+    /// Where annotators are not players.
+    annotators: Slot<NameTable>,
+    titles: Slot<NameTable>,
+    /// Each tournament's type byte, by id, for `timecontrol:` (#268).
+    tournament_kinds: Slot<Held<Vec<u8>>>,
+    player_ranks: Slot<Held<Vec<Vec<u32>>>>,
+    annotator_ranks: Slot<Held<Vec<Vec<u32>>>>,
+    /// Tournaments and titles in one name order: `[tournaments, titles]`.
+    event_ranks: Slot<Held<Vec<Vec<u32>>>>,
+    player_groups: Slot<Held<Groups>>,
+    annotator_groups: Slot<Held<Groups>>,
+    tournament_groups: Slot<Held<Groups>>,
+    orders: Mutex<HashMap<Sort, Arc<OrderSlot>>>,
+    counts: Slot<Held<suggest::Counts>>,
+    /// The latest searches, newest last.
+    results: Mutex<VecDeque<Kept>>,
+    /// The latest searches as sets of records, by their text, newest last (#268).
+    sets: Mutex<VecDeque<(String, Arc<Members>)>>,
+    /// Searches started on this database, per client stream: the latest in a
+    /// stream supersedes the others there.
+    streams: Streams,
+    /// Records read by all passes, for tests and diagnostics.
+    scanned: AtomicU64,
+    /// Where tests hold searches on this database.
+    gate: gate::Gate,
+    /// The database's heads file at this generation, once it is ready (#106).
+    heads: Mutex<Option<Arc<heads::Heads>>>,
+    /// The catalog's background work, which the writers of names files count
+    /// in (#236); none for indexes a test makes on their own.
+    activity: Option<Arc<Activity>>,
+}
+
+/// The value in `slot`, built by `build` the first time. Concurrent callers
+/// wait for the one build instead of repeating it; a failed build stores
+/// nothing, and the next caller builds again.
+pub(super) fn cached<T, E>(slot: &Slot<T>, build: impl FnOnce() -> Result<T, E>) -> Result<Arc<T>, E> {
+    let mut guard = lock(slot);
+    if let Some(v) = guard.as_ref() {
+        return Ok(v.clone());
+    }
+    let v = Arc::new(build()?);
+    *guard = Some(v.clone());
+    Ok(v)
+}
+
+impl Indexes {
+    /// Passes read `heads` from now on, while it stays usable.
+    pub fn set_heads(&self, heads: Arc<heads::Heads>) {
+        *lock(&self.heads) = Some(heads);
+    }
+
+    /// Whether a heads file is set that passes still read.
+    pub fn has_usable_heads(&self) -> bool {
+        self.heads().is_some()
+    }
+
+    /// The heads file passes read, when one is set and still usable.
+    /// A file found broken is let go here, so that its handles close and
+    /// Windows lets its replacement take its name.
+    fn heads(&self) -> Option<Arc<heads::Heads>> {
+        let mut slot = lock(&self.heads);
+        if slot.as_ref().is_some_and(|h| !h.usable()) {
+            *slot = None;
+        }
+        slot.clone()
+    }
+
+    /// Indexes whose retained structures are evicted when the budget runs short.
+    pub fn shared() -> Arc<Indexes> {
+        Indexes::registered(Indexes::default())
+    }
+
+    /// [`Indexes::shared`], for a database of a catalog: the writers of its
+    /// names files count in the catalog's `activity`
+    /// ([`crate::catalog::Catalog::settle`]).
+    pub fn counted(activity: &Arc<Activity>) -> Arc<Indexes> {
+        Indexes::registered(Indexes { activity: Some(Arc::clone(activity)), ..Indexes::default() })
+    }
+
+    fn registered(indexes: Indexes) -> Arc<Indexes> {
+        let indexes = Arc::new(indexes);
+        let weak: Weak<dyn Evict> = Arc::downgrade(&indexes) as Weak<dyn Evict>;
+        memory::register(weak);
+        indexes
+    }
+
+    /// Records read by all passes over this database so far.
+    pub fn scanned(&self) -> u64 {
+        self.scanned.load(Ordering::Relaxed)
+    }
+
+    /// Where tests hold searches on this database.
+    pub fn gate(&self) -> &gate::Gate {
+        &self.gate
+    }
+
+    /// The names of `kind`; where annotators are players, their table is the
+    /// players' one.
+    pub(super) fn names<S: Store>(&self, db: &S, kind: Kind, cancel: &Cancel) -> Result<Arc<NameTable>, SearchError> {
+        let kind = if kind == Kind::Annotators && S::ANNOTATORS_ARE_PLAYERS { Kind::Players } else { kind };
+        let slot = match kind {
+            Kind::Players => &self.players,
+            Kind::Tournaments => &self.tournaments,
+            Kind::Annotators => &self.annotators,
+            Kind::Titles => &self.titles,
+        };
+        let table = cached(slot, || {
+            let keys = match kind == Kind::Titles && S::TITLES_BY_RECORD {
+                true => Some(self.title_keys(db, cancel)?),
+                false => None,
+            };
+            // Beside a heads file the table is kept in a file of its own
+            // (#108): read from there, else read from the database and
+            // written there.
+            let file = self.heads().and_then(|h| Some((names::file_path(&h.path, kind)?, h.generation)));
+            if let Some((path, generation)) = &file {
+                let count = usize::try_from(db.name_count(kind)).unwrap_or(usize::MAX);
+                if let Some(table) = NameTable::open_file(path, kind, *generation, count) {
+                    return table;
+                }
+            }
+            let table = NameTable::load(db, kind, keys, cancel)?;
+            if let Some((path, generation)) = file {
+                table.to_be_written(path, kind, generation);
+            }
+            Ok(table)
+        })?;
+        table.write_later(self.activity.as_ref());
+        Ok(table)
+    }
+
+    /// The numbers of the records with a title of their own, in order, for a
+    /// format that keeps titles with their records: one pass over the headers.
+    fn title_keys<S: Store>(&self, db: &S, cancel: &Cancel) -> Result<Held<Vec<u32>>, SearchError> {
+        let heads = self.heads();
+        let ctl = Control { cancel, scanned: &self.scanned, heads: heads.as_deref() };
+        let found = Mutex::new(Hold::default());
+        let parts = scan::scan(db, &ctl, |_| Ok((Vec::new(), Allowance::new(&found))), &TitleKeys, |_| {})?;
+        let total: usize = parts.iter().map(|p| p.0.len()).sum();
+        let hold = Hold::reserve(total * 4)?;
+        let mut keys: Vec<u32> = Vec::new();
+        keys.try_reserve_exact(total).map_err(|_| Refused::Busy)?;
+        parts.iter().for_each(|p| keys.extend_from_slice(&p.0));
+        Ok(Held::new(keys, hold))
+    }
+
+    /// Every record number in `sort` order.
+    fn order<S: Store>(&self, db: &S, ctl: &Control<'_>, sort: Sort) -> Result<Numbers, SearchError> {
+        let slot = lock(&self.orders).entry(sort).or_default().clone();
+        cached(&slot, || {
+            // Refused before any name is read when the order itself cannot fit.
+            if order::build_bytes(db.record_count()) > memory::budget() {
+                return Err(SearchError::TooLarge);
+            }
+            let player_ranks = || {
+                cached(&self.player_ranks, || joint_ranks(&[&*self.names(db, Kind::Players, ctl.cancel)?], ctl.cancel))
+            };
+            let players = match sort.key {
+                SortKey::White | SortKey::Black => Some(player_ranks()?),
+                SortKey::Annotator if S::ANNOTATORS_ARE_PLAYERS => Some(player_ranks()?),
+                _ => None,
+            };
+            let annotators = match sort.key {
+                SortKey::Annotator if S::ANNOTATORS_ARE_PLAYERS => players.clone(),
+                SortKey::Annotator => Some(cached(&self.annotator_ranks, || {
+                    joint_ranks(&[&*self.names(db, Kind::Annotators, ctl.cancel)?], ctl.cancel)
+                })?),
+                _ => None,
+            };
+            let events = match sort.key {
+                SortKey::Tournament => Some(cached(&self.event_ranks, || {
+                    let tournaments = self.names(db, Kind::Tournaments, ctl.cancel)?;
+                    joint_ranks(&[&*tournaments, &*self.names(db, Kind::Titles, ctl.cancel)?], ctl.cancel)
+                })?),
+                _ => None,
+            };
+            // Where a title's key is not its id, the table that maps them.
+            let title_table = match sort.key {
+                SortKey::Tournament if S::TITLES_BY_RECORD => Some(self.names(db, Kind::Titles, ctl.cancel)?),
+                _ => None,
+            };
+            let ranks = order::Ranks {
+                players: players.as_deref().map(|p| p[0].as_slice()),
+                annotators: annotators.as_deref().map(|a| a[0].as_slice()),
+                tournaments: events.as_deref().map(|e| e[0].as_slice()),
+                titles: events.as_deref().map(|e| e[1].as_slice()),
+                title_table: title_table.as_deref(),
+            };
+            order::build(db, ctl, sort, &ranks)
+        })
+    }
+}
+
+impl Evict for Indexes {
+    /// Drops what is retained, skipping what a build holds right now. Memory
+    /// still in use by a request is returned when that request ends.
+    fn evict(&self) {
+        fn clear<T>(slot: &Slot<T>) {
+            if let Ok(mut s) = slot.try_lock() {
+                s.take();
+            }
+        }
+        // The slots stay: one being built keeps its place and is retained.
+        if let Ok(orders) = self.orders.try_lock() {
+            orders.values().for_each(|slot| clear(slot));
+        }
+        if let Ok(mut results) = self.results.try_lock() {
+            results.clear();
+        }
+        if let Ok(mut sets) = self.sets.try_lock() {
+            sets.clear();
+        }
+        clear(&self.counts);
+        clear(&self.player_ranks);
+        clear(&self.annotator_ranks);
+        clear(&self.event_ranks);
+        clear(&self.player_groups);
+        clear(&self.annotator_groups);
+        clear(&self.tournament_groups);
+        clear(&self.players);
+        clear(&self.tournaments);
+        clear(&self.annotators);
+        clear(&self.titles);
+        clear(&self.tournament_kinds);
+    }
+}
+
+/// A search kept for paging: its sort and query, the position it is narrowed
+/// to, its result, and the games of that position before the query.
+struct Kept {
+    query: String,
+    position: Option<u64>,
+    numbers: Numbers,
+    games: u64,
+}
+
+/// Which records a list request shows.
+pub enum Selection {
+    /// Every record, in number order: no search and no other sort.
+    All { descending: bool },
+    /// These record numbers, in this order.
+    Numbers(Numbers),
+}
+
+#[derive(Debug)]
+pub enum SearchError {
+    /// A qualifier ChessBase databases do not have, as typed.
+    Unsupported(String),
+    Read(cbformat::Error),
+    /// The search structures could never fit in the memory budget.
+    TooLarge,
+    /// The budget is taken by other searches now.
+    Busy,
+    /// Every worker stayed taken by other passes for as long as this one
+    /// waited for one ([`workers::run`]).
+    WorkersBusy,
+    /// A newer search on the same database replaced this one.
+    Superseded,
+    /// The position index that finds a position's games was found damaged
+    /// (#148): it is dropped and built again.
+    IndexDamaged,
+    /// What the bridge made itself does not hold what it should, such as the
+    /// move stream an index build wrote and reads back: a bug, not a fault of
+    /// the database (#180).
+    Bug(&'static str),
+}
+
+impl From<cbformat::Error> for SearchError {
+    fn from(e: cbformat::Error) -> Self {
+        SearchError::Read(e)
+    }
+}
+
+impl From<Refused> for SearchError {
+    fn from(r: Refused) -> Self {
+        match r {
+            Refused::TooLarge => SearchError::TooLarge,
+            Refused::Busy => SearchError::Busy,
+        }
+    }
+}
+
+/// The records `q` selects, in the order of `sort_param`, else of the query's
+/// `sort:` token, else by number; and that order. A request that carries a `q`,
+/// even an empty one, and names a `stream` supersedes the search still running
+/// in that stream on the same database; without a stream nothing is superseded.
+pub fn select(
+    db: &Base,
+    idx: &Indexes,
+    q: Option<&str>,
+    stream: Option<&str>,
+    sort_param: Option<Sort>,
+) -> Result<(Selection, Sort), SearchError> {
+    with_store!(db, db => select_in(db, idx, q, stream, sort_param, None)).map(|(s, sort, _)| (s, sort))
+}
+
+/// [`select`] among the games of `position` (#148): those `q` selects, in
+/// the same order; that order; and how many games the position has before
+/// `q`. A request with a position and a `stream` supersedes the search still
+/// running in that stream, as one with `q` does. The result is kept for the
+/// next windows under its sort, position and query.
+pub fn select_position(
+    db: &Base,
+    idx: &Indexes,
+    q: Option<&str>,
+    stream: Option<&str>,
+    sort_param: Option<Sort>,
+    position: &dyn Position,
+) -> Result<(Selection, Sort, u64), SearchError> {
+    with_store!(db, db => select_in(db, idx, q, stream, sort_param, Some(position)))
+}
+
+fn select_in<S: Store>(
+    db: &S,
+    idx: &Indexes,
+    q: Option<&str>,
+    stream: Option<&str>,
+    sort_param: Option<Sort>,
+    position: Option<&dyn Position>,
+) -> Result<(Selection, Sort, u64), SearchError> {
+    let cancel = match stream {
+        Some(stream) if q.is_some() || position.is_some() => idx.streams.newest(stream),
+        _ => Cancel::never(),
+    };
+    idx.gate.enter();
+    // A superseded search answers so, whatever else stopped it (#259). Taken
+    // memory or workers can refuse it before it next looks whether it is
+    // still wanted, and their `busy` would ask the page to send it again,
+    // where it would supersede the newer search.
+    selected(db, idx, q, sort_param, position, &cancel).map_err(|e| match e {
+        SearchError::Busy | SearchError::WorkersBusy if cancel.is_cancelled() => SearchError::Superseded,
+        e => e,
+    })
+}
+
+/// [`select_in`] once the search has started, which a newer search in its
+/// stream supersedes when `cancel` says so.
+fn selected<S: Store>(
+    db: &S,
+    idx: &Indexes,
+    q: Option<&str>,
+    sort_param: Option<Sort>,
+    position: Option<&dyn Position>,
+    cancel: &Cancel,
+) -> Result<(Selection, Sort, u64), SearchError> {
+    let q = q.unwrap_or("");
+    let query = query::parse(q).map_err(|u| SearchError::Unsupported(u.0))?;
+    let sort = sort_param.or(query.sort).unwrap_or(Sort::DEFAULT);
+    let heads = idx.heads();
+    let ctl = Control { cancel, scanned: &idx.scanned, heads: heads.as_deref() };
+    if query.terms.is_empty() && position.is_none() {
+        return Ok(match sort.key {
+            SortKey::Number => (Selection::All { descending: sort.descending }, sort, 0),
+            _ => (Selection::Numbers(idx.order(db, &ctl, sort)?), sort, 0),
+        });
+    }
+    let key = format!("{}|{}", sort.name(), q.trim());
+    let at = position.map(|p| p.key());
+    let kept =
+        lock(&idx.results).iter().find(|k| k.query == key && k.position == at).map(|k| (k.numbers.clone(), k.games));
+    if let Some((numbers, games)) = kept {
+        // A kept result answers at once, but not a request a newer one in its
+        // stream has superseded meanwhile: that one gets `409 superseded`
+        // whether or not its result was kept (#148).
+        if cancel.is_cancelled() {
+            return Err(SearchError::Superseded);
+        }
+        return Ok((Selection::Numbers(numbers), sort, games));
+    }
+    let members = position.map(|p| p.games(cancel)).transpose()?;
+    let games = members.as_ref().map_or(0, Members::count);
+    // A position no game reaches needs neither a sort order nor a pass.
+    let numbers = Arc::new(match &members {
+        Some(members) if query.terms.is_empty() || games == 0 => members_in(db, idx, &ctl, members, games, sort)?,
+        members => search(db, idx, &ctl, &query, sort, members.as_ref())?,
+    });
+    drop(members);
+    let mut results = lock(&idx.results);
+    results.push_back(Kept { query: key, position: at, numbers: numbers.clone(), games });
+    while results.len() > KEPT_RESULTS || results.iter().map(|k| k.numbers.len()).sum::<usize>() > KEPT_NUMBERS {
+        if results.pop_front().is_none() {
+            break;
+        }
+    }
+    Ok((Selection::Numbers(numbers), sort, games))
+}
+
+/// Numbers of a set or of a sort order that a worker passes at a time.
+const PART_NUMBERS: usize = 1 << 16;
+/// Members from which the workers gather a list in two passes, which take no
+/// room but the list's. Fewer are listed in number order on the calling
+/// thread, and in another order in one pass, each part into a list of its
+/// own, which starting the workers once more would cost more than, when the
+/// budget has room for those lists besides without evicting anything; else
+/// in two passes too.
+const MANY_MEMBERS: usize = 1 << 21;
+
+/// The `count` records of `members` in `sort` order: in number order, the
+/// set's own; in any other, the key's whole order passed through the set,
+/// which costs the same for any set. The workers pass a part of either at a
+/// time (#142), and for many members count what each part holds first, then
+/// copy it to its place.
+fn members_in<S: Store>(
+    db: &S,
+    idx: &Indexes,
+    ctl: &Control<'_>,
+    members: &Members,
+    count: u64,
+    sort: Sort,
+) -> Result<Held<Vec<u32>>, SearchError> {
+    let count = usize::try_from(count).map_err(|_| SearchError::TooLarge)?;
+    let hold = Hold::reserve(count.checked_mul(4).ok_or(SearchError::TooLarge)?)?;
+    let mut out: Vec<u32> = Vec::new();
+    out.try_reserve_exact(count).map_err(|_| Refused::Busy)?;
+    match sort {
+        _ if count == 0 => {}
+        Sort { key: SortKey::Number, descending } if count < MANY_MEMBERS => {
+            out.extend(members.iter().take(count));
+            if descending {
+                out.reverse();
+            }
+        }
+        Sort { key: SortKey::Number, descending } => {
+            const WORDS: usize = PART_NUMBERS / 64;
+            let parts = members.words().div_ceil(WORDS);
+            let sizes = workers::each(parts, ctl.cancel, |i| Ok(members.count_in(i * WORDS..(i + 1) * WORDS)))?;
+            gather(&mut out, count, &sizes, descending, ctl.cancel, |i| members.iter_in(i * WORDS..(i + 1) * WORDS))?;
+        }
+        _ => {
+            let order = idx.order(db, ctl, sort)?;
+            let part = |i: usize| {
+                let numbers = order.get(i * PART_NUMBERS..).unwrap_or(&[]);
+                numbers.iter().take(PART_NUMBERS).copied().filter(|&n| members.contains(n))
+            };
+            let parts = order.len().div_ceil(PART_NUMBERS);
+            // The parts' lists, each at most twice what it holds, are a
+            // saving that never takes the room of what searches retained.
+            if count < MANY_MEMBERS
+                && let Ok(_lists) = Hold::reserve_quietly(count * 8 + parts * LEAST_LIST * 4)
+            {
+                let lists = workers::each(parts, ctl.cancel, |i| list(part(i)))?;
+                out.extend(lists.iter().flatten().take(count));
+            } else {
+                let sizes = workers::each(parts, ctl.cancel, |i| Ok(part(i).count()))?;
+                gather(&mut out, count, &sizes, false, ctl.cancel, part)?;
+            }
+        }
+    }
+    Ok(Held::new(out, hold))
+}
+
+/// The room a part's list takes at least once it holds a number.
+const LEAST_LIST: usize = 64;
+
+/// `numbers` in a list, allocated fallibly as it grows.
+fn list(numbers: impl Iterator<Item = u32>) -> Result<Vec<u32>, SearchError> {
+    let mut list = Vec::new();
+    for n in numbers {
+        if list.len() == list.capacity() {
+            list.try_reserve(list.capacity().max(LEAST_LIST)).map_err(|_| Refused::Busy)?;
+        }
+        list.push(n);
+    }
+    Ok(list)
+}
+
+/// Fills `out`, which has room for `count`, with the first `count` numbers of
+/// the parts that `part` gives, whose sizes are `sizes`, in order, and then
+/// reversed when `descending`: each part is copied on the workers to its own
+/// place, after the parts before it, or before them when `descending`.
+fn gather<I: Iterator<Item = u32>>(
+    out: &mut Vec<u32>,
+    count: usize,
+    sizes: &[usize],
+    descending: bool,
+    cancel: &Cancel,
+    part: impl Fn(usize) -> I + Sync,
+) -> Result<(), SearchError> {
+    let total = sizes.iter().sum::<usize>().min(count);
+    out.resize(total, 0);
+    // Each part's place, cut at `total`, in part order.
+    let mut places: Vec<Mutex<&mut [u32]>> = Vec::new();
+    places.try_reserve_exact(sizes.len()).map_err(|_| Refused::Busy)?;
+    let mut rest: &mut [u32] = out;
+    for &size in sizes {
+        let size = size.min(rest.len());
+        let (place, after) = match descending {
+            false => rest.split_at_mut(size),
+            true => {
+                let (before, place) = rest.split_at_mut(rest.len() - size);
+                (place, before)
+            }
+        };
+        places.push(Mutex::new(place));
+        rest = after;
+    }
+    workers::each(sizes.len(), cancel, |i| {
+        let mut place = lock(&places[i]);
+        let n = place.len();
+        match descending {
+            false => place.iter_mut().zip(part(i)).for_each(|(o, x)| *o = x),
+            true => place.iter_mut().rev().zip(part(i).take(n)).for_each(|(o, x)| *o = x),
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+
+/// Appends to a vector whose growth is reserved in the budget first.
+/// The numbers of the records with a title of their own.
+struct TitleKeys;
+
+impl<'h> scan::Visit<(Vec<u32>, Allowance<'h>)> for TitleKeys {
+    fn visit(&self, acc: &mut (Vec<u32>, Allowance<'h>), r: &impl Head) -> Result<(), SearchError> {
+        if r.other().is_some_and(|(key, _)| key >= 0) {
+            push_u32(&mut acc.0, r.id(), &mut acc.1)?;
+        }
+        Ok(())
+    }
+}
+
+/// The numbers of the records a query matches, among the games of a
+/// position when one is given.
+struct Matching<'m, 'a>(&'m scan::Matcher<'a>, Option<&'m Members>);
+
+impl<'h> scan::Visit<(Vec<u32>, Allowance<'h>)> for Matching<'_, '_> {
+    fn visit(&self, acc: &mut (Vec<u32>, Allowance<'h>), r: &impl Head) -> Result<(), SearchError> {
+        if self.1.is_none_or(|m| m.contains(r.id())) && self.0.matches(r) {
+            push_u32(&mut acc.0, r.id(), &mut acc.1)?;
+        }
+        Ok(())
+    }
+}
+
+fn push_u32(v: &mut Vec<u32>, x: u32, allow: &mut Allowance<'_>) -> Result<(), Refused> {
+    if v.len() == v.capacity() {
+        let add = v.capacity().max(1024);
+        allow.take(add * 4)?;
+        v.try_reserve_exact(add).map_err(|_| Refused::Busy)?;
+    }
+    v.push(x);
+    Ok(())
+}
+
+/// The records the search `q` selects, as a set, for the explorer to narrow
+/// each position's games by (#268); `None` for a search without terms. One
+/// pass over the database finds them, and the set is kept with the latest
+/// such searches under the search's text, so the next positions narrowed by
+/// it need no pass. A pass refused for memory or workers is `Busy`.
+pub fn matching(db: &Base, idx: &Indexes, q: &str) -> Result<Option<Arc<Members>>, SearchError> {
+    with_store!(db, db => matching_in(db, idx, q))
+}
+
+fn matching_in<S: Store>(db: &S, idx: &Indexes, q: &str) -> Result<Option<Arc<Members>>, SearchError> {
+    let query = query::parse(q).map_err(|u| SearchError::Unsupported(u.0))?;
+    if query.terms.is_empty() {
+        return Ok(None);
+    }
+    let key = q.trim();
+    if let Some(set) = lock(&idx.sets).iter().find(|kept| kept.0 == key).map(|kept| kept.1.clone()) {
+        return Ok(Some(set));
+    }
+    idx.gate.enter();
+    let cancel = Cancel::never();
+    let heads = idx.heads();
+    let ctl = Control { cancel: &cancel, scanned: &idx.scanned, heads: heads.as_deref() };
+    let set = Members::new(db.record_count() as usize + 1)?;
+    with_matcher(db, idx, &ctl, &query, |matcher| {
+        scan::scan(db, &ctl, |_| Ok(()), &Marking(matcher, &set), |_| {}).map(drop)
+    })?;
+    let set = Arc::new(set);
+    let mut sets = lock(&idx.sets);
+    sets.push_back((key.to_string(), Arc::clone(&set)));
+    while sets.len() > KEPT_SETS {
+        sets.pop_front();
+    }
+    Ok(Some(set))
+}
+
+/// Marks the records a query matches in a set.
+struct Marking<'m, 'a>(&'m scan::Matcher<'a>, &'m Members);
+
+impl scan::Visit<()> for Marking<'_, '_> {
+    fn visit(&self, _: &mut (), r: &impl Head) -> Result<(), SearchError> {
+        if self.0.matches(r) {
+            self.1.insert(r.id());
+        }
+        Ok(())
+    }
+}
+
+/// `query` compiled against the name tables it reads, and handed to `f`.
+fn with_matcher<S: Store, T>(
+    db: &S,
+    idx: &Indexes,
+    ctl: &Control<'_>,
+    query: &Query,
+    f: impl FnOnce(&scan::Matcher<'_>) -> Result<T, SearchError>,
+) -> Result<T, SearchError> {
+    let uses = |fields: &[Field]| query.terms.iter().any(|t| fields.contains(&t.field));
+    let load = |used: bool, kind| if used { idx.names(db, kind, ctl.cancel).map(Some) } else { Ok(None) };
+    let people = uses(&[Field::Text, Field::White, Field::Black, Field::Player]);
+    let annotated = uses(&[Field::Text, Field::Annotator]);
+    let players = load(people || (annotated && S::ANNOTATORS_ARE_PLAYERS), Kind::Players)?;
+    let annotators = match S::ANNOTATORS_ARE_PLAYERS {
+        true => players.clone(),
+        false => load(annotated, Kind::Annotators)?,
+    };
+    let events = uses(&[Field::Text, Field::Event]);
+    let (tournaments, titles) = (load(events, Kind::Tournaments)?, load(events, Kind::Titles)?);
+    let kinds = match uses(&[Field::TimeControl]) {
+        true => Some(cached(&idx.tournament_kinds, || names::tournament_kinds(db, ctl.cancel))?),
+        false => None,
+    };
+    let tables = scan::Tables {
+        players: players.as_deref(),
+        annotators: annotators.as_deref(),
+        annotators_are_players: S::ANNOTATORS_ARE_PLAYERS,
+        tournaments: tournaments.as_deref(),
+        titles: titles.as_deref(),
+        tournament_kinds: kinds.as_deref().map(|k| k.as_slice()),
+    };
+    let sets = Mutex::new(Hold::default());
+    let matcher = scan::Matcher::new(query, &tables, &mut Allowance::new(&sets))?;
+    f(&matcher)
+}
+
+/// The records `query` matches, among `members` when given, in `sort` order:
+/// the pass that evaluates the query tests the membership first.
+fn search<S: Store>(
+    db: &S,
+    idx: &Indexes,
+    ctl: &Control<'_>,
+    query: &Query,
+    sort: Sort,
+    members: Option<&Members>,
+) -> Result<Held<Vec<u32>>, SearchError> {
+    let found = Mutex::new(Hold::default());
+    let parts = with_matcher(db, idx, ctl, query, |matcher| {
+        scan::scan(db, ctl, |_| Ok((Vec::new(), Allowance::new(&found))), &Matching(matcher, members), |_| {})
+    })?;
+    let parts: Vec<Vec<u32>> = parts.into_iter().map(|(numbers, _)| numbers).collect();
+    let matches: usize = parts.iter().map(Vec::len).sum();
+    let mut hold = Hold::reserve(matches * 4)?;
+    let mut out: Vec<u32> = Vec::new();
+    out.try_reserve_exact(matches).map_err(|_| Refused::Busy)?;
+    match sort {
+        Sort { key: SortKey::Number, descending } => {
+            parts.iter().for_each(|p| out.extend_from_slice(p));
+            if descending {
+                out.reverse();
+            }
+        }
+        _ => {
+            let set_hold = Mutex::new(Hold::default());
+            let mut set = BitSet::new(db.record_count() as usize + 1, &mut Allowance::new(&set_hold))?;
+            parts.iter().flatten().for_each(|&n| set.insert(n as usize));
+            drop(parts);
+            drop(found);
+            out.extend(idx.order(db, ctl, sort)?.iter().copied().filter(|&n| set.contains(n as usize)));
+        }
+    }
+    hold.shrink(out.capacity() * 4);
+    Ok(Held::new(out, hold))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use workers::tests::unbusy;
+
+    /// Parts gathered on the workers keep their order, reversed when asked,
+    /// and the first `count` numbers only; a part the set leaves empty takes
+    /// no place.
+    #[test]
+    fn parts_are_gathered_in_order() {
+        let cancel = Cancel::never();
+        let set = Members::new(5 * PART_NUMBERS).unwrap();
+        let numbers: Vec<u32> = (0..5 * PART_NUMBERS as u32)
+            .filter(|n| n % 7 == 3 && !(PART_NUMBERS as u32..2 * PART_NUMBERS as u32).contains(n))
+            .collect();
+        for &n in &numbers {
+            set.insert(n);
+        }
+        const WORDS: usize = PART_NUMBERS / 64;
+        let parts = set.words().div_ceil(WORDS);
+        let sizes = unbusy(|| workers::each(parts, &cancel, |i| Ok(set.count_in(i * WORDS..(i + 1) * WORDS)))).unwrap();
+        assert_eq!(sizes.len(), 5);
+        assert_eq!(sizes[1], 0);
+        for (count, descending) in [(numbers.len(), false), (numbers.len(), true), (20_000, false), (20_000, true)] {
+            let mut out = Vec::with_capacity(count);
+            unbusy(|| {
+                gather(&mut out, count, &sizes, descending, &cancel, |i| set.iter_in(i * WORDS..(i + 1) * WORDS))
+            })
+            .unwrap();
+            let mut want: Vec<u32> = numbers.iter().copied().take(count).collect();
+            if descending {
+                want.reverse();
+            }
+            assert_eq!(out, want, "{count} {descending}");
+        }
+        // A sort order passed through the set: every number, in its own order.
+        let order: Vec<u32> = (0..5 * PART_NUMBERS as u32).rev().collect();
+        let part = |i: usize| {
+            let numbers = order.get(i * PART_NUMBERS..).unwrap_or(&[]);
+            numbers.iter().take(PART_NUMBERS).copied().filter(|&n| set.contains(n))
+        };
+        let sizes =
+            unbusy(|| workers::each(order.len().div_ceil(PART_NUMBERS), &cancel, |i| Ok(part(i).count()))).unwrap();
+        let mut out = Vec::with_capacity(numbers.len());
+        unbusy(|| gather(&mut out, numbers.len(), &sizes, false, &cancel, part)).unwrap();
+        assert_eq!(out, numbers.iter().rev().copied().collect::<Vec<_>>());
+    }
+}

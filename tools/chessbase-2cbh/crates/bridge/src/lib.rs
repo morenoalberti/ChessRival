@@ -1,0 +1,51 @@
+//! The oschess bridge: serves the ChessBase databases of this machine to the
+//! oschess web app over HTTP on the loopback interface, as `docs/api.md`
+//! specifies.
+
+pub mod access;
+pub mod activity;
+
+/// The stack of every thread the bridge starts: 1 MiB, half the standard
+/// library's default. Nothing a thread runs recurses with the data (move
+/// trees, PGN and index merges keep their depth on the heap), and each
+/// thread's stack is address space, which a capped process runs short of.
+pub const THREAD_STACK: usize = 1 << 20;
+
+pub mod api;
+pub mod budget;
+pub mod catalog;
+pub mod config;
+pub mod documents;
+pub mod engine;
+pub mod engines;
+pub mod explorer;
+pub mod fetch;
+pub mod files;
+pub mod folders;
+pub mod foreground;
+pub mod http;
+pub mod indexdir;
+pub mod json;
+pub mod log;
+pub mod machine;
+pub mod pairing;
+pub mod pgnindex;
+pub mod reply;
+pub mod rows;
+pub mod search;
+pub mod serial;
+pub mod server;
+pub mod sha256;
+pub mod snapshot;
+pub mod sources;
+pub mod start;
+pub mod stockfish;
+pub mod store;
+pub mod sync;
+#[cfg(test)]
+pub(crate) mod testing;
+pub mod texts;
+pub mod token;
+pub mod tools;
+pub mod version;
+pub mod write;

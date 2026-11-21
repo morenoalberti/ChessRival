@@ -1,0 +1,462 @@
+//! An index build keeps to its memory (#147): the tree's table is reserved
+//! with the room of its passes, a crowded bucket of the deep section that no
+//! pass holds at once is written a range of its games at a time, and the
+//! heap the build allocates, which this binary's allocator counts, stays
+//! within its share of the budget. The budget and the workers are read once
+//! per process, so each build runs in a child process with its own.
+
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
+
+use bridge::explorer::format::structure;
+use bridge::explorer::runs::{Limits, MEMORY_WAIT, Progress};
+use bridge::explorer::stream::BATCH;
+use bridge::explorer::{self, Loaded};
+use bridge::search::memory::{Hold, budget, held};
+use bridge::search::workers::threads;
+use cbformat::fixture::{Builder, TempDb, words};
+use cbformat::movetable::{END_OF_LINE, MOVES};
+use cbformat::v2::Database;
+use chesscore::Board;
+
+mod common;
+use common::{CHILD_LIMIT, ChildTest, Ended, add_random_games, built_bytes, index_dir, is_child};
+
+/// The bytes the process has allocated and not freed, and the most since
+/// [`Counting::reset`].
+struct Counting;
+
+static LIVE: AtomicUsize = AtomicUsize::new(0);
+static PEAK: AtomicUsize = AtomicUsize::new(0);
+
+#[global_allocator]
+static HEAP: Counting = Counting;
+
+impl Counting {
+    fn grew(bytes: usize) {
+        let live = LIVE.fetch_add(bytes, Ordering::Relaxed) + bytes;
+        PEAK.fetch_max(live, Ordering::Relaxed);
+    }
+
+    /// The bytes allocated now, from which the most is counted again.
+    fn reset() -> usize {
+        let live = LIVE.load(Ordering::Relaxed);
+        PEAK.store(live, Ordering::Relaxed);
+        live
+    }
+}
+
+// SAFETY: every call goes to the system allocator as it came; only the
+// counts are added.
+unsafe impl GlobalAlloc for Counting {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        let p = unsafe { System.alloc(layout) };
+        if !p.is_null() {
+            Counting::grew(layout.size());
+        }
+        p
+    }
+
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        let p = unsafe { System.alloc_zeroed(layout) };
+        if !p.is_null() {
+            Counting::grew(layout.size());
+        }
+        p
+    }
+
+    unsafe fn dealloc(&self, p: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(p, layout) };
+        LIVE.fetch_sub(layout.size(), Ordering::Relaxed);
+    }
+
+    unsafe fn realloc(&self, p: *mut u8, layout: Layout, size: usize) -> *mut u8 {
+        let q = unsafe { System.realloc(p, layout, size) };
+        if !q.is_null() {
+            match size.checked_sub(layout.size()) {
+                Some(more) => Counting::grew(more),
+                None => {
+                    LIVE.fetch_sub(layout.size() - size, Ordering::Relaxed);
+                }
+            }
+        }
+        q
+    }
+}
+
+const CHILD: &str = "BRIDGE_BUILD_MEMORY_CHILD";
+/// Where a child finds the database it builds, and the folder of its index.
+const DATABASE: &str = "BRIDGE_BUILD_MEMORY_DATABASE";
+const INDEX: &str = "BRIDGE_BUILD_MEMORY_INDEX";
+
+/// Starts test `name` in a child process with a budget of `mib` MiB,
+/// `workers` workers and `vars` set.
+fn child(name: &str, mib: usize, workers: usize, vars: &[(&str, &Path)]) -> ChildTest {
+    let (mib, workers) = (mib.to_string(), workers.to_string());
+    let mut env = vec![("OSCHESS_BRIDGE_SEARCH_MIB", mib.as_str()), ("OSCHESS_BRIDGE_THREADS", workers.as_str())];
+    env.extend(vars.iter().map(|&(name, path)| (name, path.to_str().unwrap())));
+    ChildTest::start(name, CHILD, &env)
+}
+
+/// Checks that a child passed, and shows what its build reported.
+fn passed(ended: Ended) {
+    let text = ended.passed();
+    text.lines().filter(|l| l.contains(" MiB, ")).for_each(|l| println!("{l}"));
+}
+
+/// Folders removed when dropped, as a failed test unwinds too.
+struct Folders(Vec<PathBuf>);
+
+impl Drop for Folders {
+    fn drop(&mut self) {
+        for dir in &self.0 {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+}
+
+/// The tree's table of blocks is reserved with the room of its passes
+/// (#147), so that a search holding all of the budget but the build's share,
+/// less the table's bytes or a few more or fewer, leaves no room the build
+/// waits for: an empty database builds at once.
+#[test]
+fn the_tree_table_is_reserved_with_its_passes() {
+    if !is_child(CHILD) {
+        return passed(child("the_tree_table_is_reserved_with_its_passes", 64, 1, &[]).end());
+    }
+    assert_eq!((budget(), threads()), (64 << 20, 1));
+    let db = Builder::new().write("build-memory-empty");
+    let d = Database::open(db.dir().join("db.2cbh")).unwrap();
+    assert_eq!(d.record_count(), 0);
+    // An empty database's table: 28 bytes for each of 32 blocks.
+    for less in [0, 64, 896, 4 << 10] {
+        let search = Hold::reserve(budget() / 2 + less).unwrap();
+        let dir = index_dir("empty");
+        let started = Instant::now();
+        let loaded = explorer::prepare(&d, 1, &dir, "db", &Progress::default());
+        let took = started.elapsed();
+        // A build that waited would wait all of MEMORY_WAIT; an empty
+        // database builds in milliseconds.
+        assert!(took < MEMORY_WAIT / 2, "{less} bytes less: the build waited {took:?}");
+        assert_eq!(loaded.unwrap().games(), 0);
+        drop(search);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    assert_eq!(held(), 0);
+}
+
+/// The heap a build allocates beyond its share at most: a few KiB, see
+/// [`build_crowded`].
+const BOOKKEEPING: usize = 64 << 10;
+
+/// Games of a database that hold one structure past the tree's plies, the
+/// start's: `g1f3 g8f6 f3g1 f6g8` six times.
+const CROWDED: u32 = 800_000;
+/// Games before them, of many structures.
+const OTHERS: u32 = 2_000;
+/// Games of the build that times this computer's pace ([`child_limit`]):
+/// one batch of the stream pass, which one worker reads, as a build at
+/// 16 MiB reads all of its games.
+const REFERENCE: u32 = BATCH as u32;
+
+/// A bucket of the deep section that 800,000 games of one structure crowd
+/// (#147) takes several passes of a small budget, on one worker and on many,
+/// each a range of its games. The index is byte for byte the one a build
+/// that holds the bucket at once writes, and its answers count every game.
+/// No build allocates more heap than its share of the budget in any phase.
+/// The builds take longer the busier the computer is, and so may the
+/// children ([`child_limit`]).
+#[test]
+fn a_crowded_bucket_is_built_in_parts_within_the_share() {
+    const NAME: &str = "a_crowded_bucket_is_built_in_parts_within_the_share";
+    if is_child(CHILD) {
+        let var = |name| PathBuf::from(std::env::var_os(name).unwrap());
+        return build_crowded(&var(DATABASE), &var(INDEX));
+    }
+    let db = crowded("build-memory-crowded", OTHERS, CROWDED);
+    // One pass holds the bucket at 64 MiB; at 24 and 16 MiB none does. The
+    // builds run beside each other.
+    let settings = [(64, 16), (16, 1), (16, 16), (24, 16)];
+    let dirs = Folders(settings.iter().map(|(mib, workers)| index_dir(&format!("crowded-{mib}-{workers}"))).collect());
+    let mut children: Vec<ChildTest> = settings
+        .iter()
+        .zip(&dirs.0)
+        .map(|(&(mib, workers), dir)| child(NAME, mib, workers, &[(DATABASE, db.dir()), (INDEX, dir)]))
+        .collect();
+    let limit = child_limit();
+    // Each ended before any is checked, so that none outlives a failure.
+    let ended: Vec<Ended> = children.iter_mut().map(|c| c.end_within(limit)).collect();
+    ended.into_iter().for_each(passed);
+    let built = settings.iter().zip(&dirs.0).map(|(&(mib, workers), dir)| {
+        let passes: u64 = std::fs::read_to_string(dir.join("passes")).unwrap().trim().parse().unwrap();
+        (format!("{mib} MiB, {workers} workers"), passes, built_bytes(&dir.join("db.idx")))
+    });
+    let built: Vec<_> = built.collect();
+    let (one, passes, bytes) = &built[0];
+    for (other, more, other_bytes) in &built[1..] {
+        assert!(more > passes, "{other}: {more} passes of the deep section, {one}: {passes}");
+        assert!(other_bytes == bytes, "{other}: the index differs from the one of {one}");
+    }
+}
+
+/// `others` games of many structures, then `games` games of one. The
+/// crowded games' records are appended to the file as the builder wrote the
+/// first, so that the fixture is written without being held.
+fn crowded(name: &str, others: u32, games: u32) -> TempDb {
+    let mut b = Builder::new();
+    add_random_games(&mut b, others as usize, 3);
+    let mut line = vec![MOVES];
+    line.extend(words(&mut Board::startpos(), &"g1f3 g8f6 f3g1 f6g8 ".repeat(6)));
+    line.push(END_OF_LINE);
+    let at = b.moves(1, &line);
+    b.game(at);
+    let db = b.write(name);
+    let mut cbh = std::fs::OpenOptions::new().read(true).append(true).open(db.dir().join("db.2cbh")).unwrap();
+    let mut record = [0u8; 192];
+    cbh.seek(SeekFrom::End(-192)).unwrap();
+    cbh.read_exact(&mut record).unwrap();
+    let mut out = std::io::BufWriter::with_capacity(1 << 20, cbh);
+    for _ in 1..games {
+        out.write_all(&record).unwrap();
+    }
+    out.flush().unwrap();
+    db
+}
+
+/// How long a child may take (#246): ten times as long as its build of
+/// [`OTHERS`] and [`CROWDED`] games would take at the pace this computer
+/// builds [`REFERENCE`] crowded games now, beside the children, and
+/// [`CHILD_LIMIT`] at least. A build at 16 MiB reads all its games on one
+/// worker, which takes half a minute on a quiet computer and as many times
+/// longer as the load holds that worker back, so no fixed limit fits it.
+/// Measured once a process: the tests that run side by side share it, and
+/// their builds, in the same folders, never meet (#346).
+fn child_limit() -> Duration {
+    static LIMIT: OnceLock<Duration> = OnceLock::new();
+    *LIMIT.get_or_init(|| {
+        warm_up();
+        let db = crowded("build-memory-reference", 0, REFERENCE);
+        let d = Database::open(db.dir().join("db.2cbh")).unwrap();
+        let dir = index_dir("reference");
+        let started = Instant::now();
+        drop(explorer::prepare(&d, 1, &dir, "db", &Progress::default()).unwrap());
+        let took = started.elapsed();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let limit = CHILD_LIMIT.max(took * (OTHERS + CROWDED) / REFERENCE * 10);
+        println!("{REFERENCE} crowded games built in {took:?}: each child may take {limit:?}");
+        limit
+    })
+}
+
+/// The child's build of the crowded database at `db` into `dir`: within its
+/// share of the heap in every phase, and every game counted. Leaves the index
+/// and the deep section's passes in `dir`.
+fn build_crowded(db: &Path, dir: &Path) {
+    let setting = format!("{} MiB, {} workers", budget() >> 20, threads());
+    warm_up();
+    let d = Database::open(db.join("db.2cbh")).unwrap();
+    let progress = Progress::default();
+    let (loaded, phases) = measured(|| explorer::prepare(&d, 1, dir, "db", &progress), &progress);
+    let loaded = loaded.unwrap_or_else(|e| panic!("{setting}: {e}"));
+    let passes = progress.deep_passes.load(Ordering::Relaxed);
+    println!("{setting}: {passes} passes of the deep section, heap {phases:?}; {}", progress.timings());
+    // Beside what its passes hold, a build keeps a few KiB of its own: its
+    // paths, its threads, the move stream's table of blocks.
+    let share = Limits::default().share + BOOKKEEPING;
+    assert!(phases.iter().all(|&(_, most)| most <= share), "{setting}: heap {phases:?} over {share} bytes");
+    counts_every_game(&loaded);
+    drop(loaded);
+    std::fs::write(dir.join("passes"), passes.to_string()).unwrap();
+}
+
+/// Makes the tables of moves that every build reads, which a process makes
+/// once, on its first build, and keeps (the move words, the tree's steps and
+/// the deep section's effects, about 1.4 MB): a build of a few games.
+fn warm_up() {
+    let mut b = Builder::new();
+    add_random_games(&mut b, 20, 1);
+    let db = b.write("build-memory-warm-up");
+    let d = Database::open(db.dir().join("db.2cbh")).unwrap();
+    let dir = index_dir("warm-up");
+    drop(explorer::prepare(&d, 1, &dir, "db", &Progress::default()).unwrap());
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// What `build` gives, and the most heap it allocated at once beyond what
+/// the process held before, in each phase that `progress` went through.
+fn measured<T>(build: impl FnOnce() -> T, progress: &Progress) -> (T, Vec<(&'static str, usize)>) {
+    let before = Counting::reset();
+    let done = AtomicBool::new(false);
+    std::thread::scope(|s| {
+        let watcher = s.spawn(|| {
+            let (mut phases, mut phase) = (Vec::with_capacity(16), progress.phase());
+            loop {
+                let finished = done.load(Ordering::Relaxed);
+                let now = progress.phase();
+                if now != phase || finished {
+                    // The most since the phase began, counted afresh for the
+                    // next one.
+                    let most = PEAK.swap(LIVE.load(Ordering::Relaxed), Ordering::Relaxed);
+                    phases.push((phase, most.saturating_sub(before)));
+                    phase = now;
+                }
+                if finished {
+                    return phases;
+                }
+                std::thread::yield_now();
+            }
+        });
+        let built = build();
+        done.store(true, Ordering::Relaxed);
+        (built, watcher.join().unwrap())
+    })
+}
+
+/// The index of the crowded database counts every game at the start, and
+/// finds each crowded game in the bucket of the start's structure, beyond
+/// the tree's plies.
+fn counts_every_game(loaded: &Loaded) {
+    let start = Board::startpos();
+    let all = u64::from(OTHERS + CROWDED);
+    assert_eq!((loaded.games(), loaded.lookup(start.hash()).unwrap().unwrap().counts.games), (all, all));
+    let (games, _memory) = loaded.base.deep_games(structure(&start), true).unwrap();
+    let crowded: Vec<u32> = games.into_iter().filter(|&g| g > OTHERS).collect();
+    assert!(crowded.iter().copied().eq(OTHERS + 1..=OTHERS + CROWDED), "{} crowded games found", crowded.len());
+}
+
+/// A background build that a request promotes while one of its sections
+/// runs takes a requested build's workers from that section's next pass on
+/// (#346), in the tree's passes and in the deep section's: of eight workers,
+/// the section's first pass, planned before the promotion, takes four, and
+/// every pass after it six. A build requested from the start takes six in
+/// every pass. The build is promoted as the section's first pass starts
+/// ([`Limits::pass_started`]), whatever the machine's pace.
+#[test]
+fn a_promoted_build_takes_more_workers_from_its_next_pass() {
+    const NAME: &str = "a_promoted_build_takes_more_workers_from_its_next_pass";
+    if !is_child(CHILD) {
+        // Its four builds take longer the busier the computer is (#246).
+        let limit = child_limit();
+        return passed(child(NAME, 1024, 8, &[]).end_within(limit));
+    }
+    assert_eq!(threads(), 8);
+    let mut b = Builder::new();
+    add_random_games(&mut b, 4_096, 0x346);
+    let db = b.write("build-memory-promoted");
+    let d = Database::open(db.dir().join("db.2cbh")).unwrap();
+    // The workers of each tree pass and each deep pass of a build that starts
+    // as a requested one or not, and whose passes call `started`.
+    let build = |requested: bool, started: Option<fn(&Progress)>| {
+        let dir = index_dir("promoted");
+        let progress = Progress::default();
+        progress.set_requested(requested);
+        let limits = Limits { pass_bytes: Some(512 << 10), pass_started: started, ..Limits::default() };
+        let loaded = explorer::prepare_with(&d, 1, &dir, "db", &progress, &limits).unwrap();
+        let timings = loaded.built.clone().unwrap();
+        drop(loaded);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let workers =
+            |passes: &[bridge::explorer::runs::PassTime]| passes.iter().map(|p| p.workers).collect::<Vec<_>>();
+        (workers(&timings.tree), workers(&timings.deep))
+    };
+    let (tree, deep) = build(true, None);
+    assert!(tree.len() >= 2 && deep.len() >= 2, "passes: tree {tree:?}, deep {deep:?}");
+    assert!(tree.iter().chain(&deep).all(|&w| w == 6), "requested from the start: tree {tree:?}, deep {deep:?}");
+    let (tree, deep) = build(false, None);
+    assert!(tree.iter().chain(&deep).all(|&w| w == 4), "in the background: tree {tree:?}, deep {deep:?}");
+    let in_tree: fn(&Progress) = |p| {
+        if p.tree_passes.load(Ordering::Relaxed) == 1 {
+            p.set_requested(true);
+        }
+    };
+    let (tree, deep) = build(false, Some(in_tree));
+    assert_eq!(tree[0], 4, "promoted as the tree's first pass starts: {tree:?}");
+    assert!(tree[1..].iter().chain(&deep).all(|&w| w == 6), "then six: tree {tree:?}, deep {deep:?}");
+    let in_deep: fn(&Progress) = |p| {
+        if p.deep_passes.load(Ordering::Relaxed) == 1 {
+            p.set_requested(true);
+        }
+    };
+    let (tree, deep) = build(false, Some(in_deep));
+    assert!(tree.iter().all(|&w| w == 4), "a background build's tree: {tree:?}");
+    assert_eq!(deep[0], 4, "promoted as the deep section's first pass starts: {deep:?}");
+    assert!(deep[1..].iter().all(|&w| w == 6), "then six: {deep:?}");
+}
+
+/// A background build that a request promotes while its passes' room fills
+/// its share takes a requested build's workers within that share (#346): each
+/// worker more takes its bytes from the room, so that the build holds no more
+/// of the budget than before and a search finds the other half free as every
+/// pass starts. Of eight workers in 64 MiB, the tree's passes of 16,384 games
+/// fill the 32 MiB share; the promoted build's first pass takes four workers,
+/// every pass after it six, in less room and so in more passes.
+#[test]
+fn a_promoted_build_keeps_to_its_share() {
+    const NAME: &str = "a_promoted_build_keeps_to_its_share";
+    if !is_child(CHILD) {
+        let limit = child_limit();
+        return passed(child(NAME, 64, 8, &[]).end_within(limit));
+    }
+    assert_eq!((budget(), threads()), (64 << 20, 8));
+    // 4,096 games, each 16 times: their records appended 15 times more, as
+    // `crowded` appends its game's, so that the fixture is made at once.
+    let mut b = Builder::new();
+    add_random_games(&mut b, 4_096, 0x3461);
+    let db = b.write("build-memory-promoted-share");
+    let cbh = db.dir().join("db.2cbh");
+    let written = std::fs::read(&cbh).unwrap();
+    let records = &written[written.len() - 4_096 * 192..];
+    let mut out = std::fs::OpenOptions::new().append(true).open(&cbh).unwrap();
+    for _ in 1..16 {
+        out.write_all(records).unwrap();
+    }
+    drop(out);
+    let d = Database::open(db.dir().join("db.2cbh")).unwrap();
+    // As each pass starts: the tree's passes so far, what the process holds
+    // of the budget, and whether a search finds the build's other half free
+    // then, but for a page.
+    static STARTS: Mutex<Vec<(u64, usize, bool)>> = Mutex::new(Vec::new());
+    fn note(p: &Progress) {
+        let free = Hold::reserve_quietly(budget() / 2 - 4096).is_ok();
+        STARTS.lock().unwrap().push((p.tree_passes.load(Ordering::Relaxed), held(), free));
+    }
+    let build = |started: fn(&Progress)| {
+        STARTS.lock().unwrap().clear();
+        let dir = index_dir("promoted-share");
+        let progress = Progress::default();
+        progress.set_requested(false);
+        let limits = Limits { pass_started: Some(started), ..Limits::default() };
+        let loaded = explorer::prepare_with(&d, 1, &dir, "db", &progress, &limits).unwrap();
+        let tree: Vec<usize> = loaded.built.clone().unwrap().tree.iter().map(|p| p.workers).collect();
+        drop(loaded);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let starts = std::mem::take(&mut *STARTS.lock().unwrap());
+        (tree, starts)
+    };
+    let (tree, background) = build(note);
+    assert!(tree.len() >= 2 && tree.iter().all(|&w| w == 4), "in the background: {tree:?}");
+    let most = background.iter().map(|s| s.1).max().unwrap();
+    assert!(most >= budget() / 2, "the tree's passes fill the share: {most} bytes held");
+    let promote: fn(&Progress) = |p| {
+        note(p);
+        if p.tree_passes.load(Ordering::Relaxed) == 1 {
+            p.set_requested(true);
+        }
+    };
+    let (promoted, starts) = build(promote);
+    assert_eq!(promoted[0], 4, "promoted as the tree's first pass starts: {promoted:?}");
+    assert!(promoted[1..].iter().all(|&w| w == 6), "then six: {promoted:?}");
+    for (pass, bytes, free) in background.iter().chain(&starts) {
+        assert!(free, "after tree pass {pass}: {bytes} bytes held, a search does not find its half");
+    }
+    let promoted_most = starts.iter().map(|s| s.1).max().unwrap();
+    assert!(promoted_most <= most, "promoted: {promoted_most} bytes held, in the background {most}");
+    assert!(promoted.len() > tree.len(), "in less room, more passes: {promoted:?} against {tree:?}");
+    println!(
+        "64 MiB, 8 workers: {most} bytes held in the background, {promoted_most} promoted; tree passes' workers {tree:?}, promoted {promoted:?}"
+    );
+}

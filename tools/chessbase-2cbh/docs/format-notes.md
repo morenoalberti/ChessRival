@@ -1,0 +1,1383 @@
+# Format notes
+
+The reader implements the ChessBase 2 database format (the `.2cbh` family,
+ChessBase 17 and later) from the reverse-engineered description published in
+the Morphy project, [`format/v2`](https://github.com/Yarin78/morphy/tree/master/format/v2).
+That description carries no licence, so this repository copies none of its
+text; it is a reference, and this file records only where real databases
+disagree with it or add to it.
+
+Every finding below was measured with `cbtool verify` and small probes over:
+
+- a Mega Database 2026 of 11,966,514 records, and
+- 306 smaller databases written by ChessBase '26 (282,224 games), among them
+  weekly Mega updates, user databases and a database also converted to the
+  previous CBH format and compared game by game through an independent CBH
+  reader.
+
+## Set-up positions: castling rights are in the second word
+
+A start-position section that holds a set-up position begins with three words
+before the pieces. The description gives them as the move number; the side to
+move with the en passant file in its high byte; and the castling rights. In
+real databases:
+
+| Word | Contents |
+|---|---|
+| 0 | the move number |
+| 1 | low byte: side to move, 0 white, 1 black. **High byte: castling rights**, 1 white O-O-O, 2 white O-O, 4 black O-O-O, 8 black O-O |
+| 2 | **unknown**; zero in every set-up position examined. Read as an en passant file 1-8 when it holds one, which is unconfirmed |
+
+Evidence, over the 2,398 set-up positions of the Mega: the high byte of word 1
+takes values 0-15, is in every case a subset of the rights the placement allows
+(king and rook on their home squares), and equals that full set in 2,362 of
+them; word 2 is 0 in all 2,398. Games that castle from a set-up position do so
+only when the high byte grants the right. Read as the description has it, 15
+and 12 would be en passant files, and those games would castle without a right.
+
+## `.2lid` header size varies
+
+The description gives the entity-file header as 184 bytes, ending in 56 bytes of
+`int` pairs. Of 317 databases, 289 have that size; the others have 216 (12),
+228 (3) and 236 (3). The seven pairs at 0x80 are present in all of them, once
+with `(3, 2)` in place of `(3, 1)`; what follows is either further `(−1, 1)`
+pairs or zero bytes. The header size field at 0x00 is authoritative, and the
+entity blocks start there.
+
+## Tournaments: the type byte follows the start date
+
+A 2CBH tournament entity holds its place and its title as strings, then its
+start date as an `int`, and then one byte, its type (#268). The classic
+format's `.cbt` record holds the same byte at 0x4a, after the start date at
+0x46: every `.cbt` of the 251 classic databases examined stores 90 bytes of
+data a record. Its bits `0x20`, `0x40` and `0x80` mark blitz, rapid and
+correspondence, as a game quotation's copy of the byte does; the low bits are
+the kind of event. The reader takes the byte where a record holds it: a file of
+shorter records, which only a damaged database has, opens as before, its
+tournaments without a type, so normal.
+
+Evidence, counting tournaments whose title names the time control:
+
+- the Mega Database's 111,168 tournaments: `0x20` is set in 1,239 of the
+  1,339 whose title contains "blitz" and in 1,881 others, `0x40` in 1,588 of
+  the 1,710 whose title contains "rapid" and in 2,861 others, and `0x80` in
+  20 tournaments;
+- the 251 classic databases' tournaments: `0x80` is set in 251 of the 364
+  whose title names a correspondence event and in no other, `0x40` in 20 of
+  the 26 whose title contains "rapid", and `0x20` in 16 of the 29 whose title
+  contains "blitz".
+
+A title is a weak witness, which is why some marked tournaments name no time
+control and some that name one are not marked; the bridge reads the mark.
+
+## Analyses: a date and a move count of their own
+
+An analysis header (kind 2 at byte 2) holds its title's game tag at 0x18 and
+its author at 0x28, as the description gives them, and two fields it does not
+name (#349):
+
+| Offset | Contents |
+|---|---|
+| 0x4c | the date ChessBase lists the analysis with, an `int` packed as a game's date (`year << 9 \| month << 5 \| day`) |
+| 0x50 | the full moves of its main line as ChessBase lists them, a 16-bit `int`; 0 where the list shows none |
+
+The game's offsets for these, 0xbc and 0x8a, hold something else in an
+analysis, and the reader does not take them.
+
+Evidence:
+
+- ChessBase's own game list, for a user database of 24 records: each of its
+  16 analyses is listed with the date at 0x4c, and 11 with the move count at
+  0x50; the other 5 are listed with none and hold 0 there. 0xbc holds another
+  date in 12 of them and 0 in the other 4.
+- ChessBase's own conversion: each of the 5 analyses of the partial Mega that
+  became games in its classic copy has the classic date of 0x4c and the
+  classic move count of 0x50 (`cbh_pairs`).
+- 935 analyses in 137 of 322 local databases: 0x4c holds a valid packed date
+  in all of them, never 0; 0x50 holds a count from 1 up in 929 and 0 in 6;
+  the two bytes after it are 0 in all.
+
+ChessBase lists no ECO code for an analysis, though 0x80 holds one in most of
+them, and the bridge shows none.
+
+## Promotion captures
+
+The 16 words for a pawn capture on the rank before promotion are ordered by the
+captured piece first, then by the promotion piece, both in the order queen,
+knight, bishop, rook. 80,740 of the Mega's 87,099 promotion captures take a
+piece of a different kind from the one promoted to, so the other order would
+fail the capture check on replay.
+
+## Annotations (`.2cba`)
+
+Annotations carry no length field, so a reader must know the layout of every
+type it meets. The census below (`examples/annotation_census.rs`) decodes every
+record of the Mega (423,390 games with annotations), of 46 weekly Mega updates
+(278,306 records) and of the 306 smaller databases (64,207 annotated games) with
+no damaged record and no type left undecoded. What it needed beyond the
+description:
+
+**Squares and arrows** (`04`, `05`): the `int` length is followed by pairs
+(colour, square) and triples (colour, from, to), as in the classic format.
+Squares are **numbered from 1, file by file**: `a1` 1, `a2` 2, `b1` 9, `h8` 64.
+Evidence: for arrows on games without variations, the arrow's origin holds a
+piece after the annotated move in 287 of 343 cases when read file by file, and
+in 129 when read rank by rank. Colours are 2 green, 3 yellow and 4 red; 7, 8 and
+9 also occur (155 + 117 + 26 squares, 785 + 689 + 337 arrows in the Mega) and
+are **unknown**.
+
+**Symbols** (`03`): the three bytes are NAG numbers: `!`-type symbols 1-8, 22
+and 32 on the move; 8, 10-19, 32-44, 130-138 and 146 (novelty) on the position;
+140-145 as the prefix.
+
+**Game quotation** (`13`), `game::Quotation`:
+
+- The header's six strings are white's last and first name, black's last and
+  first name, the site and the event, each a length byte that counts a
+  terminating zero.
+- In the 35 bytes after them:
+
+  | Offset | Size | Field |
+  |---|---|---|
+  | 0 | `int` | the date, as a game header's |
+  | 4 | 1 | the event's type: bit `0x20` blitz, `0x40` rapid, `0x80` correspondence |
+  | 6 | 1 | the event's nation |
+  | 10 | 1 | the number of rounds |
+  | 28, 30 | `short` | white's and black's rating |
+  | 32 | `short` | the ECO, as a game header's |
+  | 34 | 1 | the result: 0 black won, 1 draw, 2 white won |
+
+  In the 44 bytes after those, the round is byte 8 and the subround byte 9, a
+  signed byte. The other bytes are **unknown**.
+
+  The evidence is ChessBase's own PGN export of `MegaBase2026-Update41`, which
+  writes each of its 1,671 quotations as text. Read this way, the fields
+  reproduce that text exactly for all 1,671 (below). The ECO has no place in
+  that text, but decodes to a valid code in all 126,638 quotations of the Mega.
+- The two rating-list names after the `01 00 01 00 00` markers are an `int`
+  length and that many bytes, not the length-byte strings of the header.
+- Of the 29 bytes before the move count, byte 26 is 1 for a quoted game from
+  the standard position. It is 0, once in the Mega, for a set-up start: 64 bytes
+  follow, one per square file by file (1 king, 2 queen, 3 knight, 4 bishop,
+  5 rook, 6 pawn, +8 for black, 0 empty), then 11 bytes that are **unknown**,
+  then the last two of the 29. A set-up quotation's moves are therefore left in
+  its data.
+- **Moves**, 5 bytes each:
+  - the origin square is in the low six bits of the first byte, numbered file by
+    file from 0, with bit 6 set on a promotion;
+  - the destination is in the low six bits of the second byte, and on a
+    promotion its top two bits name the piece: 0 queen, 1 knight, 2 bishop,
+    3 rook;
+  - the other three bytes are 0 in all 1,220,770 moves of the Mega.
+
+  Castling is the king's move. In the Mega, 15,137 quotations have moves
+  (15,121 with mode 2, 15 with mode 1, 1 from a set-up position). Read this way,
+  all 15,136 from the standard position replay as legal games. No other piece
+  mapping does, and the flag falls on a pawn reaching its last rank every time.
+- **ChessBase's own PGN** writes a quotation as a comment on its move. All
+  1,671 in Update41 follow `Quotation::chessbase_text`:
+  - the result: `1-0`, `0-1`, or `1/2` for a draw;
+  - both players as `Last,F (Elo)`: the first name's initial, the whole last
+    name when there is no first name, and no parentheses when the rating is 0;
+  - the event, trimmed, then:
+    - the site, unless the event holds it;
+    - `blitz` or `rapid` for such an event, unless the event names it;
+    - the year, unless the text so far holds it;
+    - `(round)`, `(round.subround)`, or `[subround]` for a correspondence
+      event's board.
+
+    A negative subround shows as its 16-bit two's complement, as ChessBase does.
+
+**Medals** (`22`): the `int` of medal bits. ChessBase's own PGN writes it as
+`[%mdl <bits>]` (4 in 271 and 8 in 5 of Update41's medals), first in the
+comment of its move.
+
+**Training** (`09`): the third byte of the header is the variant.
+
+| Variant | Solutions (after the `byte` count) |
+|---|---|
+| 1 | two squares, two unknown bytes, a list |
+| 2 | a points byte, then two lists: the answer and the reply shown for it |
+
+Variant 2 occurs in 29 Mega games, with multiple-choice questions.
+
+**Web link** (`1c`): `01`, then the URL and the caption, each an `int` length
+and that many bytes. 26 in the Mega.
+
+**Video** (`20`): `01 00`, a `short` that is likely a language, an `int` length
+and that many bytes. 22 in the Mega.
+
+**Evaluations** (`26`), `game::timing::evaluations`: on position −1,
+`01`, an `int` length, a `short` count, then per entry a `short` value, a
+depth byte and a flag byte (0 centipawns, 1 mate, `ff` none; 2 and `20` occur
+18 times in the Mega and are **unknown**).
+- **Entry `k` is the position after the main line's ply `k`,** the first the
+  start position. The count is the main line's plies plus one in 13,487 of the
+  Mega's 26,548 records, and other counts occur where moves were added or
+  removed later. In the games that end in checkmate, the last entry is a mate
+  with value 0 (596 games), the one before it a mate in 1 (845), and the one
+  before that a mate in 2, 4, 6…, in plies.
+- **Values are from White's point of view.** The last large evaluation's sign
+  agrees with the result in 11,655 of 12,754 decisive games. A mate's value
+  counts **plies**, positive when White mates and negative when Black does.
+- **ChessBase's own PGN** writes the entries as `[%evp 0,<count−1>,<values>]`
+  in a comment of its own before the first move:
+  - centipawns as they are;
+  - a mate in `n` plies as `30000 − n`;
+  - no evaluation as 32767.
+
+  The 10 games of Update41 with evaluations match number for number: 897
+  centipawns, 101 none and 6 mates, none of them negative. A negative mate is
+  written by symmetry (`−30000 − n`), and mate 0 and the unknown flags as
+  32767.
+- The classic layout is a big-endian `short` count, then each entry as the same
+  32-bit value, big-endian: flag, depth, then the value's high and low bytes.
+  All 325 records of the six paired databases equal their 2CBH twins read this
+  way.
+- One Mega game also holds ten type-`26` records on moves. They are kept only
+  as data.
+
+**Computer evaluation** (`21`), `game::timing::engine_evaluation`: on a move,
+three `short`s: the value, its kind and a depth.
+- Kind 0 is centipawns (12,009 in the Mega) and kind 1 moves to mate (216);
+  kinds 3 (23) and 32 (1) are **unknown**. The depth is 0 in 9,475, and holds
+  the absolute value in 772.
+- Values are from White's point of view: the last large one's sign agrees with
+  the result in 148 of 172 decisive games, whichever side has just moved.
+- A mate counts **moves**: in the 49 kind-1 annotations of games that end in
+  checkmate, the sign always names the winner, and the value equals the moves
+  left in 27, the plies left in 13. In 6 of those, the two are the same.
+- No paired database holds one, so the classic layout is not decoded.
+
+**Time spent** (`07`), `game::timing::time_spent`: four bytes on a move,
+**unknown** (0 in 889,661 of 899,160), then seconds, minutes and hours.
+- Seconds cover 0-59, minutes are rarely above 9, and hours are 0 in all but
+  1,323.
+- Summed over one side's moves, the time spent stays within the time control's
+  budget in 229 of 236 checks (118 games, both sides). Read with the bytes the
+  other way round, it exceeds the budget in 222.
+- The classic layout has no paired example and is not decoded.
+
+**Clocks** (`16`, `17`): on position −1, an `int` in hundredths of a second,
+one per player. Of the 28,643 Mega games holding both, 3,497 hold the same value in both. The time
+control, minus a side's time spent, gives that side's clock within 2 seconds in
+33 of 236 checks and within a minute in 171. So they are close to the clock at
+the end of the game, but not exactly. Without an export by ChessBase to
+confirm them, they are not written as `[%clk]`. The classic clocks are the
+same `int`, big-endian, in all 6 paired records.
+
+**Time control** (`24`), `game::timing::time_control`: `01`, three stages of
+**11** bytes, then an `int` 0: 38 bytes. The description has 12-byte stages,
+which do not add up to 38. Each stage is an `int` initial time and an `int`
+increment in hundredths of a second, a `short` number of moves (1000 for the
+rest of the game) and a kind byte:
+- 0 the rest of the game;
+- 1 a stage of that many moves;
+- 3 the rest of the game with an increment;
+- 5 no time;
+- 2, in one Mega record, **unknown**.
+
+No record in the Mega holds a negative time. Since a negative time means
+nothing in a time control, a record holding one is not decoded, and keeps its
+data. All 21,073 records in the Mega read this way and end in `00 00 00 00`. Every
+time is a whole number of seconds in the 21,063 records checked for it, one
+per game. The classic layout has no
+paired example and is not decoded.
+
+**Type `27`**: not in the description. Two bytes, always on a move: the short
+1 in all 25 samples of the updates; 28 occur in the Mega. Its meaning is
+**unknown**.
+
+**Positions** follow the description: PGN order, with each alternative right
+after the move it replaces. No annotation in any 2CBH database examined names a
+position past the last move. The reader writes one after the main line's last
+move, as for the classic format (below); only in a game without moves is it
+damage. Two symbol annotations in the Mega sit on position −1, the game as a
+whole; PGN has no place for a NAG before the first move, so they are not
+written.
+
+**Text languages** in the Mega: 798,578 English, 783,156 "any language" (7),
+320,588 German, then French, Spanish, Portuguese, Dutch, Italian, Polish and
+Greek below 4,000 each.
+
+**Text that is not UTF-8** (#308). 2CBH keeps its texts and names as UTF-8,
+but some are single-byte. In 313 databases besides the Mega, 7,982 comments
+are Windows-1252 (Western text of the Mega updates), and a few
+databases made on a Windows whose page is 1251 hold Russian in Windows-1251:
+4 comments, and 3 player names, which were read with replacement characters
+and so lost. The reader now reads a text or a name that is not UTF-8 in
+Windows-1251 when its own words show Cyrillic (`codepage::utf8_or_legacy`,
+the rules of the classic format's "Russian databases hold Windows-1251" and
+"Signs in Western text"), and in Windows-1252 otherwise, as before. Neither
+the computer's page nor the text around it decides, and no ChessBase sign is
+read. In the Mega, 132 comments now read in Windows-1251, each with Russian
+words or with letters typed on a Russian keyboard, and nothing else changes:
+its Western text, with ChessBase's signs in it, reads as before on every
+computer.
+
+**UTF-8 inside single-byte text** (#311). Some texts mix the two: Czech text
+with `á` and `í` in Windows-1252 and `ě` and `ř` in UTF-8, a UTF-8 `…` among
+ChessBase's piece bytes, or one of ChessBase's signs below in UTF-8 inside
+Windows-1251. The reader reads as UTF-8 only what a single-byte page does not
+form by chance (`codepage::utf8_inside`): runs of Cyrillic UTF-8, as in the
+classic format; a sign of three bytes, general punctuation (U+2000-U+206F) or
+ChessBase's range of the Private Use Area (U+E000-U+E02F); and a letter of
+Latin-1 or Latin Extended (U+00C0-U+024F), but only where the text outside the
+first two shows a Western page. The rest is read as above. Other sequences
+stay single bytes: Windows-1251 forms Latin letters of UTF-8 from a capital
+and a Ukrainian letter (`Ді` is 0xc4 0xb3, UTF-8 for `ĳ`), ChessBase's
+Western text writes `×»` (weak point, kingside) and `×§`, which UTF-8 reads as
+Hebrew letters, and `í…¤`, which it reads as a Hangul syllable. In the Mega,
+41 of 334,818 texts that are not UTF-8 hold such UTF-8. Text that is valid
+UTF-8 of text garbled before (`nÃ£o`) reads as the file holds it.
+
+**ChessBase's signs** (#309). Recent ChessBase writes the signs of its chess
+fonts as Private Use Area code points, which no other program draws: 26,904
+in the Mega, and names hold them too (a tournament named for knight odds). No
+public table names them. Each was read from the Mega's comments: the words
+beside it (a piece's before a square, a flank's before `attack`), the
+evaluation it follows set against ChessBase's older Windows-1252 text, whose
+signs ChessBase's help names (`⩲/<U+E00A>` where the older text writes
+`⩲/±`), and the bytes of older text it replaced (`n°5` became
+`n<U+E000>5`). They are served as the Unicode signs of the Informator
+symbols (Unicode 11, L2/17-033R2; `cbformat::signs`): in a name as it is read,
+so that it is searched for as it shows, and in a comment where PGN shows it.
+A comment keeps the record's text, and the full form keeps it in
+`[%cbtext]` beside the shown one:
+
+| Code point | Sign | | Code point | Sign |
+|---|---|---|---|---|
+| U+E000 | ⯹ with compensation | | U+E012 | ↑ initiative |
+| U+E001 | ⮺ pair of bishops | | U+E013 | → attack |
+| U+E002 | ⮻ opposite bishops | | U+E017 | ⇆ counterplay |
+| U+E004, U+E02E | ⩱ | | U+E018 | ⇔ file |
+| U+E005 | diagram mark, dropped | | U+E019 | ⇗ diagonal |
+| U+E007, U+E02F | ⩲ | | U+E01A | ∓ |
+| U+E008 | ⯽ passed pawn | | U+E01D | ⨀ zugzwang |
+| U+E009 | ∞ unclear | | U+E01E | ⊞ centre |
+| U+E00A | ± | | U+E01F | ⊥ endgame |
+| U+E00C | ⌓ better is | | U+E021 | □ only move |
+| U+E00D | △ with the idea | | U+E023 | ○ space |
+| U+E00E | ⟪ queenside | | U+E024-U+E029 | ♔ ♕ ♖ ♗ ♘ ♙ |
+| U+E00F | ⟫ kingside | | | |
+| U+E010 | × weak point | | | |
+
+That covers all but 35 of the Mega's 26,904. U+E00B, U+E01B, U+E020, U+E022
+and a lone U+E02D, whose uses do not tell their sign, stay as they are.
+
+ChessBase made the same conversion of text typed on a Windows whose page is
+1251, and took some letters' bytes for signs: і and І (0xb3 and 0xb2, the
+bytes of ⩱ and ⩲) became U+E004 or U+E02E and U+E007 or U+E02F, ю (0xfe,
+passed pawn) U+E008, ч (0xf7, unclear) U+E009, and Ч (0xd7) `×`. Such a code
+point that touches a Cyrillic letter is the letter again, and `×` where it
+starts a word of Cyrillic letters (`×ернов`; not `Л×c3`, a capture): 7
+player names of those databases, and `ч` inside a Russian comment in
+Windows-1251. Some databases write their brackets, positions and links as
+words between runs of U+E02D (`StartBracket`, `EndBRacket`,
+`StartFEN`, `LinkStart`); they read as `(` `)`, `[` `]`, `[FEN …]` and the bare
+address. The PGN they were imported from writes the same words between runs of
+`@` (`@@StartBracket@@`), which ChessBase turned into U+E02D; a PGN
+database's reading form reads them so too (#318, `docs/api.md`, "PGN
+files"). The examples in this section are made up or counts.
+
+## What `cbtool verify` checks
+
+For every game and analysis: the record framing (magic, sizes, trailing length
+and checksum), the start section, and every move word of every line, played on
+a board. A word must name the piece that stands on its origin, the piece (or
+nothing) on its destination, and a legal move; castling needs the right. The
+Mega passes with no failure: 11,964,285 games, 963,223,086 plies, 4,472 Chess960
+games, 2,398 set-up positions and 3,082 null moves.
+
+## The database window list: `DBItems.cbini`
+
+ChessBase keeps the databases its database window shows in `DBItems.cbini`, in
+the ChessBase documents folder. Nothing public describes it. This layout was read
+from two such files written by ChessBase '26 on two computers, 1.6 KB each. Both
+decode to their last byte with it.
+
+**Layout.** The file starts with the magic `0c 0b 0a 0e`, then the number of
+bytes that follow as a big-endian `uint`. After that comes a flat list of
+items, each laid out as:
+
+| Size | Description |
+|---|---|
+| 1 | the tag |
+| … | the value; its layout depends on the tag |
+| 4 + n | the key: its byte length as a little-endian `int`, then the bytes |
+
+| Tag | Value |
+|---|---|
+| `ff` | none. The item is a section header: the items after it, up to the next header, belong to it |
+| `01` | one byte |
+| `08` | a little-endian `int` |
+| `19`, `1a`, `1e` | a string, laid out like the key |
+
+Items carry no length, so a reader must know every tag. An unknown tag is an
+error.
+
+Strings are UTF-8 under tag `1e`, which ChessBase uses for text that is not
+ASCII, such as Cyrillic titles. In the files written by ChessBase '26, only
+ASCII has been seen under `19` and `1a`, and keys that are paths are UTF-8,
+Cyrillic ones included. What distinguishes `19` from `1a` is **unknown**: `1a`
+has held only the reference database's path.
+
+**Older entries** (asavis/oschess-cb-bridge#288, #300). A list kept by
+ChessBase 18 on a Windows whose ANSI code page is 1251 showed more encodings,
+first in screenshots and then in the file itself, 110 entries: 64
+paths in Windows-1251 (44 of them with Windows-1251 titles, 20 with ASCII
+ones), 15 titles cut to one byte and one title escaped:
+
+- **The ANSI code page.** Titles and paths in Windows-1251: read as Latin-1,
+  `Эндшпиль` would read `Ýíäøïèëü` (a made-up example), and the files of those
+  entries, and of entries with ASCII titles in folders named in Cyrillic, were
+  not found. The reader decodes anything that is not valid UTF-8 in the
+  computer's ANSI code page, as ChessBase does, so no byte is lost.
+- **Titles cut to one byte.** Titles of databases whose files were found
+  read as their Cyrillic file names with each UTF-16 unit cut to its low byte:
+  `Ладья` (U+041B U+0430 U+0434 U+044C U+044F) as `\x1b04LO`, with nothing
+  before or after. The high bytes are not in the file. When a title is
+  exactly this image of the database's file name, the reader shows the file
+  name in its place. A title that only starts with the image is a title of its
+  own: the image of a short name collides with ordinary words (`ё` cuts to
+  `Q`, `абв` to `012`). The reader matches only an image of ASCII bytes, which
+  reads the same in UTF-8 and in every code page; a title with a byte above
+  ASCII stays as stored. One ambiguity remains: a title chosen by the user
+  that is exactly the image of its own file name (`012` for `абв.cbh`) is
+  shown as the file name.
+- **Titles cut from a start of the file name.** One cut title is the image of
+  the start of its file name before a dash, as the image of `Ладья` would be for
+  `Ладья-1` (a made-up example). The reader also matches the image of a start of
+  two letters or more that the rest of the name begins with something other than
+  a letter (a dash, a space, a digit), and shows that start. A part of one
+  letter is not matched, since its image is one character (`Q` for `ё`).
+- **Titles escaped.** One title holds the UTF-8 bytes of its text, each written
+  `/` and two hex digits, the text being the database's file name, as
+  `/D0/B7/D0/B0/D0/B4/D0/B0/D1/87/D0/B8` would be for `задачи` (a made-up
+  example). The reader reads a title made of such escapes alone, whose bytes are
+  UTF-8 that is not ASCII, as that text.
+
+**Sections and items seen:**
+
+| Section | Items |
+|---|---|
+| `2cbg` | one per 2CBH database, keyed by its absolute path |
+| `2cbh` | `RefDB`: the path of the reference database |
+| `Databases` | one per database in another format (`.cbh`, `.pgn`), keyed by its path |
+| `Pathes` | none |
+| `Status` | `DesktopTop` (`int`), `Selected` (the selected database's path), `Sort` (`int`), `SortDir0` to `SortDir7` (bytes) |
+
+**A database entry** is a string whose key is the database's path and whose
+value is `title,a,b,c,d,e,f`. The reader takes the six numbers from the right,
+so a title may contain commas. In the files examined:
+
+- **title** is the name the window shows. It can differ from the file name, for
+  example `X (2cbh)` for `X.2cbh`.
+- **a** varies (0–245). Its meaning is **unknown**; it is perhaps the icon.
+- **b** is the format: 28 for 2CBH, 1 for CBH, 3 for PGN.
+- **c** is the number of games, equal to the database's record count.
+- **d** grows between the two files. Its meaning is **unknown**; it is perhaps a
+  use count.
+- **e** and **f** are ChessBase dates (`year << 9 | month << 5 | day`, as game
+  dates are stored). They are consistent with the last use and the date the
+  database was added.
+
+**The order.** The file keeps the entries in its own order: the `2cbg` section
+first, then `Databases`. The window sorts by `Sort` and `SortDir0`–`SortDir7`.
+- **`Sort` 6** (all `SortDir` 0) is the only setting seen, and ChessBase's default.
+  With it, the window orders by **a**, the icon number, largest first, and
+  entries with the same icon by title, last first, without regard to case.
+- **The evidence:** ChessBase's window, in its icon view and in its detail view
+  (whose columns show no sort mark), matched this order for all ten databases,
+  three of which share icon 0 (asavis/oschess-cb-bridge#20).
+- **Other settings are not decoded:** another `Sort`, any `SortDir` other than 0,
+  or a missing one. For them, `DbList::window_order` keeps the file order.
+
+**Items the window adds itself.** The window also lists ChessBase's clip database
+(`NoGames\ClipDBs\CBMain.cli`, format "CLI") and the ChessBase Cloud clip
+(`Cloud\<account>\cloudclip.cbcloud`, format "Cloud"). Neither is in
+`DBItems.cbini`, and neither is a database file the bridge reads, so the bridge
+does not list them.
+
+**Copies named after a computer.** `DBItems-<computer>.cbini` beside the file is
+a OneDrive sync-conflict copy. The same `-<computer>` suffix appears on unrelated
+files in the same OneDrive folder, and no such copy exists for the computer that
+wrote the current `DBItems.cbini`. ChessBase reads `DBItems.cbini`, and the
+reader ignores the copies.
+
+**Paths** are absolute Windows paths. Whether a database is a cloud-only
+OneDrive placeholder is read from its Windows file attributes
+(`FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS`, `_RECALL_ON_OPEN`, `_OFFLINE`), never by
+opening it, so the check starts no download. A 2CBH database is checked through
+every file it is read through: `.2cbh`, `.2cbg` and `.2lid`, and `.2cba` when it
+is there. It is opened only when none of them is offline. Through WSL, a non-empty file with
+no blocks allocated is reported as possibly cloud-only. That heuristic has not
+been confirmed, because no placeholder was available.
+
+## Position index (the bridge's own files)
+
+Not a ChessBase format: the files the bridge writes for
+`GET /v1/databases/{id}/explorer` (`docs/api.md`), two per database in its
+index folder (`docs/api.md`, "Storage"): the index, `<id>.idx`, and its move
+stream, `<id>.moves` (see "Move stream" below). Integers are little-endian.
+
+- **Key.** A position is its Polyglot key (`chesscore::Board::hash`), which
+  adds an en passant square only when a capture is possible. Chess960 games
+  are left out, since the key names a castling right by its side, not by its
+  rook.
+- **What a game adds.** Each position of its main line from the start to
+  ply 20, once however often it is reached, with the move played from it, the
+  one from ply 20 included; a position reached again adds only the move from
+  its first visit. Every such position is kept, however few games reach it
+  (#147): the tree is every position within the first 20 plies.
+  A null move or damaged moves end the line there, and so does its
+  65,535th ply; the position before them counts, and no move from it. A game
+  whose move record is over 2 MiB, or cannot be read, adds nothing. The build
+  writes the move stream from its walk of each line, then builds the tree and
+  the deep section from the stream, so they all hold the same lines.
+- **What a game adds to the deep section** (#133): each structure (each
+  side's pawns and its knights, bishops, rooks and queens counted) that its
+  main line holds at some ply beyond 20, once, to its bucket, with the
+  structure's print and whether the line holds it at some ply beyond the
+  tree's depth, 20, which each of them does. Only a pawn move or a capture
+  changes a structure, and neither is undone, so a game holds each one for a
+  single stretch of plies. Every game that reaches a position beyond ply 20
+  is found among the games of its structure's bucket with its print, by
+  replaying their lines from the move stream: all of the position's games
+  when the tree does not hold it, and those that first reach it beyond ply
+  20, which the tree did not count, when it does (#146). Such a game holds
+  the structure beyond ply 20, so only the games marked so are replayed then.
+  The pieces matter: every pawnless ending shares one pawn structure, 186,041
+  games of the Mega Database, and with the pieces counted the most crowded
+  bucket, bare kings, holds 38,367.
+- **Header** (128 bytes):
+
+  | Offset | Size | Field |
+  |---|---|---|
+  | 0 | 8 | magic `OSCBIDX\0` |
+  | 8 | 4 | format version, 6 |
+  | 12 | 4 | header length, 128 |
+  | 17 | 1 | depth in plies, 20 |
+  | 18 | 1 | pruning ply, 20: none within the depth |
+  | 19 | 1 | deep bucket bits, 8 to 24 |
+  | 20 | 4 | first record indexed |
+  | 24 | 4 | last record indexed |
+  | 32 | 8 | the database's generation when built |
+  | 40 | 8 | deep postings: a game once per structure print in a bucket |
+  | 48 | 8 | games indexed |
+  | 56 | 8 | positions |
+  | 64 | 4 | blocks |
+  | 72 | 8 | offset of the block table |
+  | 80 | 4 | CRC-32 of the block table |
+  | 88 | 8 | file length |
+  | 96 | 8 | offset of the deep section, right after the block table |
+  | 104 | 8 | offset of the deep table |
+  | 112 | 4 | CRC-32 of the deep table |
+  | 116 | 8 | build id, which the move stream built with it carries too |
+  | 124 | 4 | CRC-32 of bytes 0-123 |
+
+  The other bytes are zero. Version 5, without the separate selection list,
+  and version 4, a tree to ply 40 whose positions
+  reached by one game only beyond ply 20 were dropped, are rebuilt.
+
+- **Blocks** follow the header back to back, positions in ascending key order,
+  up to 4,096 a block, and a block ends once its records reach 1 MiB, or where
+  one of the build's parts of the keys ends: 2^*n* parts by the keys' top *n*
+  bits, *n* the bit length of the last record less 8, from 4 to 16, about 256
+  records a part (see "The build"). A block holds its keys, 12 bytes each
+  (the key, then the record's offset in the block's data, 4 bytes), then the
+  records.
+- **A record** is unsigned LEB128 numbers:
+  - the games, white wins, draws and black wins;
+  - the number of moves, then each move as 2 bytes (from square, to square,
+    and for a pawn reaching the last rank the promotion piece, queen, rook,
+    bishop or knight as 0-3, in bits 0-5, 6-11 and 12-13; castling is the king
+    moving onto its rook) followed by its four counts;
+  - the number of notable games, then their numbers, the highest average
+    rating first, then descending record number;
+  - the number of database-relative selected games, then their numbers in
+    selection order (`docs/api.md`, `featuredGames`), at most 12 in each list.
+- **The block table** follows the blocks: for each block its first key,
+  offset (8 bytes each), number of keys, data length and the CRC-32 of its
+  keys and data together (4 bytes each), 28 bytes a block.
+- **The deep section** follows the block table. A structure's bucket is the
+  top *bits* bits (header byte 19) of a 64-bit hash of its two pawn
+  bitboards and its piece counts (`explorer::format::structure`), and its
+  print the 7 bits below them. *bits* is the bit length of the database's
+  last record, from 8 to 24: about a bucket a game. The buckets come in
+  blocks of 256, back to back, so that a lookup reads a few KiB: for each
+  bucket, the number of its postings, then each posting as one number, by
+  game, then print, in ascending order: the game's difference from the
+  previous posting's (the first from 0, and 0 only for a game's next print)
+  times 256, plus the print times 2, plus 1 when the game holds the structure
+  beyond ply 20; all unsigned LEB128. Structures that share a bucket are told
+  apart by their print, except one in 128; a lookup replays the games of its
+  bucket with its print, marked when the tree holds the position, and keeps
+  those whose main line reaches the position's key.
+- **The deep table** ends the file: for each deep block its offset (8 bytes),
+  length and CRC-32 (4 bytes each), 16 bytes a block, 2^(*bits* − 8)
+  blocks.
+- **Checks.** On opening, before anything is allocated from the header's
+  counts: the header's CRC, and counts that fit the file (the table between
+  its offset and the deep section; the deep table between its offset and the
+  end of the file; 1 to 4,096 keys a block; for every key 12 bytes and a
+  record of at least 7 before the table), and no more games indexed than
+  records. Then the tables' CRCs, blocks that follow each other, in key
+  order, with at most 4,096 keys and a little over 1 MiB of records each,
+  and deep blocks that follow each other from the deep section's offset to
+  the deep table. On each lookup, the CRC of the block read; a record's
+  counts must hold no more games than the index, results adding up within
+  their games, and moves of no more games together than the position's, each
+  within its own games too; a deep bucket's games must ascend, each game's
+  prints too, and stay within the records indexed; and the counts of the
+  tree and of the games beyond it (#146) must add up within the index's
+  games, which each game counts once. Any failure rebuilds the index. The
+  table is held within the search memory budget while the index is open.
+- **Deciding what to build.** An index and a move stream both built at the
+  database's generation, with the same build id, are current; anything else
+  rebuilds both. A crash between writing one and the other, or a file copied
+  from another build, never pairs an index with a stream it was not built
+  with.
+- **The build** (#147) first scans game headers in bounded batches of 2,048
+  records (phase `checking`) to find the newest valid date before any search
+  filter, without reading names, moves or annotations, on the build's workers,
+  each taking the next batch no worker has taken (#346). It observes
+  cancellation and yields to foreground searches between batches. It then runs
+  three kinds of pass within half the search memory budget, each on the
+  build's workers: at most half the search workers for a background build, and
+  all of them but two, never fewer than half, for a requested one (#346). It
+  writes nothing but
+  `<id>.moves.partial` and `<id>.idx.partial`, renamed `<id>.moves` and
+  `<id>.idx` at the end; the database's former files are deleted when it
+  starts, so that the folder never holds more than the new files.
+  1. **The stream pass** (phase `reading`, in records). Workers read the
+     header records and the move records of 2,048 games at a time into
+     buffers reserved in the search budget, about 3 MiB a worker: the run's
+     move records at once when they fit a 2 MiB window of `.2cbg`, else one
+     record of at most 2 MiB at a time; never `.2cba`. Each worker takes a
+     block of the move stream, 4,096 records, at a time, plays each main line,
+     checking every move, and writes the block's records (see "Move
+     stream"): its buffers, 1 MiB of tails, a block's slots and a line's
+     words, take about 1.4 MiB more. It counts what each line adds, for the
+     passes that follow: its positions within ply 20 by part of the keys, and
+     its structures past ply 20 by deep block. The positions a game from the
+     standard start reaches first within ply 3, at most 9,323 whatever the
+     database and the most crowded of all, a fifth of the tree's entries,
+     are folded as they come, as a tree pass folds a full buffer (below):
+     each worker keeps their entries in a room of up to a million (24 MiB),
+     and of no more than four a game of the database, 16,384 at least,
+     taken from what the share and the budget have free beside the pass's
+     buffers, and folds it whenever it fills; at the end the workers' entries
+     are folded together, a few dozen per position, and held until the tree
+     is written. A worker with room for fewer than 16,384 entries, or whose
+     entries no longer fold into half its room, makes the build do without,
+     and the tree's passes collect those positions as they do the others.
+  2. **The tree's passes** (phase `positions`, in entries). A pass takes as
+     many parts of the keys, in order, as 97% of the room left in the
+     build's share holds of their entries, but for those the stream pass
+     folded, one part at least. The room is no more than twice those entries
+     and a worker's room for the largest part (below): a small database's
+     build holds a little of the budget, however large its share, and takes
+     one pass. The room is reserved together with the
+     workers' buffers for making blocks and the table of the tree's blocks,
+     so that the table never waits for memory the entries took. An entry is 24 bytes: the selection key and padding, the position key, the game
+     number (30 bits) with its result (2), and the move (14 bits) and average
+     rating (12). Each worker replays the first 21 positions of the games it
+     takes, a few hundred at a time, from the stream just written, mapped,
+     without legality checks, following each position's key through the move
+     words alone, as the deep passes follow the structure (below): a word
+     names the piece, the squares, what is taken and what a pawn becomes, so
+     one lookup a ply gives the key's change, the castling rights it ends and
+     a pawn's double step, whose en passant file the key counts only with a
+     pawn of the other side beside it. It keeps the entries of the pass's
+     parts in a buffer of its own; a worker whose buffer has no room for
+     twice what a chunk of games adds takes no more, unless it is the last
+     one taking them, so that the buffers fill evenly whatever the workers'
+     pace.
+     A full buffer is sorted by key, and each position of more than 48
+     entries in it folded: the union of its 12 legacy leaders and 12 selected
+     games is kept whole (at most 24 distinct games), and every other game
+     is counted by move and result into weighted entries. Each game still
+     contributes once to the counts. A buffer still three quarters full ends the pass, for
+     every worker, at the part that keeps about half of it, and the next pass
+     starts there; a first part that alone fills it fails the build as too
+     large. So that none does, a worker's buffer holds the pass's first part
+     whole, as the stream pass counted its entries, and an eighth more,
+     however little they fold, whenever the share holds that for one worker:
+     a pass runs on no more workers than leave each that room, and the
+     passes never take less room than the largest part needs, which the
+     build waits for as it waits for its least. Only a share too small for
+     one worker and the folded entries of a part fails. The workers then
+     take the pass's parts in order, each merging one part's entries from
+     every worker's sorted buffer and from the entries
+     the stream pass folded, adding each position up into its record and
+     making the part's blocks. A worker hands its blocks over and goes on
+     with the next part: they are placed in the file once every part before
+     them is, and kept until then, within a megabyte or so a worker, and
+     written at their place by the worker that placed them, while the others
+     go on, so that the tree lies in the file in key order. The games the
+     tree's positions count must add up to the entries the stream pass
+     counted, else the build fails.
+  3. **The deep section's passes** (phase `structures`, in postings), the
+     same by ranges of buckets. Each worker replays each whole line from the
+     stream and follows only its structure: each word of the move table names
+     the piece that moves, where, what it takes and what a pawn becomes, so
+     each side's pawns and pieces counted by kind follow the words without a
+     board, and the structure is hashed again only after a pawn's move or a
+     capture. Each structure a line holds past ply 20 whose bucket lies in
+     the pass is a posting of 8 bytes, `bucket << 40 | game << 8 | print <<
+     1`, plus 1 when the line holds it only within ply 20, as none past it
+     does. A pass plans 97% of its room, no more than twice the postings
+     the stream pass counted, and its workers take games as the tree's do.
+     A full buffer is sorted and freed of repeats, a game's posting beyond
+     ply 20 kept of two with one print; one still three quarters full ends
+     the pass at the bucket that keeps about half of it,
+     which may lie inside a deep block, which the next pass goes on with.
+     When the pass's first bucket alone holds that half, as a structure that
+     hundreds of thousands of games hold does at a small budget, the pass
+     ends at the game of that bucket that keeps it, and the next pass goes
+     on with the bucket's later games. Each pass counts its first bucket's
+     postings from where it starts, a game and print once, wherever it
+     ends: the bucket's count, written by its first pass; the later passes
+     write its postings on from the game written last, so that the bytes are
+     those of a pass that holds the bucket whole, and the postings of its
+     passes must add up to that count, else the build fails. A game holds
+     at most 127 structures, half a worker's least room, so no bucket is too
+     large for the share. The blocks are written as the
+     tree's parts are, handed over in pieces of at most a megabyte, inside a
+     bucket too, so that a crowded bucket takes no more memory than a worker
+     holds for its bytes.
+  4. **The end.** The tables and the header are written and the index file
+     synced; what each pass wrote was synced behind the build, on a thread
+     of its own, so that this sync waits for the last pass's bytes alone. The
+     stream is renamed, then the index (see "Move stream").
+
+  The build notes where its time went: the stream pass, each pass of the
+  tree and of the deep section, its replay then its writes, the index
+  file's end and the renames. `cbtool profile` prints a row for each, and
+  the `index_oracle` example prints them too.
+
+  Each pass reserves what the budget has free, up to the build's share:
+  while searches hold memory, it takes fewer workers and less room, and the
+  build runs more passes, never with less room than it needs to go on (the
+  tree's largest part), and takes what more is free once it has that; it
+  reads back the files it wrote, whose tables it holds in the budget, waiting
+  likewise. Builds side by side in one process, as tests run them, each take
+  what their entries use (#148). However many passes and workers it runs, it
+  writes the same index, byte for byte but for the build id. Half the budget is at
+  least 8 MiB; a share that cannot hold one worker of the stream pass fails
+  the build as too large at once, and one whose room searches hold waits for
+  it for up to a minute, then fails as busy.
+
+## Move stream (the bridge's own file)
+
+`<id>.moves` (#145), written first by the build of `<id>.idx`, which then
+builds the tree and the deep section from it (#147): each game's main line as
+2CBH move words, so that the deep section's candidates are replayed from
+memory instead of from the database's files. A 2CBH word names
+one move from a list of every move each piece can make on an empty board, so
+it means the same in any position and needs no board to decode.
+
+- **Words.** Normal moves and the four castlings of standard chess, words
+  below `0xb12d`. Each was checked when the build played it. A 2CBH game's
+  words are copied as stored, a Chess960 castling word in a standard game as
+  the standard castling of its side; a classic game's or a PGN game's are the
+  words of its moves (`cbformat::replay::word_of`). The same games in the
+  three formats give the same records; with one worker, as for a few thousand
+  games, the same file byte for byte past the generation and the build id,
+  since with more the order of tails and blocks follows the workers'
+  progress. The index built from it is the same whatever that order. A line
+  ends where the index's ends: before a null move or damage, or at 65,535
+  plies.
+- **Mapped read-only.** The bridge maps the file whole (`mmap`, or
+  `MapViewOfFile` on Windows) and replays its words without legality checks.
+  Its pages are the operating system's file cache, outside the search memory
+  budget. The bridge maps only its own files, never a database's, and never
+  writes a file it maps: a build writes `<id>.moves.partial`, maps it once
+  written to build the tree and the deep section from it, unmaps it and
+  renames it.
+  On Windows a mapped file cannot be replaced, so the rename is tried again
+  until the answers that still map the old stream are done, for up to a
+  minute. The stream is renamed before the index: a build stopped between
+  the two leaves files of different builds, which are rebuilt.
+- **Header** (128 bytes):
+
+  | Offset | Size | Field |
+  |---|---|---|
+  | 0 | 8 | magic `OSCBMOV\0` |
+  | 8 | 4 | format version, 5 |
+  | 12 | 4 | header length, 128 |
+  | 16 | 1 | prefix words per record, *W* = 21 |
+  | 20 | 4 | first record, 1 |
+  | 24 | 4 | last record, *R* |
+  | 32 | 8 | the database's generation when built |
+  | 40 | 8 | build id, as in the index's header |
+  | 48 | 8 | games indexed |
+  | 56 | 8 | plies stored |
+  | 64 | 4 | records per block, *B* = 4,096 |
+  | 72 | 8 | offset of the block table |
+  | 80 | 4 | blocks, ⌈*R*/*B*⌉ |
+  | 84 | 4 | CRC-32 of the block table |
+  | 124 | 4 | CRC-32 of bytes 0-123 |
+
+  The other bytes are zero. Version 1, whose directory, prefix and tail
+  areas lay apart with a CRC for each MiB, version 2, whose block table
+  held no CRCs of the blocks' slots, and version 3, whose slots kept no
+  set-up start's move number (#272), and version 4 without selection keys,
+  are rebuilt.
+- **Body**, from 128 to the block table: the tails and the blocks of slots,
+  each starting at a multiple of 64 bytes, in the order the build's workers
+  appended them. A worker takes the records of one block at a time and
+  gathers their tails, appending them when the next would pass 1 MiB and at
+  the block's end, then appends the block's slots, so the file is written
+  from its start to its end: a game's tail is found only by its offset, and
+  a block only by the table.
+- **Slot**, 68 bytes a record, *B* in a block, record *r* the
+  ((*r* − 1) mod *B*)th slot of block ⌊(*r* − 1)/*B*⌋:
+
+  | Offset | Size | Field |
+  |---|---|---|
+  | 0 | 4 | tail offset, in words from the file's start; meaningful when the line is longer than *W* or starts from a set-up position |
+  | 4 | 2 | plies stored |
+  | 6 | 2 | bits 0-1: outcome (white, draw, black, other, as the index counts it); bits 2-13: average rating, as the index ranks by it; bit 14: set-up start; bit 15: indexed (a standard game, not deleted, whose moves could be read) |
+  | 8 | 8 | home-pawn departures: bits 0-59 the first 15 home pawns to leave home, in order, 4 bits each (white a-h 0-7, black a-h 8-15); bits 60-63 how many, 15 meaning 15 or 16 |
+  | 16 | 42 | words 0 to *W* − 1 of its line, then `0xffff` after its end |
+  | 58 | 2 | the move number of a set-up start, as the database stores it (the move its side to move plays next); 0 for the standard start |
+  | 60 | 4 | selection key: twice the average in bits 0-16, tier priority in bits 17-18 (3 for first tier, 0 for last); higher is better |
+  | 64 | 4 | CRC-32 of the record's number (4 bytes), bytes 0-63 and its tail |
+
+  A record the index does not hold has zeros for bytes 0-15 and no words.
+- **Tail**: for a set-up start, 18 words describing it (32 bytes of pieces
+  from a1 to h8, a square in each half of a byte, low half first: 0 empty,
+  1-6 white pawn, knight, bishop, rook, queen, king, 9-14 the same for black;
+  a byte for the side to move, 0 white; a byte of castling rights, bits as in
+  the set-up section above; the en passant file 0-7 when a capture is
+  possible, else 8; a zero byte); then words *W* to plies − 1. A start equal
+  to the standard one at move 1 is no set-up; at any other move it is one,
+  so that its moves keep their numbers. A file takes 68 bytes a record and 2
+  bytes for each ply past the 21st, 36 more for a set-up start, up to 63
+  bytes of padding after each append of tails or slots, and 12 bytes a block.
+  The slots' block CRC excludes alignment padding.
+- **Block table**, at the end of the body: for each block the offset of its
+  slots (8 bytes) and the CRC-32 of the block's number from 0 (4 bytes) and
+  its slots (4 bytes), 12 bytes a block. The file must end with it, have a
+  block for every *B* records and room before the table for every record's
+  slot, and each block's slots must lie within the body at a multiple of 64
+  bytes; the table is checked against its CRC when the file opens and held
+  in the search memory budget. A record is checked against its CRC whenever
+  an answer reads it, its slot and its tail, which are all a replay reads:
+  its number in the CRC places it, so that a slot moved elsewhere fails too.
+  A list of a position's games (below) reads every slot and no tail, so it
+  checks each block against the block's CRC instead, the first time it reads
+  the block while the file is open: the block's number places it, and the
+  order of its slots each slot, so that a slot damaged, or moved within its
+  block or into another, fails the blocks it is in. The build's passes read
+  back the records they have just written without either CRC. A failure
+  drops both files, and the next request rebuilds them. A torn file, which
+  the build does not sync, fails the CRCs of the records it lost.
+- **Finding a position.** Of a bucket's games, a replay skips those the
+  index does not hold, and a standard game whose home pawns left in an order
+  the position does not allow: a pawn on its home square never came there and
+  never returns, and a ply loses at most one, so the pawns a position lacks
+  from home must be the first ones its line lost, in any order among
+  themselves (Scid's home-pawn test). A set-up game is not tested so. A replay
+  stops at the first ply whose key is the position's, and as soon as its line
+  has fewer men or pawns of a side than the position, or lacks one of the
+  position's home pawns: a line only ever loses those, and only a capture or
+  a pawn's move changes them, so they are counted again only then. Nothing
+  is concluded from the pieces of each kind, which a promotion adds to. The
+  moves are played without finding the pieces that give check, which only
+  legality needs (`chesscore::Replayer`). Up to 256 games are replayed on
+  the request's own thread, which takes less time than starting a worker
+  would. More are replayed on at most half the search workers, which take
+  them 64 at a time as they go, so that a worker the machine runs less often
+  takes fewer; each holds only what it found. A replay stops at its next
+  game once its request is superseded. Moves played as often are listed in
+  the order of the first game, by number, that played each.
+- **Listing a position's games** (#148). The games that reach a position
+  within the tree's plies are its notable games when it has 12 or fewer.
+  Otherwise the search workers take the stream's blocks, 4,096 games at a
+  time, each checked against its CRC the first time a list reads it (see
+  the block table), and read every slot: a standard game passes the
+  home-pawn test above on its entry, then its prefix words are followed to
+  the tree's last ply, its key alone, until it reaches the position or
+  loses a home pawn the position keeps; a set-up game's record is read
+  whole, checked against its CRC, and followed from its start. The games
+  found must also be as many as the tree's record counts, and a difference
+  drops both files as a failed CRC does. The games beyond the tree's plies
+  are those the replay above finds.
+
+## Masks (the bridge's own file)
+
+`<id>.masks` (#272), beside the move stream: for each record, what its main
+line ever had, so that a search by a position fragment or by material rules
+most games out before it replays the rest from the move stream. It plays the
+part of ChessBase's search booster (`.cbb`), in a layout of its own: a
+database's `.cbb` is never read, since it may be missing or stale, and the
+Mega Database, a 2CBH database, has none.
+
+- **Built on demand**, by the first search by a fragment on the database,
+  from the move stream of the index it searches: on a thread of its own at
+  below-normal priority, its records replayed on at most half the search
+  workers, 4,096 at a time. A build writes `<id>.masks.partial`, then renames
+  it; one stopped, because its index was replaced meanwhile, removes its
+  file, and the next build waits for it to end. It belongs to the stream's
+  build: a stream of another build, after the database changed, makes it
+  stale. The build of a new index deletes it first and, when the database
+  had masks, builds them again once the index is ready.
+- **Header** (64 bytes):
+
+  | Offset | Size | Field |
+  |---|---|---|
+  | 0 | 8 | magic `OSCBMSK\0` |
+  | 8 | 4 | format version, 1 |
+  | 12 | 4 | row length, 64 |
+  | 16 | 4 | rows per block, *B* = 4,096 |
+  | 20 | 4 | first record, as in the stream |
+  | 24 | 4 | last record, *R*, as in the stream |
+  | 32 | 8 | build id of the stream it was built from |
+  | 40 | 4 | blocks, ⌈*R*/*B*⌉ |
+  | 44 | 4 | CRC-32 of the block table |
+  | 60 | 4 | CRC-32 of bytes 0-59 |
+
+  The other bytes are zero. A file whose header does not match the stream,
+  or whose length is not the header's, is built again.
+- **Row**, 64 bytes a record, in record order from offset 64. Every position
+  of the main line, the start included, adds to it:
+
+  | Offset | Size | Field |
+  |---|---|---|
+  | 0 | 16 | the squares white's, then black's pawns stood on, a bit a square, a1 bit 0 to h8 bit 63 |
+  | 16 | 16 | the same for knights and bishops |
+  | 32 | 16 | the same for rooks and queens |
+  | 48 | 10 | for white, then black, and for pawns, knights, bishops, rooks and queens, a byte: the least the side had in its low half, the most in its high half, 15 meaning 15 or more |
+  | 58 | 1 | bit 0: indexed, as in the stream's slot |
+  | 59 | 5 | zero |
+
+  A record the index does not hold is all zeros. Kings are not kept, so a
+  fragment's king never rules a game out.
+- **Block table**, after the rows: the CRC-32 of each block's rows, 4 bytes
+  a block. The table is checked against the header's CRC when the file
+  opens, and a block against its CRC the first time a search reads it while
+  the file is open. A failure drops the index and its masks, as a damaged
+  stream does. A file takes 64 bytes a record, 4 a block and 64 more.
+- **Ruling games out.** A game may match only when, for some form of the
+  fragment, each piece of Look-for (but a king) stood on its square in the
+  line's pawns, minor pieces or major pieces, and when an Or names pieces,
+  one of them did (a king always may), and each material range meets the
+  least and the most of its kind. Points and Exclude rule nothing out. The
+  rest are replayed from the move stream, unchecked, until the first
+  stretch that holds the filter; a replay stops early once the line has
+  fewer men or pawns of a side than every form and the material need, or
+  lacks a pawn on its home rank that every form looks for, as a line only
+  ever loses those.
+
+# The classic format (`.cbh`)
+
+`cbformat::cbh` reads the previous ChessBase format, the `.cbh` family, from
+Morphy's [`format/v1`](https://github.com/Yarin78/morphy/tree/master/format/v1)
+description, which has no licence either: no text or code is copied from it.
+The translation tables of the move encodings are the facts the format needs;
+they are taken from the description as data, and a test checks each is a
+permutation.
+
+The reader was checked against:
+
+- six databases that exist in both formats: five weekly Mega updates of 2026
+  (28,488 games) and a user database (350 games). For every game of every pair
+  the whole move tree (every move of every line in stored order, whether it
+  lies on the main line, and where each variation opens and closes) is
+  identical to the 2CBH copy's, and so are the start position, result, ECO,
+  date, ratings, round, players and tournament, apart from the names listed
+  below. The PGN of every game, annotations included, is byte for byte the
+  2CBH copy's, with English and with German comments; the only exceptions are
+  87 games of the user database whose tags carry one of those names.
+  `cbtool verify` prints the same counts for both copies of each pair,
+  annotations included, and the rules oracle (`examples/oracle.rs`, which
+  replays the decoded moves in `cozy-chess`) finds no difference in their
+  2,617,380 positions;
+- the first 4,971 records of a Mega Database 2026 converted to `.cbh` by
+  ChessBase and stopped part way: its 4,964 game trees, among them 422 set-up
+  positions and 157 null moves, equal the 2CBH Mega's first 4,964;
+- 245 databases that exist only in `.cbh` (40,635 games, 31,196 of them from
+  set-up positions, 1,628 guiding texts, 6,854 null moves, 30,485 annotated
+  games): 244 verify with no failure. One is damaged (below), and one holds
+  two games with annotations past their last move (below), which `verify`
+  counts.
+
+## Findings
+
+- **Format version.** The byte at 0x05 of the `.cbh` header is 5 in the six
+  paired databases, the partial Mega and one other, and 1 in the remaining
+  244 examined; the description gives 1. The reader does not check it. The header's in-use size at 0x01 is 44 or 36, and the
+  `.cbg` header 26 or 10 bytes, as described.
+- **Encoding modes.** Every game examined uses mode 0. The reader supports the
+  modes whose tables the description gives: 0, 4 and 10 (compact) and 5
+  (simple); any other mode is an error naming it.
+- **Stray bytes after the end.** Two games of one database carry 3 and 7 bytes
+  after the final end-of-line byte, inside their records. The tree before them
+  is complete, and the reader ignores them.
+- **Castling without a stored right.** Four set-up games in two databases
+  castle although the stored castling byte lacks that right: 0 in an older
+  database, `0x0b` in another. The reader starts such a game with the right its
+  castling uses added, when the king and the rook stand where the right needs
+  them: their home squares, or in Chess960 the squares the record names
+  (`cbh::start_as_played`); otherwise the move is an error. Finding the
+  right plays the game's moves, so a set-up whose kings and rooks could hold
+  no missing right is not played for it, and `cbh::walk_from` walks from a
+  start already found instead of finding it again. The stored byte itself is
+  still reported by `GameMoves::start`.
+- **Text encoding.** The description says ISO 8859-1, and the databases
+  examined first held Windows-1252, which ChessBase, a Windows program, means
+  by the bytes 0x80-0x9f. A database ChessBase converted from 2CBH holds names
+  as UTF-8 instead: 96 player and tournament names in the partial Mega. A
+  field or text whose bytes are valid UTF-8 is read as UTF-8; a UTF-8 text cut
+  at the field's width loses its incomplete last character. Such UTF-8 keeps
+  ChessBase's signs as Private Use Area code points, as 2CBH does (39 names and
+  text titles of the partial Mega), and a field reads them as a 2CBH name does
+  (`cbformat::signs`, #316). Text that is not
+  UTF-8 is read through one code-page decoder (`cbformat::codepage`), and a
+  byte the page leaves undefined reads as the C1 control of the same value.
+- **Russian databases hold Windows-1251** (asavis/oschess-cb-bridge#293). In a
+  set of Russian databases, 286,811 comments and 28,743 names were
+  Windows-1251, beside 208 comments and 5,500 names of Western text in
+  Windows-1252 (a few Spanish and German databases, and German comments in one
+  Russian database). Nothing in a record names the page: the Russian comments'
+  languages are "any" (280,184) and "English" (6,131). So, on a computer whose
+  ANSI code page is 1251 or 1252, single-byte text is read in the page its words
+  show (`codepage::Evidence`). A Russian or Ukrainian word is made of bytes
+  0xc0-0xff alone, or has three of them in a row (`Cлон`, typed with a Latin C);
+  Russian notation (`Фc2`, `Kрg1`, `Л:f6`) counts with them. A word with
+  no more of those bytes than ASCII letters is Western (`für`). A word of one
+  letter, and a short word with more of them but no three in a row (`Süß`,
+  `été`), shows neither. A text whose words show neither (`и т.д.`,
+  `Cet été`) is read as its game's other texts show together, else as the names
+  in the first 64 KiB of each entity file show, else in the computer's page.
+  Read so, these databases show no mojibake on either computer, Western text in
+  them stays Western on a Cyrillic one (no umlaut reads as a Cyrillic letter),
+  and the two computers read alike all but 51 of their 447,853 names and texts,
+  nearly all a lone `и …` in a game with no other text. On a computer of another
+  page, the text is read in that page as it stands.
+- **Piece bytes.** ChessBase's chess fonts draw 0xa2-0xa7 as king, queen,
+  knight, bishop, rook and pawn, and Russian databases use them in comments and
+  some names: `¤d7`, `¥xf3`, `¤ñ3` with a Cyrillic `с`, `¦:f6`, `¤ : h3`, `£+¤`,
+  `d8£`, and endgame classes such as `¦¥1`. On a computer of either page the
+  reader serves such a byte as the figurine ♔ ♕ ♘ ♗ ♖ ♙ only where a whole move
+  follows it, ending before an ASCII letter or digit (`cbh::text::is_piece`): a
+  square, which a file, a rank or a square and then a capture or a dash may come
+  before. Without a move it is a piece only as a promotion after a square,
+  beside another piece, and across a plus from one. Elsewhere it is the page's
+  character, since Windows-1251 has ў Ј ¤ Ґ ¦ § there (Ukrainian `Ґаєвський`,
+  Serbian `Јасна`) and Windows-1252 the signs ¢ £ ¤ ¥ ¦ § (`£5-£10`, `§4-6`). In
+  these databases 19,792 became figurines and 83 stayed characters: typing slips such
+  as a square typed with a wrong letter, and pieces standing alone (`¥ (any
+  move)`; the examples in this section are made up). On a computer of another
+  page, such as Windows-1250 with Ł and Ą at 0xa3 and 0xa5, they are read as
+  that page reads them.
+- **Signs** (#306). A chess font shipped with these databases draws ChessBase's signs in
+  0x80-0xbf: the pieces above, `+-` at 0x9d, `-+` at 0xb0, `±` `⩲` `⩱` at
+  0xb1-0xb3, `∓` at 0xb5, `⌓` at 0xb9, `=/∞` at 0xa9 and `½` at 0xbd, read
+  from the glyphs' outlines. Their text uses two of them where the
+  pages have a letter or a sign no chess text means, and the reader serves
+  them as signs where no letter follows: `½` at 0xbd (204 times, `½-½`), which
+  Windows-1251 reads as the Macedonian `Ѕ`, and `∓` at 0xb5 (53 times, after a
+  move or before `/-+`), which both pages read as `µ`. The others are left as
+  the page reads them: 0xb9 is `№` in their text (1,021 times, `№102`),
+  0xb2 and 0xb3 are Ukrainian `І` and `і` in Windows-1251 (25 times as signs,
+  which a reader cannot tell from the letters), and 0xa9 is `©` (13 times).
+  0x9e (2,465 times, after `Диаграмма` and as comments of their own) is
+  ChessBase's diagram mark (#314): the Mega's Western text writes it after
+  "Diagram" in four languages, and 2CBH writes its counterpart U+E005 where
+  the older text has it (`cbformat::signs`). That font draws it as a
+  ring with an arrow up. Touching no letter, it is dropped
+  (`cbh::text::is_diagram_mark`), so `Диаграмма` keeps no `ћ` and a comment of
+  the mark alone is empty; between letters it is the page's letter (`ž` in
+  `Božidar`, Serbian `ћ`).
+- **Cyrillic look-alikes.** Typists mixed Cyrillic letters that
+  look Latin into Latin words (`сorr.`, `Bа2`, `Rе8`). A word whose bytes
+  above ASCII are all such letters shows neither page, since it reads alike
+  either way, and so does not turn a database's names Western. A square whose
+  file is typed in Cyrillic (`Rе8`, `N:с2`, `е5`), one of а-е after a number
+  as Russian databases number problems (`1.49а`), and a promotion or a mate after a
+  square (`h8Ф`, `Фb7х`), show Cyrillic.
+- **Signs in Western text** (#308). Western text holds ChessBase's signs in
+  bytes Windows-1251 reads as letters, and engines and French ordinals end
+  numbers with letters. Neither `№` before a digit, nor `¹` or `×` before a
+  move (`¹8.¤c3`, `×b6`), nor another letter after a number or a square
+  (`5.00ß`, French `2è`, `d4þ`, `2þ`), shows a page; nor does a word of one
+  byte repeated, nor one of only `×`, `÷` and the letters only Windows-1251
+  has (`þþ`, `××`, `÷³`). In these databases, one comment of a German game changes
+  for it (`þþ`, which read as `юю`).
+- **UTF-8 inside Windows-1251.** Twelve comments hold a text in Windows-1251
+  and then a copy in UTF-8. A run of three Cyrillic UTF-8 letters or more,
+  with other UTF-8 and ASCII between, is read as UTF-8 (`codepage::cyrillic_utf8_runs`):
+  Windows-1251 reads such a letter as `Р` or `С` and a sign, which Russian text
+  does not write three times in a row. Six of them start with a letter whose
+  first byte the file already lost (`? Ў…`), which stays as it is.
+- **Checked against these databases** (#306): every name and text read on a 1251 and
+  on a 1252 computer is its bytes read in one page, with pieces, signs and
+  UTF-8 runs only where the rules above put them; a letter-bigram model built
+  from independent Ukrainian and English text agrees with the page chosen but
+  for strings it misjudges (`СССР`, `(Эммс)`) and four of mixed typing
+  (`Tenepü`, the Latin `Tenep` with a Cyrillic `ь`). Served by the bridge on a
+  1251 computer, all 40,618 readable games parse with python-chess, and the
+  figurines' squares are reached by a piece of their kind more often under
+  this mapping than under any of the 719 others.
+- **Names that differ from the 2CBH copy** do so for two reasons only. Names
+  with characters that no single-byte code page holds are stored in some other
+  form (25 in the user database). Names longer than their field are cut
+  at its width (63 in the user database, 32 in the partial Mega).
+- **Name fields keep their terminating zero.** In the 251 classic databases
+  examined no last name fills its 30 bytes and no first name its 20: the
+  longest hold 29 and 19 bytes. Tournament titles hold at most 39 of their
+  40 bytes (5,355 do), except in the user database ChessBase converted from
+  2CBH, where 15 fill all 40. A cut is measured in the bytes the field
+  stores, not in the text read from them: a Windows-1252 byte reads as up to
+  three bytes of UTF-8. A name cut in UTF-8 ends before a character that
+  would cross the end: a first name of ten two-byte characters keeps nine.
+- **2CBH analyses** are stored as ordinary games in a converted classic
+  database (5 in the partial Mega); their move trees are the same, and so are
+  their dates and move counts, which the 2CBH header keeps at offsets of its
+  own (see "Analyses: a date and a move count of their own").
+- **Guiding texts** keep their titles, one per language, at the head of their
+  own `.cbg` record, where 2CBH names a title as a game tag entity. Of the
+  1,628 texts in the classic-only databases, none names a tournament in its
+  header; 297 name an annotator and 339 a source. The bridge shows a text's
+  first title that is not blank, whatever its language, and its annotator as
+  its author (`cbh::Database::text_title`). Their bodies are described under
+  "Guiding texts" below.
+- **Annotators** are a table of their own (`.cbc`), one text each, where 2CBH
+  names a player and shows it as `Last, First`. In the user database, 290 of
+  the 291 games the 2CBH copy annotates carry the same words in another order
+  in the classic copy (`First Last`), and one is equal; two Mega updates have
+  2 such games each. The bridge searches, sorts and suggests the classic copy
+  by its own annotator text, as stored.
+- **Damage.** One old database fails on 3 of its 385 games: a game whose moves
+  stop without an end marker, a game whose record head gives size 0 (it starts
+  where the previous game's record ends), and a deleted game whose record
+  claims mode 62 and 8 MB past the end of the file. The reader reports each as
+  an error.
+- **Large files.** Offsets in `.cbh` are 32-bit. When `.cbg` or `.cba` is
+  larger than 4 GiB, the reader takes each game's offsets from its `.cbj`
+  record instead, where they are 64-bit: moves at 0x1e and annotations at
+  0x0c, big-endian. `.cbj` is read only then. Its record must be long enough
+  to hold both (38 bytes, version 6 on), and the low 32 bits of each must
+  equal the `.cbh` offset, or the game is an error. In the six paired
+  databases, every game's `.cbj` offsets equal its `.cbh` offsets.
+
+## Guiding texts
+
+A text's `.cbg` record holds its titles, an unknown byte (0 or 1), and its
+contents, one per language, as the description gives
+(`cbh::Database::guiding_text`, #324). Measured over every classic database
+available, counts only: 85 databases hold 1,635 texts, and every record reads
+to its last byte by that layout.
+
+| Format version | Texts | Content |
+|---|---|---|
+| 1 | 1,599 | single-byte text with `u16` lengths, then formatting data |
+| 2 | 28 | the same with `u32` lengths |
+| 3 | 8 | an HTML document, then 4 zero bytes |
+
+The language numbers of a content are ChessBase's text annotation languages
+(0 English … 6 Portuguese, 7 any). 1,595 of the 1,627 contents of versions 1
+and 2 say English (0), Russian databases among them, so a reader cannot take the
+number for the text's language.
+
+### The text of versions 1 and 2
+
+`\r` ends a paragraph; the text holds no `\n`, and no `0x9e` diagram mark.
+The byte `0x04` stands where an object of the formatting data is placed
+(30,755 in all). Piece bytes (`0xa2`-`0xa7`) appear in 451 texts and read as a
+comment's do. The bridge decides the code page once from the whole text,
+reads the whole text once, and cuts it where runs, lines and objects begin, so
+a figurine, a diagram mark or a UTF-8 character reads the same whichever run
+it falls in.
+
+### Formatting data
+
+The description calls it unknown. It reads as follows in all 1,631 contents
+of versions 1 and 2; integers are little-endian.
+
+| Part | Layout |
+|---|---|
+| Header | `u16` format (200 or 300 in version 1, 310 in version 2), `u16` number of objects, `u16` unknown (0 in 1,394 contents, else an even number up to 10) |
+| Objects | each a `u16` type, its position (`u16`; `u32` in version 2), a `u16` length and that many bytes |
+| Styles | a `u16` count, then each a `u16` id, a `u16` number of properties, and each property a `u16` key, a `u16` length and the value |
+| Runs | each a `u16` length of text, a `u16` style id and a `u16` flag (0 in 74,044 runs, 1 in 630, 2 in 82, 3 in 6), until `0xffff` |
+| Property lists | three, each a `u16` number of properties as above, with no id, to the end |
+
+In every content the runs' lengths sum to the text's length, and every run
+names a style the content defines; a version 2 text over 65,535 bytes has
+runs of at most 65,535. An object's position is one past the index of a
+`0x04` in the text: the objects' positions are exactly the markers' in 1,623
+of the 1,631 contents, and the others hold objects at position 0.
+
+**Style properties.** Weighted by the characters each style covers:
+
+| Key | Value | Reading |
+|---|---|---|
+| 0 | a `u16` length and a single-byte name | the font: Arial for 6.7 million characters, a chess figurine font made with Font Creator Program for 3.5 million, Times New Roman for 1.4 million, and figurine fonts named `FigurineCB`/`CA Chess` |
+| 1, 2, 3 | one byte, 0 or 1 | bold (541,123 characters), italic (613,942), underline (6,741) |
+| 4 | `u32` | the size: 18 for 10.2 million characters, 24 for 1.3 million, then 16, 20, 14 and others; its unit is not known |
+| 5, 6, 7, 8, 9, 256 | | not read: 5 is 0, 1 or 2; 6 takes 0-50 in steps of 5; 9 is six bytes |
+
+**Objects.**
+
+| Types | Count | Data |
+|---|---|---|
+| `0x09`, `0x11` | 9,030 pairs | a diagram. A `u16`, then 32 bytes of 4-bit square codes in the order a1, a2 … a8, b1 … h8, high nibble first: 0 empty, 1-6 a white king, queen, knight, bishop, rook and pawn, 9-14 the black ones. Then 70 bytes not read; `0x11` adds 3 more. No pawn stands on the first or last rank in any of the 9,030, and 8,999 have one king of each colour; read rank by rank or low nibble first, 24,179 and 39,100 pawns would. The side to move has not been found |
+| `0x02`, `0x1a` | 12,705 pairs | a game link. A `u16` length and the search: a byte, its length again, a `u16` 1, a byte, white (a byte length and its text), a byte, black, 7 bytes not read, the tournament, and fields not read that end in `b5 af`. `0x1a` adds a `u16` length and the label the text shows (`1.5`); the bridge takes the label from `0x1a` whichever of the pair comes first. No field read holds a game number. Among the games of their own database, matching white and black finds one game for 8,952 links and several for 1,472; white alone finds one for 1,797 and several for 338; 146 find none |
+| `0x05`, `0x19` | 4,464 | a link to another text, by title: a `u16` length and the title (`0x19` with 8 more bytes, `0x05` with 6). 4,398 of the titles are a text's of the same database |
+| `0x0c` | 2,004 | a list label such as `1.`: a `u16` length and the text |
+| `0x17`, `0x06` | 338 | a picture, by the name of a `.bmp` file in the folder beside the database (Morphy's `6-multimedia.md`); not served |
+| `0x1c` | 274 | a link to another database by its path; not served |
+| `0x0f`, `0x01`, `0x14`, `0x0a`, `0x10` | 1,198, 53, 7, 5, 5 | not read |
+
+A reader that meets formatting data it cannot read keeps the text, unstyled
+and without objects.
+
+**What the bridge reads** (`examples/guide_census.rs` over the same
+databases and the 2CBH ones, counts only): all 3,458 texts read, none failed.
+Their 1,631 contents of versions 1 and 2 give 92,514 text spans (neighbouring
+runs of one style joined), 9,028
+diagrams (two diagrams hold a square code no piece has), 12,695 game links
+and 4,459 text links. Resolved as `docs/api.md` describes, 12,491 game links
+and 4,392 text links name a record of their database.
+
+### HTML texts
+
+The 1,823 2CBH texts, all in the Mega, read by Morphy's `format/v2/2-moves.md`
+to their last byte, each entry's language a nation as a text annotation's is;
+with the 8 classic texts of version 3 they hold 9,622 HTML documents that are
+not empty, the largest answer of them 1.2 MB.
+Their HTML links with `javascript:CBLink(tag_table, …)` (tournament tables)
+and `CBLink(tag_game_set, …)`, and shows pictures from a media folder.
+
+## Annotations (`.cba`)
+
+A game's `.cba` record is a 14-byte head (the game id, the bytes `01 00 0e 0e`,
+the number of annotations plus one, and the record's size) followed by the
+annotations, each with its position, its type and its own size. Integers are
+big-endian. The reader maps them to the same annotations as 2CBH's, so the PGN
+writer handles both formats alike.
+
+- **Positions count in stored order**: depth first, the main line first at
+  every position, which is the order the moves are stored in `.cbg`. 2CBH
+  counts in PGN order. The paired databases confirm it: with each format's
+  numbering, every annotated game's PGN is the same.
+- **Every type has its size**, so a type whose layout is unknown is skipped,
+  and a classic record is never left incomplete. The types met in the paired
+  Mega updates are `02` text, `03` symbols, `13` game quotation, `18`
+  critical position, `22` medals and `26` evaluations; the user database adds
+  `04` coloured squares and `05` arrows.
+- **A text's language** is a nation number: 42 (England) is English, 53
+  (Germany) German and 0 any language, as the pairs show against the 2CBH
+  languages. French, Spanish, Italian, Dutch, Portuguese, Polish and Greek map
+  by their nations (49, 43, 70, 103, 117, 116, 55). Any other nation is a
+  language of its own, which no preference names.
+- **Squares** in coloured squares and arrows are numbered from 1.
+- **The file header** is 26 bytes, or 10 in old databases, as for `.cbg`: 139 of
+  the 245 classic-only databases have the short header, and their first
+  record starts at 10.
+- **Checks.** The head's game id equals the game, and its count and size
+  equal the record's contents, in every record of every database examined.
+  The reader treats a mismatch, an annotation running past the record, a
+  position below −1 and a square out of range as damage.
+- **Past the last move.** Two set-up games of one classic-only database have
+  annotations past their last move (positions 52 and 16, in games of 51 and 11
+  moves), and ChessBase opens both. The reader writes such an annotation after
+  the main line's last move, whatever its kind, and a text meant to precede a
+  move follows it there; the game is served in full, and `cbtool verify`
+  counts the games and the annotations moved. 2CBH is read the same way. In a
+  game without moves there is no move to take them, so there it stays damage.
+- **Record size.** A record's head may claim up to 4 GiB. The largest record
+  in the 252 classic databases examined is about 45 KB, so a record over
+  16 MiB (`cbh::MAX_ANNOTATION_RECORD`) is refused before it is read, as 2CBH
+  records over 64 MiB are.
+- **Game quotations** (`13`) have a header of their own layout. Everything is
+  big-endian, and each string is a length byte, the text and a zero:
+  - the data's size, the mode, and two **unknown** bytes;
+  - white and black, each one `last,first` string;
+  - white's rating, black's rating and the ECO;
+  - the event and the site;
+  - the date `int`, the type (as a `short`), the nation `short`, two
+    **unknown** bytes and the number of rounds;
+  - the subround, the round and the result, one byte each;
+  - then bytes that are **unknown**.
+
+  The classic copy of Update41 decodes to the same fields as its 2CBH copy in
+  all 1,671 quotations: the PGN of the two copies is identical. None of its
+  quotations holds moves, so the moves of a classic quotation are not known, and
+  they stay in its data.
+- **Medals** (`22`) are the same `int` as in 2CBH, big-endian.
+- **Evaluations** (`26`) and **clocks** (`16`, `17`) have the classic layouts
+  in the 2CBH section above, which the pairs confirm.
+- **Other types** are written only as their data (`[%cbraw]`) in the full
+  form. Their classic layouts are not decoded.
+
+## Reader rules
+
+- **Castling** is read only from its defined encodings: the one-byte codes 9
+  and 10; in a Chess960 game, two bytes naming the king's destination
+  (`g1` `c1` `g8` `c8` for the side to move) as both squares; in any other game,
+  two bytes moving the king from `e1` or `e8` to the `g` or `c` square of the
+  same rank. Any other move onto a piece of the side to move is an error.
+- **Chess960 castling squares.** The six squares after a Chess960 start
+  position name each side's king square and the rook each castling right
+  uses. A set-up keeps them: a side keeps its rights only while its king
+  stands on its named square, and a right castles with the named rook even
+  when another rook stands further out, such as one promoted to. A right the
+  reader adds for a castling move (above) obeys the same squares. A square
+  that is not on its side's back rank names nothing: the right then needs no
+  particular king square and uses the outermost rook on its wing.
+- **Nesting.** At most 1,024 variations may be open at once
+  (`cbh::MAX_VARIATION_DEPTH`); a deeper tree is an error, raised before its
+  position is saved. The deepest nesting measured is 74 in the Mega Database
+  2026 (three games reach 64 or more) and 63 in the classic databases above.
+
+# PGN files
+
+`cbformat::pgnfile` reads a PGN file as a database through a header index it
+builds in one pass (`docs/api.md`, "PGN files"). The reader was checked
+against:
+
+- **ChessBase's own export.** A weekly Mega update (6,223 games) and the PGN
+  that ChessBase '26 exported from it: every game's row fields (date, event,
+  site, round, both ratings, result, ECO, move count) and every main line are
+  equal to the 2CBH copy's, the main line played from the PGN text against
+  the one replayed from the move records. 5,000 sampled positions of the two
+  position indexes answer the same games, results and moves. The players'
+  names differ in 46 places, all of one kind (below).
+- **This reader's own export.** All 47 weekly Mega updates of 2026 (284,781
+  games) exported with `cbtool pgn` and read back: every row field and every
+  main line equal, apart from five names (below). For two of the pairs, 3,000
+  sampled positions each answer the same in both position indexes.
+- **Scale.** The 47 exports written 45 times over into one file of 10.2 GB
+  and 12,815,145 games: its header index (616 MB, 48 bytes a game and the
+  names) is built in 78 to 197 s, with 10 MB of memory, on a loaded 32-thread
+  machine; its position index, of 12,815,100 games, in 186 s; and
+  `cbtool verify` plays all 1,133,884,395 main-line plies with no move it
+  cannot play.
+- **Local files.** Five PGN files of a user's ChessBase folders (10,044
+  games, 2,711 of them from set-up positions, one file with Cyrillic comments
+  and a byte-order mark): every main line plays to its end.
+
+## Findings
+
+- **ChessBase writes PGN as UTF-8 with a byte-order mark**, and a sub-round
+  as `5.2`. Every PGN file seen was valid UTF-8.
+- **A one-letter first name gets a period in ChessBase's export**: a player
+  stored with the first name `N` is written `Last, N.`. That is the whole of
+  the 46 name differences above.
+- **A first name stored with a leading space** is written by `cbtool pgn`
+  with two spaces after the comma; this reader trims it. That is the whole of
+  the five name differences above.
+- **`0-0` is ChessBase's result for a game both players lost** (the header's
+  result 7), in the `Result` tag and at the end of the movetext. In such a
+  game the movetext's last `0-0` is the result, and an earlier one castles;
+  elsewhere every `0-0` castles.
+- **This reader's PGN writer puts a sub-round as `5(2)`**, as the list shows
+  it; the reader takes both forms.
+- **Full moves count move numbers.** A game set up with black to move,
+  `35... Kf8 36. Ke4`, has two moves in ChessBase's header, not one.

@@ -1,0 +1,281 @@
+//! The indexes of PGN databases (`cbformat::pgnfile`): built in the
+//! background, one at a time, the first time a PGN file is opened at a
+//! generation, and kept in the data folder's `pgn` folder, so that a
+//! restarted bridge opens the file at once. While its index is built the
+//! database is `opening`, with the bytes of the file read so far.
+
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use cbformat::codepage::CodePage;
+use cbformat::pgnfile;
+
+use crate::activity::Activity;
+use crate::fetch::Progress;
+use crate::indexdir::{self, Kept, Unlisted};
+use crate::serial::Serial;
+use crate::sync::lock;
+
+/// How long a failed build is reported before the next request tries again.
+const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(60);
+
+enum Build {
+    Idle,
+    /// A build running or queued, for the generation it reads.
+    Working(Arc<Progress>),
+    /// The build for `generation` failed at the instant.
+    Failed(u64, Instant),
+}
+
+/// What opening a PGN database finds.
+pub enum Opening {
+    Ready(pgnfile::Database),
+    /// Its index is being built; the database is `opening`.
+    Pending(Arc<Progress>),
+    /// Its index could not be built; the database is `unreadable`.
+    Failed,
+}
+
+/// The index builds of all PGN databases, and the queue they run in.
+pub struct Registry {
+    dir: Mutex<Option<PathBuf>>,
+    builds: Mutex<HashMap<String, Arc<Mutex<Build>>>>,
+    queue: Arc<Serial>,
+    /// The code page of games that are not UTF-8: this computer's.
+    page: CodePage,
+    /// Header indexes whose database is not on the list, and since when.
+    pub(crate) unlisted: Mutex<Unlisted>,
+}
+
+impl Default for Registry {
+    fn default() -> Registry {
+        Registry::counted(Arc::default())
+    }
+}
+
+/// The database id and kind of a header index folder entry: `<id>.head` is a
+/// PGN database's header index and `<id>.head.partial` a build's work; `None`
+/// for anything the bridge did not write there, which is never touched.
+fn index_entry(name: &str) -> Option<(&str, Kept)> {
+    let (id, kind) = indexdir::db_id(name, &[".head", ".head.partial"])?;
+    Some((id, if kind == 0 { Kept::Index } else { Kept::Work }))
+}
+
+impl Registry {
+    /// The index builds of a catalog's PGN files, whose queue counts its
+    /// jobs in `activity` ([`crate::catalog::Catalog::settle`]).
+    pub fn counted(activity: Arc<Activity>) -> Registry {
+        Registry {
+            dir: Mutex::default(),
+            builds: Mutex::default(),
+            queue: Arc::new(Serial::counted("pgn", activity)),
+            page: system_code_page(),
+            unlisted: Mutex::default(),
+        }
+    }
+
+    /// Keeps index files in `dir` (the bridge's data folder's `pgn`).
+    pub fn set_dir(&self, dir: PathBuf) {
+        *lock(&self.dir) = Some(dir);
+    }
+
+    /// Where index files are kept; the data folder's `pgn`
+    /// ([`crate::folders::pgn_dir`]) unless set.
+    pub fn dir(&self) -> Option<PathBuf> {
+        lock(&self.dir).clone().or_else(|| crate::folders::data_dir().map(|d| crate::folders::pgn_dir(&d)))
+    }
+
+    /// The queue builds run in.
+    pub fn queue(&self) -> &Arc<Serial> {
+        &self.queue
+    }
+
+    fn build(&self, id: &str) -> Arc<Mutex<Build>> {
+        Arc::clone(lock(&self.builds).entry(id.to_string()).or_insert_with(|| Arc::new(Mutex::new(Build::Idle))))
+    }
+
+    /// The build of `id` running or queued, if any.
+    pub fn progress(&self, id: &str) -> Option<Arc<Progress>> {
+        match &*lock(&self.build(id)) {
+            Build::Working(p) => Some(Arc::clone(p)),
+            _ => None,
+        }
+    }
+
+    /// Whether a header index build runs or waits (#61): a restart would
+    /// lose it.
+    pub fn building(&self) -> bool {
+        let builds: Vec<Arc<Mutex<Build>>> = lock(&self.builds).values().map(Arc::clone).collect();
+        builds.iter().any(|b| matches!(*lock(b), Build::Working(_)))
+    }
+
+    /// Removes from the header index folder what no database on the list will
+    /// use, as the position index folder is swept (`crate::explorer::Registry::sweep`,
+    /// #60): the index of a database off the list for the grace or longer,
+    /// and a build's work left by a build that no longer runs. The files of a
+    /// database being read are never touched, nor anything the bridge did not
+    /// write.
+    pub fn sweep(&self, listed: &HashSet<String>) {
+        let Some(dir) = self.dir() else { return };
+        lock(&self.unlisted).sweep(&dir, listed, index_entry, |file| {
+            // Held while the file goes, so no build of its database starts meanwhile.
+            let build = self.build(file.id());
+            let b = lock(&build);
+            if !matches!(*b, Build::Working(_)) {
+                file.settle(|| {});
+            }
+        });
+    }
+
+    /// Where the header index of database `id` is kept, when there is a
+    /// data folder.
+    pub fn index_path(&self, id: &str) -> Option<PathBuf> {
+        self.dir().map(|dir| dir.join(format!("{id}.head")))
+    }
+
+    /// Runs `write`, a write of the bridge's own into the PGN file of
+    /// database `id` and the header index it makes for it, holding the
+    /// database's build: no build of its index starts meanwhile, a request
+    /// that opens the file waits for the index, and the folder's sweep leaves
+    /// its work alone. `None` when a build runs or waits: the database is
+    /// then `opening`.
+    pub fn while_idle<T>(&self, id: &str, write: impl FnOnce() -> T) -> Option<T> {
+        let build = self.build(id);
+        let mut b = lock(&build);
+        if matches!(*b, Build::Working(_)) {
+            return None;
+        }
+        let done = write();
+        *b = Build::Idle;
+        Some(done)
+    }
+
+    /// The PGN file `path` of database `id` at `generation`: opened with the
+    /// index built for that generation, else the build that makes it, which
+    /// starts now if none runs. While another generation's build runs, the
+    /// file waits for it: the next request after it ends starts afresh.
+    pub fn open(&self, id: &str, path: &Path, generation: u64) -> Opening {
+        let Some(dir) = self.dir() else { return Opening::Failed };
+        let index = dir.join(format!("{id}.head"));
+        let build = self.build(id);
+        let mut b = lock(&build);
+        match &*b {
+            Build::Working(p) => return Opening::Pending(Arc::clone(p)),
+            Build::Failed(g, at) if *g == generation && at.elapsed() < RETRY_AFTER_FAILURE => return Opening::Failed,
+            _ => {}
+        }
+        if let Ok(db) = pgnfile::Database::open(path, &index, generation, self.page) {
+            *b = Build::Idle;
+            return Opening::Ready(db);
+        }
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            crate::fault!("the index folder cannot be made for database {id}: {e}");
+            *b = Build::Failed(generation, Instant::now());
+            return Opening::Failed;
+        }
+        let total = std::fs::metadata(path).map_or(0, |m| m.len());
+        let progress = Arc::new(Progress::new(0, total));
+        *b = Build::Working(Arc::clone(&progress));
+        drop(b);
+        let (job_build, p, path, page) = (Arc::clone(&build), Arc::clone(&progress), path.to_path_buf(), self.page);
+        let id = id.to_string();
+        let started = self.queue.submit(Box::new(move || {
+            let mut last = 0;
+            let built = pgnfile::build(&path, &index, generation, page, &mut |read| {
+                p.add(read.saturating_sub(last));
+                last = read;
+                true
+            });
+            *lock(&job_build) = match built {
+                Ok(_) => Build::Idle,
+                Err(e) => {
+                    crate::fault!("indexing the PGN file of database {id} failed: {}", crate::log::error(&e));
+                    Build::Failed(generation, Instant::now())
+                }
+            };
+        }));
+        if !started {
+            *lock(&build) = Build::Failed(generation, Instant::now());
+            return Opening::Failed;
+        }
+        Opening::Pending(progress)
+    }
+}
+
+/// The code page Windows reads text that is not Unicode in: the one ChessBase
+/// reads a legacy PGN file in. Elsewhere, Windows-1252.
+#[cfg(windows)]
+pub fn system_code_page() -> CodePage {
+    // SAFETY: GetACP takes no arguments and only reads the system's setting.
+    CodePage::new(unsafe { windows_sys::Win32::Globalization::GetACP() })
+}
+
+#[cfg(not(windows))]
+pub fn system_code_page() -> CodePage {
+    CodePage::WESTERN
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The header index folder is swept as the position index folder is: the
+    /// index of a database off the list once the grace has passed, a build's
+    /// leftover at once, nothing of a database being read, and nothing the
+    /// bridge did not write.
+    #[test]
+    fn the_header_index_folder_keeps_only_what_the_list_uses() {
+        let dir = std::env::temp_dir().join(format!("bridge-pgn-sweep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let registry = Registry::default();
+        registry.set_dir(dir.clone());
+        let (listed, gone, reading) = ("1111111111111111", "0123456789abcdef", "fedcba9876543210");
+        let names = [
+            format!("{listed}.head"),
+            format!("{listed}.head.partial"),
+            format!("{gone}.head"),
+            format!("{gone}.head.partial"),
+            format!("{reading}.head"),
+            format!("{reading}.head.partial"),
+            "notes.txt".into(),
+            // Upper case, and no test id in any case: Windows folds case.
+            "ABCDEF0123456789.head".into(),
+        ];
+        for name in &names {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        *lock(&registry.build(reading)) = Build::Working(Arc::new(Progress::new(0, 1)));
+        let on_list: HashSet<String> = [listed.to_string()].into();
+        let left = || {
+            let mut n: Vec<String> =
+                std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+            n.sort();
+            n
+        };
+        let dropped = [format!("{listed}.head.partial"), format!("{gone}.head.partial")];
+        let mut keep: Vec<String> = names.iter().filter(|n| !dropped.contains(n)).cloned().collect();
+        keep.sort();
+
+        // Within the grace, only the builds' leftovers go.
+        registry.sweep(&on_list);
+        assert_eq!(left(), keep);
+
+        // After it, the index of the database off the list goes too; the
+        // database being read keeps everything.
+        lock(&registry.unlisted).set_grace(Duration::ZERO);
+        registry.sweep(&on_list);
+        keep.retain(|n| n != &format!("{gone}.head"));
+        assert_eq!(left(), keep);
+
+        // Its read over, its leftover goes.
+        *lock(&registry.build(reading)) = Build::Idle;
+        lock(&registry.unlisted).set_grace(indexdir::SWEEP_GRACE);
+        registry.sweep(&on_list);
+        keep.retain(|n| n != &format!("{reading}.head.partial"));
+        assert_eq!(left(), keep);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

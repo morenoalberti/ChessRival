@@ -1,0 +1,64 @@
+[package]
+name = "bridge"
+description = "Serves the ChessBase databases of this machine to the oschess web app over loopback HTTP"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "oschess-bridge"
+path = "src/main.rs"
+
+# A scripted UCI engine for tests/engine.rs; never shipped.
+[[bin]]
+name = "fake-uci"
+path = "tests/fake-uci/fake_uci.rs"
+test = false
+doc = false
+
+[dependencies]
+cbformat = { version = "0.1.0", path = "../cbformat" }
+chesscore = { version = "0.1.0", path = "../chesscore" }
+# The pairing token: the standard library has no public API for operating-system randomness.
+getrandom = "0.3"
+
+[target.'cfg(unix)'.dependencies]
+# The position index's move stream is mapped read-only (explorer/map.rs).
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# The Documents known folder (documents.rs); already in the tree through same-file.
+# The engine's process priority (engine/uci.rs).
+# The code page of PGN text that is not UTF-8 (pgnindex.rs).
+# The position index's move stream, mapped read-only (explorer/map.rs):
+# `CreateFileMappingW` takes a security descriptor, hence `Win32_Security`.
+# The priority of index builds, the power status, a disk's free space and the
+# physical memory (machine.rs).
+# The access control list a rewritten PGN file keeps (write.rs):
+# `Win32_Security_Authorization`.
+# The Store package's family, whose folder keeps the application data it
+# creates (folders.rs): `Win32_Storage_Packaging_Appx`.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Globalization",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_Storage_Packaging_Appx",
+    "Win32_System_Com",
+    "Win32_System_Memory",
+    "Win32_System_Power",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+] }
+
+[[example]]
+name = "classic_pairs"
+# `cargo test` runs the tests of its rules for names.
+test = true
+
+[dev-dependencies]
+cbformat = { version = "0.1.0", path = "../cbformat", features = ["fixture"] }

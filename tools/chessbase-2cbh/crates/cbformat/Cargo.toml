@@ -1,0 +1,34 @@
+[package]
+name = "cbformat"
+description = "Reader for ChessBase chess databases: ChessBase 2 (.2cbh) and classic (.cbh)"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+chesscore = { version = "0.1.0", path = "../chesscore" }
+
+[features]
+# Test database builder (`cbformat::fixture`), for the tests of this workspace.
+fixture = []
+
+[dev-dependencies]
+cbformat = { path = ".", features = ["fixture"] }
+# Test oracle only (examples/oracle.rs): never a dependency of the shipped code.
+cozy-chess = "0.3"
+
+# Its PGN reading has unit tests, which `cargo test` runs.
+[[example]]
+name = "compare_chessbase_pgn"
+test = true
+
+# Its comparison of movetexts has unit tests, which `cargo test` runs.
+[[example]]
+name = "cbh_pairs"
+test = true
+
+[[example]]
+name = "full_form_census"
+test = true

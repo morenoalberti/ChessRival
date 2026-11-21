@@ -1,0 +1,109 @@
+# Cross-model review
+
+The gate, from [CLAUDE.md](../CLAUDE.md): a change is reviewed by the backend
+that did not write it, at the exact commit that will merge, with the verdict
+recorded on the pull request under the reviewer's own GitHub identity. Merge
+only on a clean verdict for the current head.
+
+## Launching the reviewer
+
+Post one top-level pull request comment whose entire body is the line
+`CB-REVIEW-REQUESTED <full 40-character head SHA>` immediately before each
+launch. It records the round; it is not a verdict.
+
+A Claude-authored change is reviewed by Codex, its newest model, and a
+Codex-authored one by Claude `sonnet`, both at effort `high`, from a worktree
+checked out at the exact head and through `scripts/target_slot.py`, which gives
+the review one shared target folder. The prompt names the model. The launch
+commands are kept on the development host
+(`~/.local/share/oschess/bridge-lane/review-launch.md`), not in this repository.
+
+## The prompt
+
+The implementing session fills in the angle-bracketed values and adds nothing
+else: no crux, no focus, no summary of the change.
+
+```
+You are <Codex model | Claude sonnet>, performing the independent
+cross-model review required by CLAUDE.md in the oschess-cb-bridge repository.
+The change under review was implemented by <the other backend>, so you are the
+required independent reviewer. This is REVIEW WORK ONLY.
+
+First make every GitHub call act as your own identity:
+
+  export GH_TOKEN="$(GH_TOKEN= gh auth token --hostname github.com --user <oschess-codex-bot | oschess-claude-bot>)"
+  gh api user --jq .login    # must print that account
+
+## What to review
+
+- Issue: https://github.com/asavis/oschess-cb-bridge/issues/<N>
+- Pull request: https://github.com/asavis/oschess-cb-bridge/pull/<PR>
+- Exact head commit under review: <full 40-character SHA>
+- Working tree: <path>, checked out at that commit
+
+Read CLAUDE.md, the issue, the pull request body and the full diff. Treat the
+issue and the pull request description as claims to verify, not as settled
+conclusions. Before reading the diff, read every earlier comment on the pull
+request. On a re-review, re-check each earlier finding against the current
+head; judge a finding the author disputes rather than fixes.
+
+Look for material defects: wrong results, panics or unbounded work on
+malformed input, format claims the code or the evidence does not support,
+missing or misleading tests, and violations of CLAUDE.md. Style preferences are
+not findings.
+
+Verify by running things, not only by reading:
+
+  cargo fmt --all --check
+  python3 scripts/target_slot.py cargo clippy --all-targets -- -D warnings
+  python3 scripts/target_slot.py scripts/clippy-windows.sh
+  python3 scripts/target_slot.py cargo test
+
+Write your own probes rather than trusting the bundled tests; a test written by
+the author of the code is not independent evidence of it. Build malformed
+inputs by hand. Local databases hold personal data: you may run
+`cbtool info` and `cbtool verify` on them, which print only counts, but never
+print, export or read the games, names or other contents of a local database,
+and never copy anything from one into a comment or a file.
+
+Look for local databases only in the folders the bridge reads them from: the
+`ChessBase` folder of the user's Documents folder, as Windows names it
+(`powershell.exe -NoProfile -Command "[Environment]::GetFolderPath('MyDocuments')"`),
+and the folders listed under `databases` in the bridge's `bridge.toml`
+(`%APPDATA%\oschess-bridge`), each with the folders below it. Never list,
+search or read any other directory of the user's, not even a parent of those
+folders such as Documents itself. The names of files and folders inside them
+name people and private databases too, so never print a directory listing or
+the output of `cbtool databases`: pick the databases within a script and print
+only counts.
+
+## Rules
+
+Do not edit files, commit, push, change branches, merge, or mutate any issue or
+pull request other than by posting your review comments. Leave the working tree
+exactly as you found it.
+
+## How to post your review
+
+1. Post your review as a comment on pull request <PR> under your own identity,
+   in English. Name the exact full head SHA in it. List each material finding
+   with file, line and a concrete failure, or say why the change is clean, or
+   explain what blocked the review and what would unblock it.
+2. Then post the verdict as a second, separate comment whose entire body is one
+   line and nothing else:
+
+     CB-REVIEW: CLEAN <full 40-character head SHA>
+
+   or `CB-REVIEW: FINDINGS <sha>` or `CB-REVIEW: BLOCKED <sha>`.
+
+Both comments are required for every outcome. Do not claim CLEAN for a review
+you could not finish.
+```
+
+## After the verdict
+
+- `FINDINGS`: the implementing backend fixes every confirmed finding on the same
+  branch, pushes, and requests a new review of the new head.
+- `CLEAN` naming the current head, with the prose comment naming the same SHA:
+  squash-merge with `gh pr merge --squash --match-head-commit <sha>`.
+- A push after a clean verdict, a rebase included, needs a new review.

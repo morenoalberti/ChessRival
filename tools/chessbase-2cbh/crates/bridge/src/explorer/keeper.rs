@@ -1,0 +1,263 @@
+//! The keeper of the position indexes of the databases in use (#149): a
+//! thread that a serving bridge starts, which looks at them at once and then
+//! every minute, and queues a background build ([`super::schedule`]) for each
+//! whose index is not of the generation the database has had for a minute.
+//!
+//! A database is in use when it is on the list and either has index files in
+//! the index folder, or had its explorer or the games of one of its positions
+//! asked for since the bridge started ([`Registry::mark_in_use`]); at the
+//! start, the ready database with the most records is in use too. Its build
+//! is queued once it opens `ready` ([`Entry::open`], which never downloads: a
+//! cloud-only or downloading database is never read in the background, and a
+//! PGN file waits until its header index is ready), and once it has had its
+//! generation for the quiet period: a database that keeps changing, as while
+//! ChessBase writes to it or a cloud provider syncs it, waits until it stops.
+//! A database first seen has had its generation since its files last
+//! changed; a change seen afterwards starts the quiet period afresh.
+//! A build that failed, or had no room on the disk, is not tried again in the
+//! background until the database changes; one that failed only because
+//! searches held every worker for as long as it waited for one is tried again
+//! at the keeper's next look (#180).
+
+use std::path::Path;
+use std::sync::atomic::Ordering;
+use std::sync::{Arc, Weak};
+use std::time::{Duration, Instant, SystemTime};
+
+use crate::activity::Active;
+use crate::api::App;
+use crate::catalog::{Entry, Opened};
+use crate::machine::{self, Machine};
+use crate::sync::lock;
+
+use super::schedule::Kind;
+use super::source::Source;
+use super::{Registry, State, kept, paths, room};
+
+/// How often the keeper looks at the databases in use.
+pub const TICK: Duration = Duration::from_secs(60);
+/// How long a database keeps its generation before its index is rebuilt in
+/// the background.
+pub const QUIET: Duration = Duration::from_secs(60);
+/// How long after the last request the keeper still looks (#365): with no
+/// request for this long oschess is not being used, and a bridge that nobody
+/// uses touches no file. The index of a database changed meanwhile is built
+/// again once oschess is used again. After this long nothing is left in
+/// memory either ([`crate::catalog::Catalog::release_unused`]).
+pub const ACTIVE_FOR: Duration = Duration::from_secs(10 * 60);
+/// The kind of work a look of the keeper counts as in the catalog's activity
+/// (#236).
+const LOOK: &str = "keeper";
+
+/// How often the keeper looks, how long a database must have kept its
+/// generation before its index is rebuilt in the background, for how long
+/// after a request it looks (`None`: with or without one), and whether the
+/// keeper was stopped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Keeping {
+    tick: Duration,
+    quiet: Duration,
+    active_for: Option<Duration>,
+    stopped: bool,
+}
+
+impl Default for Keeping {
+    fn default() -> Keeping {
+        Keeping { tick: TICK, quiet: QUIET, active_for: Some(ACTIVE_FOR), stopped: false }
+    }
+}
+
+/// A database's generation as the keeper first saw it, and since when the
+/// database has had it.
+pub(super) struct Seen {
+    generation: u64,
+    since: Instant,
+}
+
+/// Starts the keeper of the indexes of `app`'s databases, which looks every
+/// [`TICK`] while a request came within [`ACTIVE_FOR`] (#365), and ends once
+/// `app` is gone or the keeper is stopped ([`Registry::stop_keeping`]). A
+/// tick with no such request looks at nothing and counts as no work, so that
+/// nothing else wakes for it, and once nothing has used the bridge for that
+/// long it lets go of what the last use left in memory. It keeps indexes only in an index
+/// folder the bridge was given ([`Registry::set_dir`]), never in the default
+/// one. The priority of the builds it queues is chosen now
+/// ([`machine::BACKGROUND_MODE`]) and logged.
+pub fn start(app: &Arc<App>) {
+    crate::log!("background index builds run in mode {}", machine::background_mode().0);
+    let app: Weak<App> = Arc::downgrade(app);
+    let spawned =
+        std::thread::Builder::new().name("bridge-keeper".into()).stack_size(crate::THREAD_STACK).spawn(move || {
+            // The last work that kept the memory from being let go, told once.
+            let mut held_by = Vec::new();
+            while let Some(app) = app.upgrade() {
+                let registry = &app.catalog.explorer;
+                let Keeping { tick, active_for, .. } = *lock(&registry.keeping);
+                if active_for.is_none_or(|within| app.asked_within(within)) {
+                    // The reading of the list counts as the look's work too.
+                    let Some((_, look)) = registry.look() else { return };
+                    if lock(&registry.dir).is_some() {
+                        registry.keep(&app.catalog.entries());
+                    }
+                    drop(look);
+                } else if registry.stopped() {
+                    return;
+                }
+                // At every tick, not once a use: a tray snapshot taken after
+                // the last use opens the databases again (#365).
+                if let Some(within) = active_for
+                    && app.last_used().is_some_and(|used| used.elapsed() >= within)
+                {
+                    match app.catalog.release_unused() {
+                        Ok(true) => crate::log!("let go of the memory left by the last use"),
+                        Ok(false) => {}
+                        Err(running) if running != held_by => {
+                            crate::log!("the memory left by the last use stays while it runs: {running:?}");
+                            held_by = running;
+                        }
+                        Err(_) => {}
+                    }
+                }
+                drop(app);
+                std::thread::sleep(tick);
+            }
+        });
+    if let Err(e) = spawned {
+        crate::fault!("cannot start the keeper of the position indexes: {e}");
+    }
+}
+
+impl Registry {
+    /// Sets how often the keeper looks, from its next look on, and how long
+    /// a database must have kept its generation before its index is rebuilt
+    /// in the background: [`TICK`] and [`QUIET`] unless set. Tests set them
+    /// before the keeper starts.
+    pub fn set_keeping(&self, tick: Duration, quiet: Duration) {
+        let mut keeping = lock(&self.keeping);
+        (keeping.tick, keeping.quiet) = (tick, quiet);
+    }
+
+    /// Sets for how long after a request the keeper looks: `None` looks with
+    /// or without one, as tests and a profile of a keeping bridge do;
+    /// [`ACTIVE_FOR`] unless set (#365).
+    pub fn set_keeping_after_requests(&self, active_for: Option<Duration>) {
+        lock(&self.keeping).active_for = active_for;
+    }
+
+    /// Stops the keeper for good, at once: no look begins from now on, and
+    /// the look it may be taking queues no more builds. That look counts as
+    /// the catalog's work until it ends, which
+    /// [`crate::catalog::Catalog::settle`] waits for, as long as it waits
+    /// for the rest (#236).
+    pub fn stop_keeping(&self) {
+        lock(&self.keeping).stopped = true;
+    }
+
+    /// How the keeper keeps, and a look counted as the catalog's work until
+    /// the guard is dropped; `None` once the keeper is stopped. The look is
+    /// counted under the lock a stop takes, so that either the stop comes
+    /// first and no look begins, or the stop finds the look counted. The
+    /// lock is held no longer: a stop never waits for a look (#236).
+    fn look(&self) -> Option<(Keeping, Active)> {
+        let keeping = lock(&self.keeping);
+        (!keeping.stopped).then(|| (*keeping, self.activity.begin(LOOK)))
+    }
+
+    fn stopped(&self) -> bool {
+        lock(&self.keeping).stopped
+    }
+
+    /// One look of the keeper at `entries`, the databases as listed now:
+    /// queues a background build for each database in use whose index is not
+    /// of the generation it has had for the quiet period. While the computer
+    /// runs on battery, the background build running stops and waits. Does
+    /// nothing without an index folder the bridge was given, or once the
+    /// keeper is stopped.
+    pub fn keep(&self, entries: &[Arc<Entry>]) {
+        let Some((keeping, _look)) = self.look() else { return };
+        let Some(dir) = lock(&self.dir).clone() else { return };
+        let machine = self.builds.machine();
+        if machine.on_battery() {
+            self.builds.pause();
+        }
+        self.builds.poke();
+        let listed: Vec<&Arc<Entry>> = entries.iter().filter(|e| e.listed()).collect();
+        if !self.picked.swap(true, Ordering::Relaxed) {
+            // The first look: the ready database with the most records, the
+            // first of those with as many, is in use from the start.
+            let mut largest: Option<(u32, &str)> = None;
+            for entry in &listed {
+                let Ok(open) = entry.open() else { continue };
+                let records = open.db.record_count();
+                if largest.is_none_or(|(most, _)| records > most) {
+                    largest = Some((records, &entry.id));
+                }
+            }
+            if let Some((_, id)) = largest {
+                self.mark_in_use(id);
+            }
+        }
+        let quiet = keeping.quiet;
+        let now = Instant::now();
+        let mut seen = lock(&self.seen);
+        seen.retain(|id, _| listed.iter().any(|e| &e.id == id));
+        for entry in listed {
+            let (index, stream) = paths(&dir, &entry.id);
+            if !lock(&self.used).contains(&entry.id) && !index.exists() && !stream.exists() {
+                continue;
+            }
+            // Missing, cloud-only, downloading, opening or unreadable: not
+            // read here.
+            let (open, changed) = entry.open_dated();
+            let Ok(open) = open else { continue };
+            let since = match seen.get(&entry.id) {
+                Some(s) if s.generation == open.generation => s.since,
+                // A generation that replaced one seen here is new now, whatever
+                // its files' modification times: a synced or restored copy
+                // keeps older ones.
+                Some(_) => {
+                    seen.insert(entry.id.clone(), Seen { generation: open.generation, since: now });
+                    now
+                }
+                // A database first seen has had its generation since its
+                // files last changed, as far as the quiet period goes back.
+                None => {
+                    let age = changed.and_then(|t| SystemTime::now().duration_since(t).ok()).unwrap_or_default();
+                    let since = now.checked_sub(age.min(quiet)).unwrap_or(now);
+                    seen.insert(entry.id.clone(), Seen { generation: open.generation, since });
+                    since
+                }
+            };
+            // A keeper stopped while it looked queues nothing more.
+            if now.duration_since(since) >= quiet && !self.stopped() {
+                self.renew(entry, &open, &dir, &*machine);
+            }
+        }
+    }
+
+    /// Queues a background build of the index of `entry` at the generation of
+    /// `open`, unless its index is of that generation, in memory or on disk,
+    /// its build runs or waits, or its build at that generation failed for
+    /// another reason than busy workers. With too little room on the disk,
+    /// the build fails without being queued.
+    fn renew(&self, entry: &Arc<Entry>, open: &Opened, dir: &Path, machine: &dyn Machine) {
+        let state = self.state(&entry.id);
+        let mut s = lock(&state);
+        match &*s {
+            State::Ready(l) if l.generation == open.generation => return,
+            State::Working(_) => return,
+            State::Failed { generation, busy: false, .. } if *generation == open.generation => return,
+            _ => {}
+        }
+        let records = open.db.records();
+        if kept(&paths(dir, &entry.id).0, open.generation, records) {
+            return;
+        }
+        if let Err(why) = room(machine, dir, &entry.id, records) {
+            crate::log!("database {} is not indexed in the background: {why}", entry.id);
+            *s = State::Failed { at: Instant::now(), why, generation: open.generation, busy: false };
+            return;
+        }
+        self.queue(s, &state, Arc::clone(entry), open, dir.to_path_buf(), Kind::Background);
+    }
+}

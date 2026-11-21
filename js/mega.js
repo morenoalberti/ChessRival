@@ -7,13 +7,13 @@ import { leerAjuste, guardarAjuste } from './db.js';
 import { ChessBaseDatabase, ErrorBase } from './chessbase.js';
 import { claveJugador, guardarPartidas, refrescarTarjetasDe } from './db-partidas.js';
 import { cargarLibroAperturas } from './aperturas.js';
-import { detectarRitmo } from './pgn.js';
+import { detectarRitmo, leerPgn } from './pgn.js';
 import { elegirCarpetaDe } from './elegir-archivos.js';
 
 export const MAX_POR_JUGADOR = 300;          // las más recientes
 
 /** El estado que enseña el aviso: base abierta, error o permiso pendiente (el navegador pide confirmar al volver a abrir los archivos). */
-export const estado = { base: null, error: null, pendiente: false, nombre: '', local: false };
+export const estado = { base: null, error: null, pendiente: false, nombre: '', local: false, formato: '' };
 
 let handles = null;
 let cola = Promise.resolve();                  // un solo recorrido de la base a la vez
@@ -22,10 +22,12 @@ export const disponible = () => estado.local || 'showDirectoryPicker' in window;
 
 // ---------- Servidor local ----------
 
-async function llamarLocal(ruta, cuerpo) {
-  const r = await fetch(ruta, cuerpo === undefined ? {} : { method: 'POST', headers: { 'X-ChessRival': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
-  if (!r.ok) throw new Error(`El servidor local respondió con el error ${r.status}.`);
-  return r.json();
+async function llamarLocal(ruta, cuerpo, señal = null) {
+  const r = await fetch(ruta, cuerpo === undefined ? { signal: señal } : { method: 'POST', headers: { 'X-ChessRival': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo), signal: señal });
+  let datos;
+  try { datos = await r.json(); } catch { datos = null; }
+  if (!r.ok) throw new Error(datos?.error || `El servidor local respondió con el error ${r.status}.`);
+  return datos;
 }
 
 /** Los archivos de la base servidos por el servidor local, con la forma que espera ChessBaseDatabase (nombre + getFile()). */
@@ -50,8 +52,14 @@ async function infoLocal() {
 }
 
 async function abrirLocal(info) {
-  if (!info.configurada) { estado.base = null; estado.error = null; estado.pendiente = false; return; }
-  if (info.error) { estado.base = null; estado.error = info.error; estado.pendiente = false; return; }
+  if (!info.configurada) { estado.base = null; estado.error = null; estado.pendiente = false; estado.formato = ''; return; }
+  if (info.error) { estado.base = null; estado.error = info.error; estado.pendiente = false; estado.formato = info.formato || ''; return; }
+  if (info.formato === '2cbh') {
+    estado.base = { nombre: info.nombre, totalPartidas: info.totalPartidas || 0, formato: '2cbh' };
+    estado.nombre = info.nombre; estado.formato = '2cbh'; estado.error = null; estado.pendiente = false;
+    await guardarAjuste('mega_nombre', estado.nombre);
+    return;
+  }
   await abrir(handlesLocales(info));
 }
 
@@ -65,10 +73,10 @@ async function permiso(h, pedir) {
 async function abrir(h) {
   try {
     estado.base = await ChessBaseDatabase.abrir(h);
-    estado.error = null; estado.pendiente = false; estado.nombre = estado.base.nombre;
+    estado.error = null; estado.pendiente = false; estado.nombre = estado.base.nombre; estado.formato = 'cbh';
     await guardarAjuste('mega_nombre', estado.nombre);
   } catch (ex) {
-    estado.base = null; estado.pendiente = false;
+    estado.base = null; estado.pendiente = false; estado.formato = '';
     estado.error = ex instanceof ErrorBase ? ex.message : `No se pudo abrir la base: ${ex.message}`;
   }
 }
@@ -80,7 +88,7 @@ export async function restaurar() {
   if (local) { await abrirLocal(local); return; }
   try { handles = await leerAjuste('mega_handles', null); } catch { handles = null; }
   estado.nombre = (await leerAjuste('mega_nombre', '')) ?? '';
-  if (!handles?.length) { estado.base = null; estado.error = null; estado.pendiente = false; return; }
+  if (!handles?.length) { estado.base = null; estado.error = null; estado.pendiente = false; estado.formato = ''; return; }
   const todos = (await Promise.all(handles.map(h => permiso(h, false).catch(() => false)))).every(Boolean);
   if (todos) await abrir(handles);
   else { estado.base = null; estado.error = null; estado.pendiente = true; }
@@ -123,6 +131,7 @@ const enCola = (tarea) => { const t = cola.then(tarea); cola = t.catch(() => {})
 /** Cuántas partidas de este jugador hay en la base (por nombre y ELO), sin importar nada. Lee el índice completo: tarda unos segundos. */
 export function contar(jugador, progreso, señal) {
   if (!estado.base) return Promise.resolve(null);
+  if (estado.base.formato === '2cbh') return buscar(jugador, progreso, señal).then(r => r?.candidatas ?? null);
   return enCola(async () => (await estado.base.buscar([{ nombre: jugador.name, elo: jugador.rating }], 0, progreso, señal))[0].candidatas);
 }
 
@@ -130,6 +139,22 @@ export function contar(jugador, progreso, señal) {
 export function buscar(jugador, progreso, señal) {
   const base = estado.base;
   if (!base) return Promise.resolve(null);
+  if (base.formato === '2cbh') return enCola(async () => {
+    if (señal?.aborted) throw new DOMException('Búsqueda cancelada', 'AbortError');
+    progreso('Buscando partidas en la MegaBase 2027…');
+    const r = await llamarLocal('/local/mega/buscar', { nombre: jugador.name, elo: jugador.rating }, señal);
+    if (r.error) throw new ErrorBase(r.error);
+    const partidas = [];
+    let noLegibles = r.noLegibles || 0;
+    for (const encontrada of r.partidas || []) {
+      if (señal?.aborted) throw new DOMException('Búsqueda cancelada', 'AbortError');
+      const partida = leerPgn(encontrada.pgn || '')[0];
+      if (!partida) { noLegibles++; continue; }
+      partidas.push({ partida, color: encontrada.color });
+    }
+    progreso(`Partidas preparadas: ${partidas.length.toLocaleString()}`);
+    return { partidas, candidatas: r.candidatas || 0, noLegibles, jugadorClave: claveJugador(jugador) };
+  });
   return enCola(async () => {
     const cancelar = () => { if (señal?.aborted) throw new DOMException('Búsqueda cancelada', 'AbortError'); };
     cancelar();

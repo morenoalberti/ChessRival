@@ -153,7 +153,7 @@ export function abrirImportar(jugador) {
       b.disabled = ocupado || megaBuscando;
       $('[data-mega-reintentar]').hidden = !megaError || !e.base;
       $('[data-mega-reintentar]').disabled = ocupado || megaBuscando;
-      if (e.base) t.textContent = `${e.base.nombre} · ${e.base.totalPartidas.toLocaleString(LOCALE)} partidas. Se buscan por nombre y ELO (ChessBase no guarda el ID FIDE); tarda unos segundos.`;
+      if (e.base) t.textContent = `${e.base.nombre} · ${e.base.totalPartidas.toLocaleString(LOCALE)} partidas. Se buscan por nombre y ELO (ChessBase no guarda el ID FIDE); ${e.base.formato === '2cbh' ? 'la primera búsqueda puede tardar más.' : 'tarda unos segundos.'}`;
       else if (e.pendiente) t.textContent = `${e.nombre || 'La MegaDatabase'} está elegida, pero el navegador pide confirmar el acceso a sus archivos.`;
       else if (e.error) t.textContent = `No disponible: ${e.error}`;
       else t.textContent = 'Todavía no has elegido tu MegaDatabase. Hazlo con el botón «Elegir» del aviso de MegaDatabase de la pantalla principal.';

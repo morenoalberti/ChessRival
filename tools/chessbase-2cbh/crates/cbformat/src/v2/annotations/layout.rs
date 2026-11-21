@@ -1,0 +1,172 @@
+//! The layout of each annotation type: how many bytes it takes, and what is
+//! kept of it.
+
+use super::{Annotation, Arrow, Reader, Square, decode_text};
+use crate::Result;
+use crate::game::{QuoteDamage, quote_offsets};
+use crate::movetable::{Sq, from_cb_square};
+
+/// One annotation of type `t`, or `None` when its layout is unknown.
+pub(super) fn annotation(r: &mut Reader<'_>, t: u16) -> Result<Option<Annotation>> {
+    Ok(Some(match t {
+        0x02 | 0x82 => {
+            r.skip(2)?; // always 0
+            let language = r.u16()?;
+            let n = r.len()?;
+            Annotation::Text { before: t == 0x82, language, text: decode_text(r.take(n)?) }
+        }
+        0x03 => {
+            let b = r.take(3)?;
+            Annotation::Symbols { on_move: b[0], on_position: b[1], prefix: b[2] }
+        }
+        0x04 => {
+            let n = r.len()?;
+            let items = r.take(n)?;
+            if items.len() % 2 != 0 {
+                return Err(r.bad("coloured squares of odd length"));
+            }
+            let mut v = Vec::with_capacity(items.len() / 2);
+            for p in items.as_chunks::<2>().0 {
+                v.push(Square { colour: p[0], square: square(r, p[1])? });
+            }
+            Annotation::Squares(v)
+        }
+        0x05 => {
+            let n = r.len()?;
+            let items = r.take(n)?;
+            if items.len() % 3 != 0 {
+                return Err(r.bad("arrows not in triples"));
+            }
+            let mut v = Vec::with_capacity(items.len() / 3);
+            for p in items.as_chunks::<3>().0 {
+                v.push(Arrow { colour: p[0], from: square(r, p[1])?, to: square(r, p[2])? });
+            }
+            Annotation::Arrows(v)
+        }
+        // Piece path: a length and that many bytes.
+        0x15 => {
+            let n = r.len()?;
+            r.skip(n)?;
+            other(t)
+        }
+        // Time spent, unknown 08, clocks, medals, variation colour, video
+        // stream time; 27 is ours (docs/format-notes.md).
+        0x07 | 0x08 | 0x16 | 0x17 | 0x22 | 0x23 | 0x25 => {
+            r.skip(4)?;
+            other(t)
+        }
+        0x27 => {
+            r.skip(2)?;
+            other(t)
+        }
+        // Pawn structure, critical position.
+        0x14 | 0x18 => {
+            r.skip(1)?;
+            other(t)
+        }
+        0x21 => {
+            r.skip(6)?;
+            other(t)
+        }
+        0x24 => {
+            r.skip(38)?;
+            other(t)
+        }
+        0x26 => {
+            r.expect_one()?;
+            let n = r.len()?;
+            r.skip(n)?;
+            other(t)
+        }
+        0x09 => {
+            if !training(r)? {
+                return Ok(None);
+            }
+            other(t)
+        }
+        0x13 => {
+            if !quotation(r)? {
+                return Ok(None);
+            }
+            other(t)
+        }
+        // Video: 01 00, a language, a length and that many bytes.
+        0x20 => {
+            r.skip(4)?;
+            let n = r.len()?;
+            r.skip(n)?;
+            other(t)
+        }
+        0x1c => {
+            r.expect_one()?;
+            for _ in 0..2 {
+                let n = r.len()?;
+                r.skip(n)?;
+            }
+            other(t)
+        }
+        _ => return Ok(None),
+    }))
+}
+
+/// A training question: a header whose third byte is the variant, time and
+/// points, four lists (the question and three responses), then the solutions.
+/// Variant 1 solutions are two squares, two unknown bytes and a list; variant 2
+/// solutions are points and two lists, answer and reply (docs/format-notes.md).
+/// `false` for another variant.
+fn training(r: &mut Reader<'_>) -> Result<bool> {
+    let variant = r.take(6)?[2];
+    if !matches!(variant, 1 | 2) {
+        return Ok(false);
+    }
+    r.skip(6)?; // time allowed, points
+    for _ in 0..4 {
+        training_list(r)?;
+    }
+    let solutions = r.u8()?;
+    for _ in 0..solutions {
+        if variant == 1 {
+            r.skip(4)?; // squares, two unknown bytes
+            training_list(r)?;
+        } else {
+            r.skip(1)?; // points
+            training_list(r)?;
+            training_list(r)?;
+        }
+    }
+    Ok(true)
+}
+
+fn training_list(r: &mut Reader<'_>) -> Result<()> {
+    let items = r.u16()?;
+    for _ in 0..items {
+        r.skip(2)?;
+        let n = r.len()?;
+        r.skip(n)?;
+    }
+    Ok(())
+}
+
+/// A game quotation, skipped as [`quote_offsets`] walks it: header strings,
+/// fixed blocks, rating lists, the start position when it is not the standard
+/// one, and moves. `false` for a start marker of unknown meaning.
+fn quotation(r: &mut Reader<'_>) -> Result<bool> {
+    match quote_offsets(r.rest()) {
+        Ok(Some(q)) => r.skip(q.len).map(|()| true),
+        Ok(None) => Ok(false),
+        Err(QuoteDamage { at, what }) => Err(r.bad_ahead(at, what)),
+    }
+}
+
+/// A type left out of the reading form; the parser fills in its data.
+fn other(code: u16) -> Annotation {
+    Annotation::Other { code, data: Vec::new() }
+}
+
+/// A square numbered from 1, file by file (`a1` 1, `a2` 2, `b1` 9).
+fn square(r: &Reader<'_>, v: u8) -> Result<Sq> {
+    match v {
+        1..=64 => Ok(from_cb_square(v - 1).index() as Sq),
+        _ => Err(r.bad("square out of range")),
+    }
+}

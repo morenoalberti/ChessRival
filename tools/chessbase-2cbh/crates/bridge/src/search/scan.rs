@@ -1,0 +1,420 @@
+//! Parallel passes over a database's header records, and the compiled search
+//! predicate they evaluate.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use cbformat::game::{ROUND_TEXT_BYTES, RecordKind, TimeControl, round_text};
+use cbformat::v2::HEADER_RECORD_SIZE;
+
+use super::compare::{IntCmp, TextCmp, int_cmp, normalize_date, text_cmps};
+
+use super::SearchError;
+use super::heads::{Heads, ROWS_READ};
+use super::memory::{Allowance, Cancel, Refused};
+use super::names::{BitSet, NameTable};
+use super::query::{Cmp, Field, Query, Value};
+use super::slim::{ROW, Slim};
+use super::workers::{self, threads};
+use crate::store::{Head, Store};
+
+/// Header records read at a time by one worker.
+pub(super) const CHUNK: u32 = 16 << 10;
+/// The batch buffer of one worker: 3 MiB, reserved in the budget and reused.
+/// It holds a chunk of records of either format, or a block of heads rows.
+pub const BATCH_BYTES: usize = CHUNK as usize * HEADER_RECORD_SIZE;
+
+/// What a pass answers to: the cancellation of its search, a count of the
+/// records it read, and the database's heads file when one is ready (#106).
+pub struct Control<'a> {
+    pub cancel: &'a Cancel,
+    pub scanned: &'a AtomicU64,
+    pub heads: Option<&'a Heads>,
+}
+
+/// What a pass does with each record: fold it into the worker's accumulator.
+/// Generic over the record, so a pass reads the database's own records and
+/// the rows of its heads file alike.
+pub trait Visit<T>: Sync {
+    fn visit(&self, acc: &mut T, r: &impl Head) -> Result<(), SearchError>;
+}
+
+/// Visits every record, in parallel over contiguous ranges of numbers, on the
+/// workers [`workers::run`] grants. Each worker folds its range, in number
+/// order, into its own accumulator, made by `init` from the number of records
+/// it will visit and finished by `finish`; the accumulators come back in range
+/// order. Every worker reads its batches into one reserved buffer, and stops at
+/// its next batch once one has failed or the search is superseded.
+///
+/// The records come from the heads file when [`Control::heads`] holds one for
+/// this database, as rows; a block of rows that fails its CRC is read from the
+/// database instead, so the pass visits every record either way.
+pub fn scan<S: Store, T: Send>(
+    db: &S,
+    ctl: &Control<'_>,
+    init: impl Fn(usize) -> Result<T, SearchError> + Sync,
+    visit: &impl Visit<T>,
+    finish: impl Fn(&mut T) + Sync,
+) -> Result<Vec<T>, SearchError> {
+    let total = db.record_count();
+    if let Some(heads) = ctl.heads.filter(|h| h.usable() && h.records == total) {
+        return scan_heads(db, heads, ctl, init, visit, finish);
+    }
+    let total = u64::from(total);
+    let want = (threads() as u64).min(total.div_ceil(u64::from(CHUNK))).max(1) as usize;
+    workers::run(want, BATCH_BYTES, ctl.cancel, |w| {
+        let per = total.div_ceil(w.count as u64);
+        let (first, last) = (w.index as u64 * per + 1, ((w.index as u64 + 1) * per).min(total));
+        let mut acc = init(last.saturating_sub(first - 1) as usize)?;
+        let mut buf = w.buffer()?;
+        let mut next = first;
+        while next <= last {
+            if w.stopped() || ctl.cancel.is_cancelled() {
+                return Err(SearchError::Superseded);
+            }
+            let batch = (last - next + 1).min(u64::from(CHUNK)) as usize;
+            let read = visit_records(db, next as u32, batch, &mut buf, &mut acc, visit)?;
+            if read == 0 {
+                break;
+            }
+            ctl.scanned.fetch_add(u64::from(read), Ordering::Relaxed);
+            next += u64::from(read);
+        }
+        finish(&mut acc);
+        Ok(acc)
+    })
+}
+
+/// [`scan`] over a heads file: each worker takes a range of whole blocks.
+fn scan_heads<S: Store, T: Send>(
+    db: &S,
+    heads: &Heads,
+    ctl: &Control<'_>,
+    init: impl Fn(usize) -> Result<T, SearchError> + Sync,
+    visit: &impl Visit<T>,
+    finish: impl Fn(&mut T) + Sync,
+) -> Result<Vec<T>, SearchError> {
+    let blocks = heads.blocks();
+    let want = (threads() as u32).min(blocks).max(1) as usize;
+    workers::run(want, BATCH_BYTES, ctl.cancel, |w| {
+        let per = blocks.div_ceil(w.count as u32);
+        let (first, last) = ((w.index as u32 * per).min(blocks), ((w.index as u32 + 1) * per).min(blocks));
+        let records = (u64::from(last) * u64::from(CHUNK)).min(u64::from(heads.records))
+            - (u64::from(first) * u64::from(CHUNK)).min(u64::from(heads.records));
+        let mut acc = init(records as usize)?;
+        let mut buf = w.buffer()?;
+        for block in first..last {
+            if w.stopped() || ctl.cancel.is_cancelled() {
+                return Err(SearchError::Superseded);
+            }
+            let number = block * CHUNK + 1;
+            let read = match heads.read_block(block, &mut buf) {
+                Some(rows) => {
+                    for i in 0..rows as usize {
+                        visit.visit(&mut acc, &Slim::new(number + i as u32, &buf[i * ROW..]))?;
+                    }
+                    ROWS_READ.fetch_add(u64::from(rows), Ordering::Relaxed);
+                    rows
+                }
+                None => {
+                    let batch = (heads.records - number + 1).min(CHUNK) as usize;
+                    visit_records(db, number, batch, &mut buf, &mut acc, visit)?
+                }
+            };
+            ctl.scanned.fetch_add(u64::from(read), Ordering::Relaxed);
+        }
+        finish(&mut acc);
+        Ok(acc)
+    })
+}
+
+/// Reads up to `batch` records of `db` from record `first` into `buf` and
+/// visits them in order; their count.
+fn visit_records<S: Store, T>(
+    db: &S,
+    first: u32,
+    batch: usize,
+    buf: &mut [u8],
+    acc: &mut T,
+    visit: &impl Visit<T>,
+) -> Result<u32, SearchError> {
+    let read = db.read_records(first, &mut buf[..batch * S::HEAD_BYTES])?;
+    for i in 0..read as usize {
+        let at = i * S::HEAD_BYTES;
+        visit.visit(acc, &S::head(first + i as u32, &buf[at..at + S::HEAD_BYTES]))?;
+    }
+    Ok(read)
+}
+
+/// Which of a game's player ids a name test looks at.
+#[derive(Clone, Copy)]
+enum Role {
+    White,
+    Black,
+    Either,
+    Annotator,
+}
+
+enum Test {
+    /// Players by their role; annotators among the annotators.
+    Players(BitSet, Role),
+    /// A game's tournament, or the title of a guiding text or analysis.
+    Event {
+        tournaments: BitSet,
+        titles: BitSet,
+    },
+    /// A bare word: a game's players, annotator and tournament, or a guiding
+    /// text's or analysis's title and author. `annotators` is `None` where
+    /// annotators are players.
+    Text {
+        players: BitSet,
+        annotators: Option<BitSet>,
+        tournaments: BitSet,
+        titles: BitSet,
+    },
+    Result(String),
+    Eco(Vec<TextCmp>),
+    /// All the comparisons, on a date whose first `known` characters have no `?`.
+    Date {
+        cmps: Vec<TextCmp>,
+        known: usize,
+    },
+    DateContains(String),
+    Round(String),
+    Moves(IntCmp),
+    Elo(IntCmp),
+    WhiteElo(IntCmp),
+    BlackElo(IntCmp),
+    /// A game of time control `class` (#268): one whose own time control is
+    /// of it, where its format keeps one ([`Head::time_control`]), else one
+    /// whose tournament is: for a normal game, a tournament outside `marked`,
+    /// the tournaments marked with any time control; else one inside it, the
+    /// tournaments marked with `class`.
+    TimeControl {
+        class: TimeControl,
+        marked: BitSet,
+    },
+    Never,
+}
+
+struct CompiledTerm {
+    tests: Vec<Test>,
+    negated: bool,
+}
+
+pub struct Matcher<'a> {
+    terms: Vec<CompiledTerm>,
+    /// A term on a field only games have keeps guiding texts and analyses out,
+    /// as the Library keeps folders out of such searches; a term on a field
+    /// only games and analyses have keeps guiding texts out (#349).
+    games_only: bool,
+    texts_out: bool,
+    /// Where a title's key finds its id.
+    titles: Option<&'a NameTable>,
+}
+
+/// The name tables a search needs; `None` where no term uses them. Where
+/// annotators are players, `annotators` is the players' table.
+pub struct Tables<'a> {
+    pub players: Option<&'a NameTable>,
+    pub annotators: Option<&'a NameTable>,
+    /// Whether `annotators` is the players' table.
+    pub annotators_are_players: bool,
+    pub tournaments: Option<&'a NameTable>,
+    pub titles: Option<&'a NameTable>,
+    /// Each tournament's type byte, by id; `None` where no term reads the time
+    /// control (#268).
+    pub tournament_kinds: Option<&'a [u8]>,
+}
+
+/// The fields of a record that is not a game: guiding texts and analyses have
+/// header layouts of their own, sharing only their first eight bytes with games.
+struct Other {
+    /// The title's id in the titles' table.
+    title: i64,
+    author: i64,
+    /// An analysis, which has a date and moves of its own (#349).
+    analysis: bool,
+}
+
+/// Fields a guiding text or an analysis has too: its title as the event and
+/// its author as the annotator, as its list row shows them.
+pub fn shared(field: Field) -> bool {
+    matches!(field, Field::Text | Field::Event | Field::Annotator)
+}
+
+/// Fields an analysis has besides those [`shared`] with guiding texts: its
+/// date and moves, as its list row shows them (#349).
+fn analyses_have(field: Field) -> bool {
+    shared(field) || matches!(field, Field::Date | Field::Moves)
+}
+
+impl<'a> Matcher<'a> {
+    /// The query compiled against `tables`; the id sets its name terms need
+    /// are taken from `allow`.
+    pub fn new(query: &Query, tables: &Tables<'a>, allow: &mut Allowance<'_>) -> Result<Matcher<'a>, Refused> {
+        let set = |t: Option<&NameTable>, needle: &str, allow: &mut Allowance<'_>| match t {
+            Some(t) => t.containing(needle, allow),
+            None => BitSet::new(0, allow),
+        };
+        let mut terms = Vec::with_capacity(query.terms.len());
+        for term in &query.terms {
+            let mut tests = Vec::with_capacity(term.values.len());
+            for v in &term.values {
+                let needle = v.text.to_lowercase();
+                tests.push(match term.field {
+                    Field::Text => Test::Text {
+                        players: set(tables.players, &needle, allow)?,
+                        annotators: match tables.annotators_are_players {
+                            true => None,
+                            false => Some(set(tables.annotators, &needle, allow)?),
+                        },
+                        tournaments: set(tables.tournaments, &needle, allow)?,
+                        titles: set(tables.titles, &needle, allow)?,
+                    },
+                    Field::White => Test::Players(set(tables.players, &needle, allow)?, Role::White),
+                    Field::Black => Test::Players(set(tables.players, &needle, allow)?, Role::Black),
+                    Field::Player => Test::Players(set(tables.players, &needle, allow)?, Role::Either),
+                    Field::Annotator => Test::Players(set(tables.annotators, &needle, allow)?, Role::Annotator),
+                    Field::Event => Test::Event {
+                        tournaments: set(tables.tournaments, &needle, allow)?,
+                        titles: set(tables.titles, &needle, allow)?,
+                    },
+                    Field::Result => Test::Result(v.text.clone()),
+                    Field::Round => Test::Round(needle),
+                    Field::Eco => Test::Eco(text_cmps(v.text.as_bytes(), v)),
+                    Field::Date => date_test(v),
+                    Field::Moves => Test::Moves(int_cmp(v)),
+                    Field::Elo => Test::Elo(int_cmp(v)),
+                    Field::WhiteElo => Test::WhiteElo(int_cmp(v)),
+                    Field::BlackElo => Test::BlackElo(int_cmp(v)),
+                    Field::TimeControl => match time_control(&v.text) {
+                        Some(class) => Test::TimeControl { class, marked: marked(tables, class, allow)? },
+                        None => Test::Never,
+                    },
+                });
+            }
+            terms.push(CompiledTerm { negated: term.negated, tests });
+        }
+        let games_only = query.terms.iter().any(|t| !analyses_have(t.field));
+        let texts_out = query.terms.iter().any(|t| !shared(t.field));
+        Ok(Matcher { terms, games_only, texts_out, titles: tables.titles })
+    }
+
+    pub fn matches(&self, r: &impl Head) -> bool {
+        let other = r.other().map(|(title, author)| Other {
+            title: self.titles.map_or(title, |t| t.slot(title)),
+            author,
+            analysis: r.kind() == RecordKind::Analysis,
+        });
+        if other.as_ref().is_some_and(|o| self.games_only || (self.texts_out && !o.analysis)) {
+            return false;
+        }
+        self.terms.iter().all(|t| t.tests.iter().any(|test| test.holds(r, other.as_ref())) != t.negated)
+    }
+}
+
+/// The time control a `timecontrol:` value names; `None` for any other value.
+fn time_control(value: &str) -> Option<TimeControl> {
+    Some(match value {
+        "normal" => TimeControl::NORMAL,
+        "rapid" => TimeControl::RAPID,
+        "blitz" => TimeControl::BLITZ,
+        "correspondence" => TimeControl::CORRESPONDENCE,
+        _ => return None,
+    })
+}
+
+/// The ids of the tournaments whose type bytes mark them with time control
+/// `class`, or with any for [`TimeControl::NORMAL`], which none marks.
+fn marked(tables: &Tables<'_>, class: TimeControl, allow: &mut Allowance<'_>) -> Result<BitSet, Refused> {
+    let kinds = tables.tournament_kinds.unwrap_or_default();
+    let mut set = BitSet::new(kinds.len(), allow)?;
+    for (id, &kind) in kinds.iter().enumerate() {
+        let own = TimeControl::of_kind(kind);
+        if if class == TimeControl::NORMAL { own != TimeControl::NORMAL } else { own.is(class) } {
+            set.insert(id);
+        }
+    }
+    Ok(set)
+}
+
+fn date_test(v: &Value) -> Test {
+    let low = normalize_date(&v.text);
+    if v.cmp == Cmp::Equal {
+        return match low {
+            Some(prefix) => Test::Date { cmps: vec![TextCmp::Prefix(prefix.into_bytes())], known: 0 },
+            None => Test::DateContains(v.text.to_lowercase()),
+        };
+    }
+    let high = if v.cmp == Cmp::Range { v.upper.as_deref().and_then(normalize_date) } else { low.clone() };
+    let (Some(low), Some(high)) = (low, high) else { return Test::Never };
+    let known = if v.cmp == Cmp::Range { low.len().max(high.len()) } else { low.len() };
+    let bounds = Value { text: low.clone(), cmp: v.cmp.clone(), upper: Some(high) };
+    Test::Date { cmps: text_cmps(low.as_bytes(), &bounds), known }
+}
+
+impl Test {
+    fn holds(&self, r: &impl Head, other: Option<&Other>) -> bool {
+        if let Some(o) = other {
+            match self {
+                Test::Text { players, annotators, titles, .. } => {
+                    return titles.contains_id(o.title) || annotators.as_ref().unwrap_or(players).contains_id(o.author);
+                }
+                Test::Event { titles, .. } => return titles.contains_id(o.title),
+                Test::Players(set, Role::Annotator) => return set.contains_id(o.author),
+                // An analysis's date and moves read as a game's (#349).
+                Test::Date { .. } | Test::DateContains(_) | Test::Moves(_) if o.analysis => {}
+                _ => return false,
+            }
+        }
+        match self {
+            Test::Text { players, annotators, tournaments, .. } => {
+                tournaments.contains_id(r.tournament())
+                    || players.contains_id(r.white())
+                    || players.contains_id(r.black())
+                    || annotators.as_ref().unwrap_or(players).contains_id(r.annotator())
+            }
+            Test::Players(set, role) => match role {
+                Role::White => set.contains_id(r.white()),
+                Role::Black => set.contains_id(r.black()),
+                Role::Either => set.contains_id(r.white()) || set.contains_id(r.black()),
+                Role::Annotator => set.contains_id(r.annotator()),
+            },
+            Test::Event { tournaments, .. } => tournaments.contains_id(r.tournament()),
+            Test::Result(result) => r.result().pgn() == result,
+            // The fields as the list shows them (#68).
+            Test::Eco(cmps) => r.eco().code_text().is_some_and(|e| cmps.iter().all(|c| c.holds(&e))),
+            Test::Date { cmps, known } => {
+                let d = r.played_date().text();
+                !d[..(*known).min(10)].contains(&b'?') && cmps.iter().all(|c| c.holds(&d))
+            }
+            Test::DateContains(needle) => {
+                std::str::from_utf8(&r.played_date().text()).is_ok_and(|d| d.contains(needle.as_str()))
+            }
+            Test::Round(needle) => {
+                let (round, sub) = r.round();
+                round_text(round, sub, &mut [0; ROUND_TEXT_BYTES]).contains(needle.as_str())
+            }
+            Test::Moves(cmp) => cmp.holds(i64::from(r.move_count())),
+            Test::Elo(cmp) => {
+                let (white, black) = r.elo();
+                [white, black].into_iter().any(|e| e > 0 && cmp.holds(i64::from(e)))
+            }
+            Test::WhiteElo(cmp) => {
+                let (white, _) = r.elo();
+                white > 0 && cmp.holds(i64::from(white))
+            }
+            Test::BlackElo(cmp) => {
+                let (_, black) = r.elo();
+                black > 0 && cmp.holds(i64::from(black))
+            }
+            // A game without a tournament, or with one that cannot be read,
+            // is in no marked tournament: normal.
+            Test::TimeControl { class, marked } => match r.time_control() {
+                Some(own) => own.is(*class),
+                None => marked.contains_id(r.tournament()) != (*class == TimeControl::NORMAL),
+            },
+            Test::Never => false,
+        }
+    }
+}

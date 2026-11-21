@@ -1,0 +1,1077 @@
+//! The databases the bridge serves: identity, state, and the open database,
+//! opened again whenever the files change (`docs/api.md`, "Database identity
+//! and generations"). On Windows, an open database holds no handle to its
+//! files between reads (`cbformat::file`, #241), so ChessBase can save into it.
+//! The list follows its sources (`crate::sources`) and is read again when
+//! they change.
+
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime};
+
+use cbformat::view::Base;
+
+use crate::activity::Activity;
+use crate::documents;
+use crate::fetch::{Cloud, Progress, System};
+use crate::pgnindex::{self, Opening};
+use crate::search::Indexes;
+use crate::search::heads::{self, Lookup};
+use crate::serial::Serial;
+use crate::sources::{Listed, Read, Sources};
+use crate::sync::lock;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Format {
+    TwoCbh,
+    Cbh,
+    Pgn,
+    Other,
+}
+
+impl Format {
+    /// A listed path's format, as `cbformat` tells it by the extension; any
+    /// other file is `Other`, and never a stem to guess from.
+    pub fn of(path: &Path) -> Format {
+        match cbformat::view::Format::of_extension(path) {
+            Some(cbformat::view::Format::TwoCbh) => Format::TwoCbh,
+            Some(cbformat::view::Format::Cbh) => Format::Cbh,
+            Some(cbformat::view::Format::Pgn) => Format::Pgn,
+            None => Format::Other,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Format::TwoCbh => "2cbh",
+            Format::Cbh => "cbh",
+            Format::Pgn => "pgn",
+            Format::Other => "other",
+        }
+    }
+
+    /// The format as `cbformat` names it; `None` for another file.
+    fn view(self) -> Option<cbformat::view::Format> {
+        match self {
+            Format::TwoCbh => Some(cbformat::view::Format::TwoCbh),
+            Format::Cbh => Some(cbformat::view::Format::Cbh),
+            Format::Pgn => Some(cbformat::view::Format::Pgn),
+            Format::Other => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum State {
+    Ready,
+    /// A PGN file whose index is being built; see [`Entry::opening`].
+    Opening,
+    Missing,
+    /// Files kept only in the cloud; opening the database for its games
+    /// downloads them.
+    CloudOnly,
+    /// Being downloaded; see [`Entry::progress`].
+    Downloading,
+    Unsupported,
+    Unreadable,
+}
+
+impl State {
+    pub fn name(self) -> &'static str {
+        match self {
+            State::Ready => "ready",
+            State::Opening => "opening",
+            State::Missing => "missing",
+            State::CloudOnly => "cloudOnly",
+            State::Downloading => "downloading",
+            State::Unsupported => "unsupported",
+            State::Unreadable => "unreadable",
+        }
+    }
+}
+
+/// A database that is open, with the generation it was opened at.
+#[derive(Clone)]
+pub struct Opened {
+    pub db: Arc<Base>,
+    pub generation: u64,
+    /// Sort orders, names and searches built for this generation.
+    pub indexes: Arc<Indexes>,
+}
+
+pub struct Entry {
+    pub id: String,
+    pub name: String,
+    pub path: PathBuf,
+    pub format: Format,
+    held: Arc<Held>,
+    shared: Arc<Shared>,
+}
+
+/// What entries share: how cloud files are seen, the download queue, the
+/// index builds of PGN files, the catalog's background work, and the folders
+/// a database's folder is named from.
+struct Shared {
+    cloud: Arc<dyn Cloud>,
+    downloads: Arc<Serial>,
+    pgn: pgnindex::Registry,
+    /// The catalog's background work, counted until it ends: the jobs of its
+    /// queues, its index builds, the writers of its names files and the
+    /// keeper's looks ([`Catalog::settle`]).
+    activity: Arc<Activity>,
+    roots: Roots,
+}
+
+/// The folders [`documents::folder_segments`] names a database's folder from.
+struct Roots {
+    chessbase: Option<PathBuf>,
+    profile: Option<PathBuf>,
+}
+
+/// What one look at a database's files tells, without reading them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Look {
+    /// The bytes of the files the database is read through.
+    pub size: u64,
+    /// When its main file (`.2cbh`, `.cbh`, `.pgn`) was created, when the
+    /// file system keeps that.
+    pub created: Option<SystemTime>,
+    /// When the file of them that changed last changed, by its modification
+    /// time: a game added to a 2CBH database changes `.2cbg` alone.
+    pub modified: Option<SystemTime>,
+    /// Whether it is a PGN file without the read-only attribute, which takes
+    /// writes (`docs/api.md`, "Writing games"), from the same look (#348).
+    pub writable: bool,
+}
+
+/// What stays with a database when the list is read again or the window
+/// renames it: whether it is on the list, the open database and the download.
+/// A job holding the entry of a database since renamed sees its removal too.
+#[derive(Default)]
+struct Held {
+    /// Set when the database left the list: it is then reported `missing`.
+    removed: AtomicBool,
+    open: Mutex<Option<Opened>>,
+    /// The download running or queued.
+    running: Mutex<Option<Arc<Progress>>>,
+    /// The last download read every file, yet a file kept its cloud-only mark.
+    /// Only tests read it, through [`Entry::marks_kept`].
+    kept: AtomicBool,
+    /// Held by a write into the file, so that writes run one at a time
+    /// (`crate::write`), with how the file is written at a generation, as
+    /// the last write found it.
+    writing: Mutex<Option<(u64, crate::write::Layout)>>,
+}
+
+/// What the metadata of a database's files tells, without reading them.
+struct Files {
+    /// `None` when the header file is missing.
+    generation: Option<u64>,
+    /// The files that are there, each with its size and whether it is cloud-only.
+    present: Vec<(PathBuf, u64, bool)>,
+    /// Some file is there but is not a regular file: a directory, a pipe or a
+    /// device, which could block a reader or mislead it.
+    irregular: bool,
+    /// When the file changed last that changed last, as its modification
+    /// time says.
+    modified: Option<SystemTime>,
+    /// When the main file was created, when the file system keeps that.
+    created: Option<SystemTime>,
+    /// [`Files::modified`] of the files the reader opens alone: a 2CBH
+    /// database's `.2lgd` and `.2lcd` are among its files but never read.
+    read_modified: Option<SystemTime>,
+    /// A PGN file without the read-only attribute.
+    writable: bool,
+}
+
+impl Files {
+    fn size(&self) -> u64 {
+        self.present.iter().map(|f| f.1).sum()
+    }
+
+    fn cloud_only(&self) -> bool {
+        self.present.iter().any(|f| f.2)
+    }
+
+    fn look(&self) -> Look {
+        Look { size: self.size(), created: self.created, modified: self.read_modified, writable: self.writable }
+    }
+}
+
+impl Entry {
+    fn new(listed: Listed, shared: &Arc<Shared>, held: Arc<Held>) -> Entry {
+        Entry {
+            id: id_of(&listed.path),
+            name: listed.name,
+            format: Format::of(&listed.path),
+            path: listed.path,
+            held,
+            shared: Arc::clone(shared),
+        }
+    }
+
+    /// Whether the database is on the list; one that left it stays `missing`
+    /// until the bridge restarts.
+    pub fn listed(&self) -> bool {
+        !self.held.removed.load(Ordering::Relaxed)
+    }
+
+    /// The database's state, opening it if it is ready.
+    pub fn state(&self) -> State {
+        match self.open() {
+            Ok(_) => State::Ready,
+            Err(state) => state,
+        }
+    }
+
+    /// The open database at its current generation: the one already open
+    /// when the files have not changed, a freshly opened one when they have.
+    /// A database with any file marked cloud-only is never opened, since
+    /// reading that file would download it: see [`Entry::open_to_read`].
+    pub fn open(&self) -> Result<Opened, State> {
+        self.open_looked().0
+    }
+
+    /// [`Entry::open`], and the size and times of the database's files from
+    /// the same look at their metadata (#67, #298): `None` when the files were
+    /// not looked at or are gone, for a database that left the list or is
+    /// `missing`. A file of another format is looked at alone.
+    pub fn open_looked(&self) -> (Result<Opened, State>, Option<Look>) {
+        if self.held.removed.load(Ordering::Relaxed) {
+            return (Err(State::Missing), None);
+        }
+        if self.format == Format::Other {
+            return match std::fs::metadata(&self.path) {
+                Ok(m) => {
+                    let look =
+                        Look { size: m.len(), created: m.created().ok(), modified: m.modified().ok(), writable: false };
+                    (Err(State::Unsupported), Some(look))
+                }
+                Err(_) => (Err(State::Missing), None),
+            };
+        }
+        let files = self.files();
+        let open = self.open_files(&files);
+        let look = (open.as_ref().err() != Some(&State::Missing)).then(|| files.look());
+        (open, look)
+    }
+
+    /// The folder holding the database, as path segments
+    /// ([`documents::folder_segments`]).
+    pub fn folder(&self) -> Vec<String> {
+        let roots = &self.shared.roots;
+        documents::folder_segments(&self.path, roots.chessbase.as_deref(), roots.profile.as_deref())
+    }
+
+    /// [`Entry::open`], and when its files last changed, by their
+    /// modification times, from the same look at their metadata: what the
+    /// keeper of the position indexes asks (#149). `None` when that is not
+    /// known.
+    pub fn open_dated(&self) -> (Result<Opened, State>, Option<SystemTime>) {
+        if self.held.removed.load(Ordering::Relaxed) || self.format == Format::Other {
+            return (self.open(), None);
+        }
+        let files = self.files();
+        (self.open_files(&files), files.modified)
+    }
+
+    fn open_files(&self, files: &Files) -> Result<Opened, State> {
+        let generation = files.generation.ok_or(State::Missing)?;
+        if files.irregular {
+            return Err(State::Unreadable);
+        }
+        if lock(&self.held.running).is_some() {
+            return Err(State::Downloading);
+        }
+        // The current marks alone decide: a file the provider moves back to
+        // the cloud makes the database cloud-only again, whatever was read.
+        if files.cloud_only() {
+            return Err(State::CloudOnly);
+        }
+        let mut slot = lock(&self.held.open);
+        // The files changed since the database was opened, or since they were
+        // looked at: a write of the bridge's own may have changed them and
+        // opened the new generation meanwhile (`crate::write`). They are
+        // looked at again under the slot, so that no index is built for a
+        // generation already gone.
+        let generation = match slot.as_ref() {
+            Some(open) if open.generation != generation => self.files().generation.ok_or(State::Missing)?,
+            _ => generation,
+        };
+        if let Some(open) = slot.as_ref().filter(|o| o.generation == generation) {
+            return Ok(open.clone());
+        }
+        let db = match self.format {
+            Format::Pgn => match self.shared.pgn.open(&self.id, &self.path, generation) {
+                Opening::Ready(db) => Base::Pgn(db),
+                Opening::Pending(_) => return Err(State::Opening),
+                Opening::Failed => return Err(State::Unreadable),
+            },
+            // A classic database's single-byte text is read by this
+            // computer's code page, as a PGN file's is (#293).
+            _ => Base::open_in(&self.path, crate::pgnindex::system_code_page()).map_err(|_| State::Unreadable)?,
+        };
+        let open = Opened { db: Arc::new(db), generation, indexes: Indexes::counted(&self.shared.activity) };
+        *slot = Some(open.clone());
+        Ok(open)
+    }
+
+    /// Opens the PGN file at `generation` with the header index a write of
+    /// the bridge's own made for it (`crate::write`), unless the database is
+    /// already open at that generation. Held meanwhile, the slot keeps a
+    /// request from opening the file before its index is in place.
+    pub(crate) fn install(&self, generation: u64, open: impl FnOnce() -> Option<Base>) {
+        let mut slot = lock(&self.held.open);
+        if slot.as_ref().is_some_and(|o| o.generation == generation) {
+            return;
+        }
+        if let Some(db) = open() {
+            *slot = Some(Opened { db: Arc::new(db), generation, indexes: Indexes::counted(&self.shared.activity) });
+        }
+    }
+
+    /// Forgets the database opened at `generation`, whose header index a
+    /// write found damaged and removed (`crate::write`): the next look opens
+    /// the file again, which builds its index.
+    pub(crate) fn forget(&self, generation: u64) {
+        let mut slot = lock(&self.held.open);
+        if slot.as_ref().is_some_and(|o| o.generation == generation) {
+            *slot = None;
+        }
+    }
+
+    /// The write lock of the database (`crate::write`), with the layout of
+    /// its file that the last write found.
+    pub(crate) fn writing(&self) -> std::sync::MutexGuard<'_, Option<(u64, crate::write::Layout)>> {
+        lock(&self.held.writing)
+    }
+
+    /// The header indexes of PGN files, this database's among them.
+    pub(crate) fn pgn(&self) -> &pgnindex::Registry {
+        &self.shared.pgn
+    }
+
+    /// Whether the database takes writes (`docs/api.md`, "Writing games"): a
+    /// PGN file without the read-only attribute. Whether it is ready is told
+    /// apart. A look at the list reads it from its own look instead
+    /// ([`Look::writable`]).
+    pub fn writable_file(&self) -> bool {
+        self.format == Format::Pgn && std::fs::metadata(&self.path).is_ok_and(|m| !m.permissions().readonly())
+    }
+
+    /// The build of a PGN file's index running or queued: the bytes of the
+    /// file read, of all.
+    pub fn opening(&self) -> Option<Arc<Progress>> {
+        (self.format == Format::Pgn).then(|| self.shared.pgn.progress(&self.id)).flatten()
+    }
+
+    /// [`Entry::open`] for reading games: a cloud-only database starts
+    /// downloading and is reported [`State::Downloading`]; it stays
+    /// [`State::CloudOnly`] when the download cannot start.
+    pub fn open_to_read(&self) -> Result<Opened, State> {
+        match self.open() {
+            Err(State::CloudOnly) if self.download() => Err(State::Downloading),
+            other => other,
+        }
+    }
+
+    /// Whether the last download read every file, yet the provider kept a
+    /// file marked cloud-only, so that the database stayed cloud-only. For
+    /// tests: the bridge reports such a database `cloudOnly` as any other,
+    /// and its log says why.
+    #[doc(hidden)]
+    pub fn marks_kept(&self) -> bool {
+        self.held.kept.load(Ordering::Relaxed)
+    }
+
+    /// Whether the database is open in memory. For tests.
+    #[doc(hidden)]
+    pub fn is_open(&self) -> bool {
+        lock(&self.held.open).is_some()
+    }
+
+    /// The download running or queued, if any.
+    pub fn progress(&self) -> Option<Arc<Progress>> {
+        lock(&self.held.running).clone()
+    }
+
+    /// Queues the reading of the database's cloud-only files, in order. The
+    /// state afterwards follows the marks as they then are: a failed download,
+    /// a file moved to the cloud meanwhile or a mark the provider keeps leave
+    /// the database cloud-only, until the next request for its games.
+    /// Whether a download now runs or waits.
+    fn download(&self) -> bool {
+        let files = self.files();
+        let local: u64 = files.present.iter().filter(|f| !f.2).map(|f| f.1).sum();
+        let progress = Arc::new(Progress::new(local, files.size()));
+        {
+            let mut running = lock(&self.held.running);
+            if running.is_some() {
+                return true;
+            }
+            *running = Some(Arc::clone(&progress));
+        }
+        self.held.kept.store(false, Ordering::Relaxed);
+        let cloud_files: Vec<PathBuf> = files.present.into_iter().filter(|f| f.2).map(|f| f.0).collect();
+        let (held, cloud, path, id, format) =
+            (Arc::clone(&self.held), Arc::clone(&self.shared.cloud), self.path.clone(), self.id.clone(), self.format);
+        // Ends the download however the job ends, and also when it is
+        // dropped unrun because no thread could start.
+        let done = Done(Arc::clone(&held));
+        self.shared.downloads.submit(Box::new(move || {
+            let _done = done;
+            if let Err(e) = cloud_files.iter().try_for_each(|file| cloud.fetch(file, &mut |n| progress.add(n))) {
+                crate::log!("downloading database {id} failed: {e}");
+                return;
+            }
+            let after = generation_of(&path, format, &*cloud);
+            let kept: Vec<&PathBuf> =
+                after.present.iter().filter(|f| f.2 && cloud_files.contains(&f.0)).map(|f| &f.0).collect();
+            if !kept.is_empty() {
+                held.kept.store(true, Ordering::Relaxed);
+                crate::log!(
+                    "downloaded database {id}, but {} of its files still show as kept in the cloud",
+                    kept.len()
+                );
+            }
+        }))
+    }
+
+    /// A hash of the sizes and modification times of the database's files;
+    /// `None` when the header file is missing.
+    pub fn generation(&self) -> Option<u64> {
+        self.files().generation
+    }
+
+    /// Reads the database's generation when called, from any thread, without
+    /// holding the entry: what a background job asks between its steps.
+    pub fn generation_probe(&self) -> impl Fn() -> Option<u64> + Send + 'static {
+        let (path, format, cloud) = (self.path.clone(), self.format, Arc::clone(&self.shared.cloud));
+        move || generation_of(&path, format, &*cloud).generation
+    }
+
+    fn files(&self) -> Files {
+        generation_of(&self.path, self.format, &*self.shared.cloud)
+    }
+}
+
+/// Ends a download when dropped.
+struct Done(Arc<Held>);
+
+impl Drop for Done {
+    fn drop(&mut self) {
+        *lock(&self.0.running) = None;
+    }
+}
+
+/// Whether the reader of a database of `format` opens `file`, one of its
+/// files ([`cbformat::view::Format::files`]): a 2CBH database's name files
+/// `.2lgd` and `.2lcd` are listed among its files but never read
+/// ([`cbformat::v2::READ`]).
+fn read_by_reader(format: cbformat::view::Format, file: &Path) -> bool {
+    if format != cbformat::view::Format::TwoCbh {
+        return true;
+    }
+    let ext = file.extension().map(|e| e.to_string_lossy()).unwrap_or_default();
+    cbformat::v2::READ.iter().any(|read| read[1..].eq_ignore_ascii_case(&ext))
+}
+
+/// The metadata of the database at `path`, of `format`: its generation and
+/// files, the ones its reader opens ([`cbformat::view::Format::files`]), so
+/// that the search boosters and other optional classic files are neither
+/// read nor downloaded. Metadata only, following links: nothing is read. Each
+/// file's id goes in with its size and time of change, so that a file put in
+/// place of another, even one of the same size and time, gives a new
+/// generation (#241). On Windows the id is read through a handle that asks
+/// for no access to the file's contents (`cbformat::file::file_id`). A PGN
+/// database is its one file; another file has no generation.
+fn generation_of(path: &Path, format: Format, cloud: &dyn Cloud) -> Files {
+    generation_with(path, format, cloud, &cbformat::file::look)
+}
+
+/// A look at one file: its metadata, and its volume and id when it is a file
+/// ([`cbformat::file::look`]).
+type LookAt<'a> = &'a dyn Fn(&Path) -> std::io::Result<(std::fs::Metadata, Option<(u64, u128)>)>;
+
+/// [`generation_of`], each file looked at through `look`, once, and no file
+/// looked at otherwise (#348): tests count the looks.
+fn generation_with(path: &Path, format: Format, cloud: &dyn Cloud, look: LookAt<'_>) -> Files {
+    let mut hash = Hash::new();
+    let mut files = Files {
+        generation: None,
+        present: Vec::new(),
+        irregular: false,
+        modified: None,
+        created: None,
+        read_modified: None,
+        writable: false,
+    };
+    let Some(format) = format.view() else { return files };
+    // Every cache keyed on a PGN database's generation (the header index, the
+    // heads and names files, the position index) is then built again once
+    // when the reading of PGN files changes; other formats' caches stay.
+    if format == cbformat::view::Format::Pgn {
+        hash.write(&cbformat::pgnfile::VERSION.to_le_bytes());
+    }
+    // One look a file: on Windows its metadata and id from one open (#348).
+    for (i, path) in format.paths(path).into_iter().enumerate() {
+        match look(&path) {
+            Ok((m, _)) if !m.is_file() => {
+                files.irregular = true;
+                hash.write(&[0xfe]);
+            }
+            Ok((m, id)) => {
+                hash.write_meta(&m);
+                hash.write_id(id);
+                files.modified = files.modified.max(m.modified().ok());
+                if read_by_reader(format, &path) {
+                    files.read_modified = files.read_modified.max(m.modified().ok());
+                }
+                if i == 0 {
+                    files.created = m.created().ok();
+                    files.writable = format == cbformat::view::Format::Pgn && !m.permissions().readonly();
+                }
+                let cloud_only = cloud.is_cloud_only(&path, &m);
+                files.present.push((path, m.len(), cloud_only));
+            }
+            // The main file comes first: without it there is no database.
+            Err(_) if i == 0 => return files,
+            Err(_) => hash.write(&[0xff]),
+        }
+    }
+    files.generation = Some(hash.finish());
+    files
+}
+
+/// What still waited or ran when [`Catalog::settle`] gave up waiting: the
+/// kinds of background work, by name, in the order they first began.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Busy(pub Vec<&'static str>);
+
+pub struct Catalog {
+    /// The position indexes of the databases, and the queue that builds them.
+    pub explorer: crate::explorer::Registry,
+    /// The heads files of the databases (#106), and the queue that builds them.
+    pub heads: Arc<heads::Registry>,
+    heads_queue: Arc<Serial>,
+    sources: Sources,
+    shared: Arc<Shared>,
+    /// The sources as last read. Held while they are read again and the list
+    /// is rebuilt from them, so that one refresh runs at a time; a request for
+    /// one database never waits on it, however long a source takes to read.
+    read: Mutex<Read>,
+    /// The listed databases in order, then those that left the list. A
+    /// rebuild replaces the whole list, so this lock is held only to take a
+    /// handle to it.
+    entries: Mutex<Arc<Vec<Arc<Entry>>>>,
+    /// Called after the sources are read, before the list is rebuilt.
+    after_read: Mutex<Option<Hook>>,
+    /// Whether the index folder is swept of what the list no longer uses
+    /// (#60), and when it last was.
+    sweeping: AtomicBool,
+    swept: Mutex<Option<Instant>>,
+}
+
+/// The longest the index folder goes unswept while the list is asked for.
+const SWEEP_EVERY: Duration = Duration::from_secs(60);
+
+type Hook = Box<dyn Fn() + Send + Sync>;
+
+impl Catalog {
+    /// The databases at `paths`, in order, each once.
+    pub fn new(paths: impl IntoIterator<Item = PathBuf>) -> Catalog {
+        Catalog::with_sources(Sources { fixed: paths.into_iter().collect(), ..Sources::default() }, Arc::new(System))
+    }
+
+    /// The databases of `sources`, read now and again whenever they change.
+    pub fn with_sources(sources: Sources, cloud: Arc<dyn Cloud>) -> Catalog {
+        let activity = Arc::new(Activity::default());
+        let downloads = Arc::new(Serial::counted("download", Arc::clone(&activity)));
+        let pgn = pgnindex::Registry::counted(Arc::clone(&activity));
+        let roots = Roots { chessbase: sources.chessbase.clone(), profile: documents::profile() };
+        let catalog = Catalog {
+            explorer: crate::explorer::Registry::counted(Arc::clone(&activity)),
+            heads: Arc::default(),
+            heads_queue: Arc::new(Serial::counted("heads", Arc::clone(&activity))),
+            sources,
+            shared: Arc::new(Shared { cloud, downloads, pgn, activity, roots }),
+            read: Mutex::default(),
+            entries: Mutex::default(),
+            after_read: Mutex::new(None),
+            sweeping: AtomicBool::new(false),
+            swept: Mutex::new(None),
+        };
+        catalog.refresh(true);
+        catalog
+    }
+
+    /// The queue downloads run in.
+    pub fn downloads(&self) -> &Serial {
+        &self.shared.downloads
+    }
+
+    /// The index builds of PGN files.
+    pub fn pgn(&self) -> &pgnindex::Registry {
+        &self.shared.pgn
+    }
+
+    /// Waits until none of this catalog's background work waits or runs, so
+    /// that nothing writes to its folders any more (#236): the jobs of its
+    /// heads, PGN and download queues, its index builds, the writers of its
+    /// names files and the keeper's look. Each counts in one count, the
+    /// catalog's, from when it is queued or begins until it ends, whichever
+    /// way it ends. Work that queues more work, in its own queue or another,
+    /// queues it before it ends, so the count falls to nothing only once
+    /// nothing waits or runs, and the wait is for that. The keeper is stopped
+    /// first and stays stopped: a look it is taking counts until it ends, and
+    /// no look begins after it. Only a request can queue work again, so tests
+    /// call it once they send none. It asks no build to stop, since a stopped
+    /// build queues itself again. After `limit`, from the call, `Busy` names
+    /// what still waits or runs, the keeper's look included.
+    /// How many times the catalog's background work began or ended so far
+    /// ([`Activity::changes`]): a download, an index build, a header index, a
+    /// names file, a keeper's look (#348).
+    pub fn changes(&self) -> u64 {
+        self.shared.activity.changes()
+    }
+
+    pub fn settle(&self, limit: Duration) -> Result<(), Busy> {
+        let deadline = Instant::now() + limit;
+        // Takes a lock that is never held across a look: a stop never waits
+        // for the look to end.
+        self.explorer.stop_keeping();
+        self.shared.activity.wait_idle(deadline).map_err(Busy)
+    }
+
+    /// Keeps the indexes where the bridge whose data folder is `dir` keeps
+    /// them ([`crate::folders`]): the position indexes, with the heads and
+    /// names files, in its index folder, apart from the data folder where
+    /// that roams (#147), and the header indexes of PGN files in its `pgn`
+    /// folder. A start sets its data folder here too, so a tool or a test
+    /// that gives its own keeps its indexes where a start would (#175).
+    pub fn use_data_dir(&self, dir: &Path) {
+        self.explorer.set_dir(crate::folders::index_dir(dir));
+        self.shared.pgn.set_dir(crate::folders::pgn_dir(dir));
+    }
+
+    /// Sets a function called each time the sources have been read, before
+    /// the list is rebuilt from them. Tests use it to change a source at
+    /// exactly that moment.
+    pub fn after_read(&self, hook: impl Fn() + Send + Sync + 'static) {
+        *lock(&self.after_read) = Some(Box::new(hook));
+    }
+
+    /// The databases, the list read again first if its sources changed.
+    pub fn entries(&self) -> Vec<Arc<Entry>> {
+        let rebuilt = self.refresh(false);
+        let entries = self.listed();
+        self.sweep_if_due(&entries, rebuilt);
+        entries.to_vec()
+    }
+
+    /// The list as last rebuilt.
+    fn listed(&self) -> Arc<Vec<Arc<Entry>>> {
+        Arc::clone(&lock(&self.entries))
+    }
+
+    /// Whether a database is downloading or waits to, from what the catalog
+    /// holds: no file is looked at (#365).
+    pub fn downloading(&self) -> bool {
+        self.listed().iter().any(|entry| entry.progress().is_some())
+    }
+
+    /// Lets go of what using the bridge left in memory, when nothing runs:
+    /// the open databases, the position indexes, the heads files and all the
+    /// search caches retain (#365). Their next use opens them again. Not while
+    /// a request or any of the catalog's work runs: what runs, then. Whether
+    /// there was anything to let go, as a tray snapshot taken after the last
+    /// use opens the databases again.
+    pub fn release_unused(&self) -> Result<bool, Vec<&'static str>> {
+        if crate::foreground::running() {
+            return Err(vec!["a request"]);
+        }
+        self.shared.activity.wait_idle(Instant::now())?;
+        let mut opened = false;
+        for entry in self.listed().iter() {
+            opened |= lock(&entry.held.open).take().is_some();
+        }
+        self.explorer.release();
+        self.heads.release();
+        crate::search::memory::evict_all();
+        Ok(opened)
+    }
+
+    /// The names of the databases on the list, read first if its sources
+    /// changed: the databases' own files are not looked at (#365).
+    pub fn names(&self) -> Vec<String> {
+        self.entries().iter().map(|entry| entry.name.clone()).collect()
+    }
+
+    /// Sweeps the index folder, and the PGN header index folder, of what the
+    /// list no longer uses (#60), now and
+    /// from now on: after each change of the list, and at least once a minute
+    /// while the list is asked for. The bridge calls it once it has its data
+    /// folder; tests call it once they have set theirs.
+    pub fn sweep_indexes(&self) {
+        self.sweeping.store(true, Ordering::Relaxed);
+        *lock(&self.swept) = None;
+        self.entries();
+    }
+
+    /// Sets how long the files of a database that left the list stay in the
+    /// index folders (#60): its position index, heads and names files, and
+    /// the header index of its PGN file; [`crate::indexdir::SWEEP_GRACE`]
+    /// unless set.
+    pub fn set_sweep_grace(&self, grace: Duration) {
+        lock(&self.explorer.unlisted).set_grace(grace);
+        lock(&self.shared.pgn.unlisted).set_grace(grace);
+        lock(&self.heads.unlisted).set_grace(grace);
+    }
+
+    fn sweep_if_due(&self, entries: &[Arc<Entry>], rebuilt: bool) {
+        if !self.sweeping.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut swept = lock(&self.swept);
+        if !rebuilt && swept.is_some_and(|at| at.elapsed() < SWEEP_EVERY) {
+            return;
+        }
+        *swept = Some(Instant::now());
+        drop(swept);
+        // A database only missing, in the cloud or downloading is still on
+        // the list, and keeps its index.
+        let listed = entries.iter().filter(|e| e.listed()).map(|e| e.id.clone()).collect();
+        self.explorer.sweep(&listed);
+        self.shared.pgn.sweep(&listed);
+        if let Some(dir) = self.explorer.dir() {
+            self.heads.sweep(&dir, &listed);
+        }
+    }
+
+    /// Hands `open` the heads file of its generation when one is ready, and
+    /// starts the build of one when none is (#106). Until it is ready, passes
+    /// over the database read its own records.
+    pub fn attach_heads(&self, entry: &Entry, open: &Opened) {
+        // A file that failed its CRC is left for the registry, which drops it
+        // and builds it again.
+        if open.indexes.has_usable_heads() {
+            return;
+        }
+        let Some(dir) = self.explorer.dir() else { return };
+        match self.heads.lookup(&dir, &entry.id, open.generation, open.db.record_count()) {
+            Lookup::Ready(h) => open.indexes.set_heads(h),
+            Lookup::None => {}
+            Lookup::Build => {
+                let (registry, id, generation) = (Arc::clone(&self.heads), entry.id.clone(), open.generation);
+                let (db, indexes, probe) = (Arc::clone(&open.db), Arc::clone(&open.indexes), entry.generation_probe());
+                let path = heads::path(&dir, &entry.id);
+                let started = self.heads_queue.submit(Box::new(move || {
+                    let _bug = registry.unwinding(&id, generation);
+                    let still = || probe() == Some(generation);
+                    let result = heads::build_base(&db, generation, &path, &still);
+                    if let Some(h) = registry.built(&id, generation, result) {
+                        indexes.set_heads(h);
+                    }
+                }));
+                if !started {
+                    self.heads.built(&entry.id, open.generation, Err("the heads thread could not start".into()));
+                }
+            }
+        }
+    }
+
+    /// The database `id` of the list as last rebuilt, without reading the
+    /// sources again: a request for one database never waits on a source
+    /// that is slow to read, such as a folder on a network drive that no
+    /// longer answers.
+    pub fn get(&self, id: &str) -> Option<Arc<Entry>> {
+        self.listed().iter().find(|e| e.id == id).cloned()
+    }
+
+    /// Reads again the sources that changed or failed last time
+    /// ([`Read`]), and rebuilds the list when any was read, or `always`;
+    /// whether it did. One refresh runs at a time; the rebuilt list replaces
+    /// the one [`Catalog::get`] reads.
+    fn refresh(&self, always: bool) -> bool {
+        let mut read = lock(&self.read);
+        let changed = read.update(&self.sources);
+        if let Some(hook) = lock(&self.after_read).as_ref() {
+            hook();
+        }
+        if changed || always {
+            // Only a refresh replaces the list, and refreshes run one at a
+            // time: the list it starts from is still the last one.
+            let entries = self.merge(&self.listed(), read.listed(&self.sources));
+            *lock(&self.entries) = Arc::new(entries);
+        }
+        changed || always
+    }
+
+    /// The new list: each database once, in order, keeping the entry (and its
+    /// open database) of a database already listed; then the databases that
+    /// left the list, marked removed.
+    fn merge(&self, old: &[Arc<Entry>], listed: Vec<Listed>) -> Vec<Arc<Entry>> {
+        let mut seen = HashSet::new();
+        let mut entries = Vec::new();
+        for item in listed {
+            let id = id_of(&item.path);
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            let entry = match old.iter().find(|e| e.id == id) {
+                Some(e) if e.name == item.name => Arc::clone(e),
+                // Renamed in the window: the same database under its new name.
+                Some(e) => Arc::new(Entry::new(item, &self.shared, Arc::clone(&e.held))),
+                None => {
+                    let entry = Entry::new(item, &self.shared, Arc::default());
+                    if entry.format == Format::Pgn {
+                        crate::write::remove_leftover(&entry.path);
+                    }
+                    Arc::new(entry)
+                }
+            };
+            entry.held.removed.store(false, Ordering::Relaxed);
+            entries.push(entry);
+        }
+        for e in old.iter().filter(|e| !seen.contains(&e.id)) {
+            e.held.removed.store(true, Ordering::Relaxed);
+            entries.push(Arc::clone(e));
+        }
+        entries
+    }
+}
+
+/// 16 hexadecimal characters from the normalised path: separators unified and,
+/// on Windows, case folded, since its paths are case-insensitive.
+pub fn id_of(path: &Path) -> String {
+    let mut text = path.to_string_lossy().replace('\\', "/");
+    if cfg!(windows) {
+        text = text.to_lowercase();
+    }
+    let mut hash = Hash::new();
+    hash.write(text.as_bytes());
+    format!("{:016x}", hash.finish())
+}
+
+/// 64-bit FNV-1a: stable across runs and platforms, unlike the standard
+/// library's randomly keyed hasher.
+pub(crate) struct Hash(u64);
+
+impl Hash {
+    pub(crate) fn new() -> Hash {
+        Hash(0xcbf2_9ce4_8422_2325)
+    }
+
+    pub(crate) fn write(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.0 = (self.0 ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+
+    /// A file's size and modification time.
+    fn write_meta(&mut self, m: &std::fs::Metadata) {
+        self.write(&m.len().to_le_bytes());
+        let modified = m.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok());
+        self.write(&modified.map_or(0, |d| d.as_nanos()).to_le_bytes());
+    }
+
+    /// A file's volume and id, or a marker when they are not known.
+    fn write_id(&mut self, id: Option<(u64, u128)>) {
+        match id {
+            Some((volume, id)) => {
+                self.write(&[1]);
+                self.write(&volume.to_le_bytes());
+                self.write(&id.to_le_bytes());
+            }
+            None => self.write(&[0]),
+        }
+    }
+
+    /// [`Hash::write_meta`] of the file at `path`, or a marker when it is missing.
+    pub(crate) fn write_file(&mut self, path: &Path) {
+        match std::fs::metadata(path) {
+            Ok(m) => self.write_meta(&m),
+            Err(_) => self.write(&[0xff]),
+        }
+    }
+
+    pub(crate) fn finish(&self) -> u64 {
+        self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ids_are_stable_and_distinct() {
+        let a = id_of(Path::new("C:\\Bases\\Mega.2cbh"));
+        assert_eq!(a.len(), 16);
+        assert_eq!(a, id_of(Path::new("C:/Bases/Mega.2cbh")));
+        assert_ne!(a, id_of(Path::new("C:/Bases/Mega2.2cbh")));
+        // FNV-1a test vector.
+        let mut h = Hash::new();
+        h.write(b"a");
+        assert_eq!(h.finish(), 0xaf63_dc4c_8601_ec8c);
+    }
+
+    #[test]
+    fn formats_and_states_without_files() {
+        assert_eq!(Format::of(Path::new("x.2CBH")), Format::TwoCbh);
+        assert_eq!(Format::of(Path::new("x.cbh")), Format::Cbh);
+        assert_eq!(Format::of(Path::new("x.pgn")), Format::Pgn);
+        let catalog = Catalog::new([PathBuf::from("/a/x.2cbh"), PathBuf::from("/a/x.2cbh"), PathBuf::from("/a/y.pgn")]);
+        let entries = catalog.entries();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "x");
+        assert_eq!(entries[0].state(), State::Missing);
+        assert_eq!(entries[1].state(), State::Missing);
+    }
+
+    #[test]
+    fn a_pgn_generation_carries_the_index_version() {
+        let f = cbformat::fixture::pgn_file("catalog-generation", b"[White \"A\"]\n\n1. e4 *\n");
+        let path = f.dir().join("db.pgn");
+        let generation = generation_of(&path, Format::Pgn, &System).generation.unwrap();
+        // The version salt is what rebuilds the caches of an unchanged PGN
+        // file once its reading changes: without it the generation is the
+        // file's metadata alone.
+        let meta = std::fs::metadata(&path).unwrap();
+        let mut metadata = Hash::new();
+        metadata.write_meta(&meta);
+        metadata.write_id(cbformat::file::file_id(&path, &meta));
+        assert_ne!(generation, metadata.finish());
+        let mut salted = Hash::new();
+        salted.write(&cbformat::pgnfile::VERSION.to_le_bytes());
+        salted.write_meta(&meta);
+        salted.write_id(cbformat::file::file_id(&path, &meta));
+        assert_eq!(generation, salted.finish());
+    }
+
+    /// The generation as a look took it before one open a file (#348): the
+    /// metadata from the path, then the id through a handle of its own.
+    fn two_opens(path: &Path, format: Format) -> u64 {
+        let format = format.view().unwrap();
+        let mut hash = Hash::new();
+        if format == cbformat::view::Format::Pgn {
+            hash.write(&cbformat::pgnfile::VERSION.to_le_bytes());
+        }
+        for (i, (path, _)) in format.files(path).into_iter().enumerate() {
+            match std::fs::metadata(&path) {
+                Ok(m) if !m.is_file() => hash.write(&[0xfe]),
+                Ok(m) => {
+                    hash.write_meta(&m);
+                    hash.write_id(cbformat::file::file_id(&path, &m));
+                }
+                Err(_) if i == 0 => panic!("no main file"),
+                Err(_) => hash.write(&[0xff]),
+            }
+        }
+        hash.finish()
+    }
+
+    /// A look that opens each file once gives each format the generation that
+    /// two opens a file gave (#348), so that no database is opened again and
+    /// no cache built again: a 2CBH database, a classic one, with an optional
+    /// file missing, and a PGN file.
+    #[test]
+    fn one_open_a_file_keeps_every_generation() {
+        let two = cbformat::fixture::Builder::new().write("catalog-one-open-2cbh");
+        let classic = {
+            let mut b = cbformat::fixture_cbh::Builder::new();
+            b.game(&cbformat::fixture_cbh::move_record(0, None, None, &[]));
+            b.write("catalog-one-open-cbh")
+        };
+        let _ = std::fs::remove_file(classic.dir().join("db.cba"));
+        let pgn = cbformat::fixture::pgn_file("catalog-one-open-pgn", b"[White \"A\"]\n\n1. e4 *\n");
+        for (path, format) in [
+            (two.dir().join("db.2cbh"), Format::TwoCbh),
+            (classic.dir().join("db.cbh"), Format::Cbh),
+            (pgn.dir().join("db.pgn"), Format::Pgn),
+        ] {
+            let looked = generation_of(&path, format, &System);
+            assert!(!looked.irregular && !looked.present.is_empty(), "{path:?}");
+            assert_eq!(looked.generation, Some(two_opens(&path, format)), "{path:?}");
+        }
+    }
+
+    /// A look at a database looks at each of its files once, the files
+    /// missing among them too, and at no file otherwise (#348): a 2CBH
+    /// database, a classic one, whose move and annotation files' sizes decide
+    /// whether `.cbj` is required, and a PGN file.
+    #[test]
+    fn a_look_looks_at_each_file_once() {
+        let two = cbformat::fixture::Builder::new().write("catalog-look-once-2cbh");
+        let classic = {
+            let mut b = cbformat::fixture_cbh::Builder::new();
+            b.game(&cbformat::fixture_cbh::move_record(0, None, None, &[]));
+            b.write("catalog-look-once-cbh")
+        };
+        let pgn = cbformat::fixture::pgn_file("catalog-look-once-pgn", b"[White \"A\"]\n\n1. e4 *\n");
+        for (path, format, files) in [
+            (two.dir().join("db.2cbh"), Format::TwoCbh, cbformat::v2::EXTENSIONS.len()),
+            (classic.dir().join("db.cbh"), Format::Cbh, cbformat::cbh::READ.len()),
+            (pgn.dir().join("db.pgn"), Format::Pgn, 1),
+        ] {
+            let looked = std::cell::RefCell::new(Vec::new());
+            let counted = |p: &Path| {
+                looked.borrow_mut().push(p.to_path_buf());
+                cbformat::file::look(p)
+            };
+            let generation = generation_with(&path, format, &System, &counted).generation;
+            let mut looked = looked.into_inner();
+            assert_eq!(looked.len(), files, "{path:?}: {looked:?}");
+            looked.sort();
+            looked.dedup();
+            assert_eq!(looked.len(), files, "{path:?}: each once");
+            assert_eq!(generation, generation_of(&path, format, &System).generation);
+        }
+    }
+
+    /// A file put in place of another, of the same bytes, size and time of
+    /// change, gives the database a new generation, so that the catalog opens
+    /// it again rather than keep one whose file was replaced (#241).
+    #[test]
+    fn a_file_replaced_by_a_copy_gives_a_new_generation() {
+        let f = cbformat::fixture::pgn_file("catalog-replaced", b"[White \"A\"]\n\n1. e4 *\n");
+        let path = f.dir().join("db.pgn");
+        let before = generation_of(&path, Format::Pgn, &System).generation.unwrap();
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let moved = path.with_extension("moved");
+        std::fs::rename(&path, &moved).unwrap();
+        std::fs::write(&path, std::fs::read(&moved).unwrap()).unwrap();
+        std::fs::File::options().write(true).open(&path).unwrap().set_modified(modified).unwrap();
+        assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), modified);
+        let after = generation_of(&path, Format::Pgn, &System).generation.unwrap();
+        assert_ne!(before, after);
+        std::fs::remove_file(&moved).unwrap();
+    }
+
+    /// Settling waits for background work that still writes to the catalog's
+    /// folders (#236): while a download is held, it gives up after its limit
+    /// naming the queue; once the download is let go and queues a heads job,
+    /// a queue settling looks at before the downloads, it returns only after
+    /// that job has written its file, so the folder can be removed.
+    #[test]
+    fn settling_waits_for_background_work_and_names_what_still_runs() {
+        let dir = std::env::temp_dir().join(format!("bridge-settle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let catalog = Catalog::new(Vec::new());
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        let file = dir.join("late.heads.partial");
+        let (heads, written) = (Arc::clone(&catalog.heads_queue), file.clone());
+        assert!(catalog.shared.downloads.submit(Box::new(move || {
+            let _ = held.recv();
+            assert!(heads.submit(Box::new(move || std::fs::write(&written, b"late").unwrap())));
+        })));
+        assert_eq!(catalog.settle(Duration::from_millis(50)), Err(Busy(vec!["download"])), "settled while a job ran");
+        release.send(()).unwrap();
+        assert_eq!(catalog.settle(Duration::from_secs(300)), Ok(()));
+        assert!(file.exists(), "the heads job wrote before the catalog settled");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+}

@@ -768,8 +768,8 @@ el.megaBtn.addEventListener('click', async () => {
     if (mega.estado.pendiente) { if (!await mega.pedirPermiso()) await informar('MegaDatabase', 'No se ha dado permiso para leer los archivos de la base.'); }
     else {
       if (!mega.estado.base && !mega.estado.local) {
-        await informar('Elegir la MegaDatabase', 'Se abrirá un cuadro para elegir la carpeta donde guardas la MegaDatabase de ChessBase: la que contiene el archivo «Mega Database 2025.cbh». '
-          + 'Entra en esa carpeta y pulsa «Seleccionar carpeta». ChessRival encontrará solo los archivos que necesita.', 'Elegir carpeta');
+        await informar('Elegir la MegaDatabase', 'Se abrirá un cuadro para elegir el archivo principal de la base de ChessBase: termina en «.cbh» (formato clásico) o «.2cbh» (Mega Database 2027). '
+          + 'ChessRival localizará los archivos compañeros de esa misma carpeta.', 'Elegir archivo');
       }
       el.megaText.textContent = 'Comprobando la base…';
       const error = await mega.elegir();

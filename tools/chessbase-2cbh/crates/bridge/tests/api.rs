@@ -1,0 +1,1107 @@
+//! The server against `docs/api.md`, over real loopback connections.
+
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
+
+use bridge::api::App;
+use bridge::catalog::id_of;
+use bridge::http::MAX_HEAD;
+use bridge::server;
+use cbformat::fixture::{
+    Builder, TempDb, annotations, arrows, lid_header, lid_with, quiet, squares, strings, symbols, text, titles,
+};
+use cbformat::game::language;
+use cbformat::movetable::{ALTERNATIVE, Color, END_OF_LINE, MOVES, NULL_MOVE, Piece};
+
+mod common;
+use common::{
+    ORIGIN, Reply, Sent, TOKEN, TestBridge, WAIT_LIMIT, app_of, connect, get_reply, has_members, has_object, member,
+    object_with, objects, poll, send, unanswered,
+};
+
+/// `games` games of 1.e4 won by white, white and black being "Morphy, Paul";
+/// record `text` (1-based, 0 for none) is a guiding text and record `broken`
+/// points at no move record.
+fn database(name: &str, games: u32, text: u32, broken: u32) -> TempDb {
+    let mut b = Builder::new();
+    let e4 = b.moves(1, &[MOVES, quiet(Color::White, Piece::Pawn, "e2", "e4"), END_OF_LINE]);
+    for g in 1..=games {
+        let rec = b.game(if g == broken { 5 } else { e4 });
+        if g == text {
+            rec[0] |= 2;
+        }
+    }
+    let mut player = Vec::new();
+    for s in [&b"Morphy"[..], b"Paul"] {
+        player.extend((s.len() as i32).to_le_bytes());
+        player.extend(s);
+    }
+    let mut lid = lid_header(1024, 1);
+    lid.extend((player.len() as i32).to_le_bytes());
+    lid.extend(&player);
+    b.lid(lid);
+    b.write(name)
+}
+
+/// A bridge serving a test's database, and the database's id. Declared after
+/// the database, it is dropped first: nothing works on the database's files
+/// once they go.
+struct Running {
+    port: u16,
+    id: String,
+    bridge: TestBridge,
+}
+
+impl Running {
+    /// How long its busy answer waits for a request's `Origin` after the
+    /// connection was accepted: `server::BUSY_READ`, as the harness keeps it.
+    fn busy_read(&self) -> Duration {
+        self.bridge.app.busy_read
+    }
+}
+
+fn start(db: &TempDb, extra: Vec<PathBuf>, hook: Option<Box<dyn Fn() + Send + Sync>>) -> Running {
+    let path = db.dir().join("db.2cbh");
+    let mut paths = vec![path.clone()];
+    paths.extend(extra);
+    let bridge = TestBridge::new(App { between_reads: hook, ..app_of(paths) });
+    Running { port: bridge.port, id: id_of(&path), bridge }
+}
+
+fn plain(port: u16, head: &str) -> Reply {
+    send(port, &format!("{head}\r\nConnection: close\r\n\r\n"))
+}
+
+#[test]
+fn status_and_databases() {
+    let db = database("api-status", 3, 0, 0);
+    let pgn = db.dir().join("games.pgn");
+    std::fs::write(&pgn, "[Event \"x\"]\n\n1. e4 *\n").unwrap();
+    let r = start(&db, vec![pgn, PathBuf::from("/no/such/base.2cbh")], None);
+    let s = get_reply(r.port, "/v1/status");
+    assert_eq!(s.status, 200, "{}", s.body);
+    assert!(
+        has_members(
+            &s.body,
+            r#""bridge":{"version":"test","api":1,"features":["explorerSearch","fragmentSearch","analysisGames","guidingTexts"]}"#
+        ),
+        "{}",
+        s.body
+    );
+    // The PGN file is opened in the background: its index is built first.
+    assert!(
+        s.body.contains(r#""ready":1"#) && s.body.contains(r#""missing":1"#) && s.body.contains(r#""opening":1"#),
+        "{}",
+        s.body
+    );
+    let d = get_reply(r.port, "/v1/databases");
+    assert_eq!(d.status, 200);
+    assert!(
+        has_object(&d.body, &format!(r#""id":"{}","name":"db","format":"2cbh","state":"ready","records":3"#, r.id)),
+        "{}",
+        d.body
+    );
+    let games = object_with(&d.body, r#""name":"games","format":"pgn""#).unwrap_or_else(|| panic!("{}", d.body));
+    assert!(member(games, "state").starts_with('"'), "{games}");
+    assert!(has_object(&d.body, r#""name":"base","format":"2cbh","state":"missing""#), "{}", d.body);
+    assert!(!d.body.contains(db.dir().to_str().unwrap()), "paths are never sent");
+    assert_eq!(d.header("access-control-allow-origin"), Some(ORIGIN));
+    assert_eq!(d.header("access-control-expose-headers"), Some("Retry-After, ETag"));
+}
+
+#[test]
+fn access_checks() {
+    let db = database("api-access", 1, 0, 0);
+    let bridge = start(&db, vec![], None);
+    let p = bridge.port;
+    let host = format!("Host: 127.0.0.1:{p}");
+    let auth = format!("Authorization: Bearer {TOKEN}");
+    let r = plain(p, &format!("GET /v1/status HTTP/1.1\r\n{host}\r\nOrigin: {ORIGIN}"));
+    assert_eq!(r.status, 401);
+    assert!(r.body.contains(r#""code":"unauthorized""#));
+    assert_eq!(r.header("access-control-allow-origin"), Some(ORIGIN), "errors are readable by the page");
+    assert_eq!(
+        plain(p, &format!("GET /v1/status HTTP/1.1\r\n{host}\r\nAuthorization: Bearer {}x", &TOKEN[1..])).status,
+        401
+    );
+    assert_eq!(plain(p, &format!("GET /v1/status HTTP/1.1\r\n{host}\r\nAuthorization: Basic {TOKEN}")).status, 401);
+    let r = plain(p, &format!("GET /v1/status HTTP/1.1\r\nHost: evil.example:{p}\r\n{auth}"));
+    assert_eq!((r.status, r.body.contains("misdirected_host")), (421, true));
+    assert_eq!(plain(p, &format!("GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:1\r\n{auth}")).status, 421);
+    let r = plain(p, &format!("GET /v1/status HTTP/1.1\r\n{host}\r\n{auth}\r\nOrigin: https://evil.example"));
+    assert_eq!((r.status, r.header("access-control-allow-origin")), (403, None));
+    let r = plain(p, &format!("POST /v1/status HTTP/1.1\r\n{host}\r\n{auth}"));
+    assert_eq!((r.status, r.header("allow")), (405, Some("GET, OPTIONS")));
+    // Writes are served at the paths of a database's games alone.
+    let games = format!("/v1/databases/{}/games", bridge.id);
+    for (method, path, allow) in [
+        ("PUT", games.clone(), "GET, POST, OPTIONS"),
+        ("DELETE", games.clone(), "GET, POST, OPTIONS"),
+        ("POST", format!("{games}/1"), "GET, PUT, DELETE, OPTIONS"),
+        ("PATCH", format!("{games}/1"), "GET, PUT, DELETE, OPTIONS"),
+        ("DELETE", "/v1/databases".into(), "GET, OPTIONS"),
+        ("PUT", format!("/v1/databases/{}/suggest", bridge.id), "GET, OPTIONS"),
+    ] {
+        let r = plain(p, &format!("{method} {path} HTTP/1.1\r\n{host}\r\n{auth}"));
+        assert_eq!((r.status, r.header("allow")), (405, Some(allow)), "{method} {path}");
+    }
+    // The token is checked before the method, and before a body is read.
+    let r = send(p, &format!("POST {games} HTTP/1.1\r\n{host}\r\nContent-Length: 3\r\nConnection: close\r\n\r\nabc"));
+    assert_eq!(r.status, 401);
+    // No Origin: a program, not a page; the token is enough.
+    assert_eq!(plain(p, &format!("GET /v1/status HTTP/1.1\r\nHost: localhost:{p}\r\n{auth}")).status, 200);
+    let pre = plain(
+        p,
+        &format!(
+            "OPTIONS /v1/status HTTP/1.1\r\n{host}\r\nOrigin: {ORIGIN}\r\nAccess-Control-Request-Method: GET\r\nAccess-Control-Request-Private-Network: true"
+        ),
+    );
+    assert_eq!(pre.status, 204);
+    assert_eq!(pre.header("access-control-allow-origin"), Some(ORIGIN));
+    assert_eq!(pre.header("access-control-allow-methods"), Some("GET, POST, PUT, DELETE"));
+    assert_eq!(pre.header("access-control-allow-headers"), Some("Authorization, Content-Type, If-Match"));
+    assert_eq!(pre.header("access-control-allow-private-network"), Some("true"));
+    let pre = plain(p, &format!("OPTIONS /v1/status HTTP/1.1\r\n{host}\r\nOrigin: {ORIGIN}"));
+    assert_eq!((pre.status, pre.header("access-control-allow-private-network")), (204, None));
+    assert_eq!(plain(p, &format!("OPTIONS /v1/status HTTP/1.1\r\n{host}\r\nOrigin: https://evil.example")).status, 403);
+    assert_eq!(plain(p, &format!("OPTIONS /v1/status HTTP/1.1\r\n{host}")).status, 403);
+}
+
+#[test]
+fn malformed_requests_bodies_and_oversized_headers() {
+    let db = database("api-malformed", 1, 0, 0);
+    let bridge = start(&db, vec![], None);
+    let p = bridge.port;
+    let auth = format!("Authorization: Bearer {TOKEN}");
+    let r = plain(p, &format!("GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\n{auth}\r\nContent-Length: 5"));
+    assert_eq!((r.status, r.body.contains("body_not_allowed")), (413, true));
+    let r =
+        plain(p, &format!("GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\n{auth}\r\nTransfer-Encoding: chunked"));
+    assert_eq!((r.status, r.body.contains("body_not_allowed")), (413, true));
+    let big = "x".repeat(17 << 10);
+    let r = plain(p, &format!("GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nX-Big: {big}"));
+    assert_eq!((r.status, r.body.contains("headers_too_large")), (431, true));
+    assert_eq!(plain(p, "BLAH").status, 400);
+    assert_eq!(get_reply(p, "/v1/nothing").status, 404);
+}
+
+/// A refusal reaches the client whole while the rest of the request is still
+/// coming: the bridge reads and drops it before it closes, since a close with
+/// unread bytes resets the connection and the client can lose the answer
+/// (#217). A head or a body four times the head limit is mostly unread when
+/// the refusal is written.
+#[test]
+fn a_refusal_is_read_to_its_end_while_the_request_goes_on() {
+    let db = database("api-linger", 1, 0, 0);
+    let bridge = start(&db, vec![], None);
+    let p = bridge.port;
+    let big = "x".repeat(MAX_HEAD * 4);
+    let r = plain(p, &format!("GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nX-Big: {big}"));
+    assert_eq!((r.status, r.body.contains("headers_too_large")), (431, true));
+    let head = format!(
+        "GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nAuthorization: Bearer {TOKEN}\r\nContent-Length: {}",
+        big.len()
+    );
+    let r = send(p, &format!("{head}\r\nConnection: close\r\n\r\n{big}"));
+    assert_eq!((r.status, r.body.contains("body_not_allowed")), (413, true));
+}
+
+#[test]
+fn game_windows() {
+    let db = database("api-windows", 30, 0, 0);
+    let r = start(&db, vec![], None);
+    let path = |q: &str| format!("/v1/databases/{}/games{q}", r.id);
+    let numbers = |reply: &Reply| -> Vec<u32> {
+        reply.body.split(r#""number":"#).skip(1).map(|s| s.split(',').next().unwrap().parse().unwrap()).collect()
+    };
+    let w = get_reply(r.port, &path("?limit=10"));
+    assert_eq!(w.status, 200, "{}", w.body);
+    assert!(has_members(&w.body, r#""total":30,"offset":0,"sort":"number-asc""#), "{}", w.body);
+    assert_eq!(numbers(&w), (1..=10).collect::<Vec<_>>());
+    assert!(has_object(&w.body, r#""white":"Morphy, Paul","whiteElo":0,"black":"Morphy, Paul""#), "{}", w.body);
+    assert!(
+        w.body.contains(r#""result":"1-0""#) && has_object(&w.body, r#""flags":{"deleted":false,"chess960":false}"#),
+        "{}",
+        w.body
+    );
+    assert_eq!(numbers(&get_reply(r.port, &path("?offset=25&limit=10"))), [26, 27, 28, 29, 30]);
+    assert_eq!(numbers(&get_reply(r.port, &path("?sort=number-desc&limit=3"))), [30, 29, 28]);
+    assert_eq!(numbers(&get_reply(r.port, &path("?sort=number-desc&offset=28"))), [2, 1]);
+    assert_eq!(numbers(&get_reply(r.port, &path("?offset=30"))), Vec::<u32>::new());
+    assert_eq!(numbers(&get_reply(r.port, &path(""))).len(), 30);
+    for (q, parameter) in [
+        ("?limit=0", "limit"),
+        ("?limit=501", "limit"),
+        ("?offset=-1", "offset"),
+        ("?sort=bogus", "sort"),
+        ("?sort=name", "sort"),
+    ] {
+        let e = get_reply(r.port, &path(q));
+        assert_eq!(e.status, 400, "{q}");
+        assert!(e.body.contains(&format!(r#""parameter":"{parameter}""#)), "{q}: {}", e.body);
+    }
+    assert_eq!(get_reply(r.port, "/v1/databases/0000000000000000/games").status, 404);
+}
+
+#[test]
+fn one_game_and_its_errors() {
+    let db = database("api-game", 4, 3, 4);
+    let r = start(&db, vec![], None);
+    let game = |n: &str| get_reply(r.port, &format!("/v1/databases/{}/games/{n}", r.id));
+    let g = game("1");
+    assert_eq!(g.status, 200, "{}", g.body);
+    let pgn = member(&g.body, "pgn");
+    assert!(
+        has_members(&g.body, r#""number":1"#) && pgn.starts_with(r#""[Event "#) && pgn.ends_with(r#"1. e4 1-0\n""#),
+        "{}",
+        g.body
+    );
+    for n in ["0", "5", "x", "4294967296"] {
+        assert_eq!(game(n).status, 404, "{n}");
+    }
+    let t = game("3");
+    assert_eq!((t.status, t.body.contains("not_a_game")), (422, true));
+    let b = game("4");
+    assert_eq!(
+        (b.status, b.body.contains(r#""code":"unreadable_game""#), b.body.contains("reason")),
+        (422, true, true)
+    );
+}
+
+fn write_at(path: &Path, offset: u64, bytes: &[u8]) {
+    let mut f = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+    std::io::Seek::seek(&mut f, std::io::SeekFrom::Start(offset)).unwrap();
+    f.write_all(bytes).unwrap();
+}
+
+/// Rewrites game 1's result byte, as a save of that game would.
+fn flip_result(dir: &Path, result: u8) {
+    write_at(&dir.join("db.2cbh"), 192 + 0x58, &[result]);
+}
+
+#[test]
+fn a_change_during_the_read_is_retried() {
+    let db = database("api-retry", 1, 0, 0);
+    let dir = db.dir().to_path_buf();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    // The first read is interrupted by a save that turns 1-0 into 0-1.
+    let hook = move || {
+        if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+            flip_result(&dir, 0);
+        }
+    };
+    let r = start(&db, vec![], Some(Box::new(hook)));
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 200, "{}", g.body);
+    assert!(g.body.contains(r#"1. e4 0-1\n""#), "the retry serves the saved game: {}", g.body);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+#[test]
+fn a_database_that_keeps_changing_is_reported() {
+    let db = database("api-changing", 1, 0, 0);
+    let dir = db.dir().to_path_buf();
+    let n = Arc::new(AtomicUsize::new(0));
+    let hook = move || flip_result(&dir, n.fetch_add(1, Ordering::SeqCst) as u8 % 2);
+    let r = start(&db, vec![], Some(Box::new(hook)));
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 503, "{}", g.body);
+    assert!(g.body.contains(r#""code":"database_changing""#));
+    assert_eq!(g.header("retry-after"), Some("1"));
+    assert_eq!(g.header("access-control-expose-headers"), Some("Retry-After, ETag"));
+}
+
+/// The documented limitation: a save paused between its move record and its
+/// header is not detected, and the game served combines the two. It is still
+/// a valid game.
+#[test]
+fn a_save_paused_between_its_steps_serves_a_valid_game() {
+    let db = database("api-limitation", 1, 0, 0);
+    let r = start(&db, vec![], None);
+    assert!(get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id)).body.contains("1. e4 1-0"));
+    // The save writes 1.d4 into the move record and has not yet written the new
+    // result into the header.
+    let words = [MOVES, quiet(Color::White, Piece::Pawn, "d2", "d4"), END_OF_LINE];
+    let content: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+    write_at(&db.dir().join("db.2cbg"), 12, &cbformat::fixture::framed(1, &content));
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 200, "{}", g.body);
+    assert!(g.body.contains("1. d4 1-0"), "new moves, old header: {}", g.body);
+}
+
+#[test]
+fn appended_games_appear_on_the_next_request() {
+    let db = database("api-append", 2, 0, 0);
+    let r = start(&db, vec![], None);
+    let total = |reply: Reply| member(&reply.body, "total").to_string();
+    let path = format!("/v1/databases/{}/games", r.id);
+    assert_eq!(total(get_reply(r.port, &path)), "2");
+    let bigger = database("api-append-bigger", 5, 0, 0);
+    for f in ["db.2cbh", "db.2cbg", "db.2lid"] {
+        std::fs::copy(bigger.dir().join(f), db.dir().join(f)).unwrap();
+    }
+    assert_eq!(total(get_reply(r.port, &path)), "5");
+}
+
+#[test]
+fn a_connection_serves_several_requests() {
+    let db = database("api-keepalive", 1, 0, 0);
+    let bridge = start(&db, vec![], None);
+    let p = bridge.port;
+    let one = format!("GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:{p}\r\nAuthorization: Bearer {TOKEN}\r\n\r\n");
+    let mut s = connect(p).unwrap();
+    s.write_all(format!("{one}{one}").as_bytes()).unwrap();
+    s.shutdown(std::net::Shutdown::Write).unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    assert_eq!(out.matches("HTTP/1.1 200 OK").count(), 2, "{out}");
+}
+
+/// Guiding texts and analyses have header layouts of their own; their rows
+/// carry their title and author, an analysis's its date and moves too (#349),
+/// never fields read through the game layout.
+#[test]
+fn texts_and_analyses_are_read_with_their_own_layouts() {
+    let mut b = Builder::new();
+    let e4 = b.moves(1, &[MOVES, quiet(Color::White, Piece::Pawn, "e2", "e4"), END_OF_LINE]);
+    let game = b.game(e4);
+    game[0x28..0x30].copy_from_slice(&1i64.to_le_bytes()); // tournament 1
+    let text = b.game(e4);
+    text[0] |= 2;
+    text[0x10..0x18].copy_from_slice(&1i64.to_le_bytes()); // a text's tournament
+    text[0x20..0x28].copy_from_slice(&1i64.to_le_bytes()); // author: player 1
+    text[0x28..0x30].copy_from_slice(&0i64.to_le_bytes()); // title: game tag 0
+    let date = |y: i32, m: i32, d: i32| ((y << 9) | (m << 5) | d).to_le_bytes();
+    text[0x4c..0x50].copy_from_slice(&date(2020, 1, 1)); // not a text's date
+    text[0x50..0x52].copy_from_slice(&9i16.to_le_bytes());
+    let analysis = b.game(e4);
+    analysis[2] = 2;
+    analysis[0x18..0x20].copy_from_slice(&1i64.to_le_bytes()); // title: game tag 1
+    analysis[0x28..0x30].copy_from_slice(&1i64.to_le_bytes()); // author: player 1
+    analysis[0x4c..0x50].copy_from_slice(&date(2021, 11, 3)); // its date
+    analysis[0x50..0x52].copy_from_slice(&12i16.to_le_bytes()); // its moves
+    analysis[0xbc..0xc0].copy_from_slice(&date(1858, 12, 20)); // a game's date
+    analysis[0x8a..0x8c].copy_from_slice(&40i16.to_le_bytes()); // a game's moves
+    b.lid(lid_with(
+        256,
+        2,
+        &[
+            (0, 0, strings(&["Morphy", "Paul"])),
+            (0, 1, strings(&["Author", "Text"])),
+            (1, 1, [strings(&["Paris", "Paris m"]), 0i32.to_le_bytes().to_vec()].concat()),
+            (5, 0, titles("Review text")),
+            (5, 1, titles("1.d4 d5 2.c4")),
+        ],
+    ));
+    let db = b.write("api-kinds");
+    let r = start(&db, vec![], None);
+    let w = get_reply(r.port, &format!("/v1/databases/{}/games", r.id));
+    assert_eq!(w.status, 200, "{}", w.body);
+    let rows = objects(&w.body, "rows");
+    assert!(has_members(rows[0], r#""kind":"game","white":"Morphy, Paul""#), "{}", rows[0]);
+    assert!(has_members(rows[0], r#""event":"Paris m","site":"Paris""#), "{}", rows[0]);
+    assert!(has_members(rows[1], r#""kind":"text","white":"""#), "{}", rows[1]);
+    assert!(has_members(rows[1], r#""event":"Review text","site":"""#), "{}", rows[1]);
+    assert!(has_members(rows[1], r#""annotator":"Author, Text""#), "{}", rows[1]);
+    assert!(has_members(rows[1], r#""moves":0,"date":"????.??.??""#), "{}", rows[1]);
+    assert!(has_members(rows[2], r#""kind":"analysis","white":"""#), "{}", rows[2]);
+    assert!(has_members(rows[2], r#""event":"1.d4 d5 2.c4","annotator":"Author, Text""#), "{}", rows[2]);
+    assert!(has_members(rows[2], r#""moves":12,"date":"2021.11.03","eco":"""#), "{}", rows[2]);
+    // An analysis is served as PGN with the tags its header holds (#323); a
+    // guiding text is not.
+    let game = |n: u32| get_reply(r.port, &format!("/v1/databases/{}/games/{n}", r.id));
+    let a = game(3);
+    assert_eq!(a.status, 200, "{}", a.body);
+    let pgn = member(&a.body, "pgn");
+    assert!(pgn.starts_with(r#""[Event \"1.d4 d5 2.c4\"]\n[Site \"?\"]\n[Date \"2021.11.03\"]"#), "{pgn}");
+    assert!(pgn.contains(r#"[White \"?\"]\n[Black \"?\"]\n[Result \"*\"]"#), "{pgn}");
+    assert!(pgn.ends_with(r#"1. e4 *\n""#), "{pgn}");
+    assert!(has_members(&a.body, r#""number":3"#) && has_members(&a.body, r#""annotations":"none""#), "{}", a.body);
+    let t = game(2);
+    assert_eq!((t.status, t.body.contains(r#""code":"not_a_game""#)), (422, true), "{}", t.body);
+}
+
+/// 500 rows sharing two players: one whose name fills a 1 MiB container and
+/// one with a 3,000-character name. A name record is read to at most 4 KiB,
+/// so the first is an empty name; the second is cut to 200 characters. Both
+/// are looked up once, and the window stays small.
+#[test]
+fn a_huge_shared_entity_does_not_blow_up_a_window() {
+    let mut b = Builder::new();
+    let e4 = b.moves(1, &[MOVES, quiet(Color::White, Piece::Pawn, "e2", "e4"), END_OF_LINE]);
+    for n in 0..500i64 {
+        b.game(e4)[0x18..0x20].copy_from_slice(&(n % 2).to_le_bytes());
+    }
+    let container = 1usize << 20;
+    let mut lid = lid_header(container as i32, 2);
+    for last in ["M".repeat(container - 16), "L".repeat(3000)] {
+        let player = strings(&[&last, ""]);
+        let mut slot = (player.len() as i32).to_le_bytes().to_vec();
+        slot.extend(&player);
+        slot.resize(container, 0);
+        lid.extend(slot);
+    }
+    b.lid(lid);
+    let db = b.write("api-huge-entity");
+    let r = start(&db, vec![], None);
+    let w = get_reply(r.port, &format!("/v1/databases/{}/games?limit=500", r.id));
+    assert_eq!(w.status, 200);
+    assert!(w.body.len() < 2 << 20, "window of {} bytes", w.body.len());
+    let whites: Vec<&str> =
+        w.body.split(r#""white":""#).skip(1).map(|s| s.split('"').next().unwrap()).take(2).collect();
+    assert_eq!(whites[0], "", "a 1 MiB name record is not read");
+    assert_eq!(whites[1].chars().count(), bridge::rows::MAX_FIELD_CHARS + 1);
+    assert!(whites[1].starts_with('L') && whites[1].ends_with('…'));
+}
+
+/// A window ending at record `u32::MAX` is served. The header file is sparse,
+/// which needs a Unix file system.
+#[cfg(unix)]
+#[test]
+fn a_window_at_the_last_record_number() {
+    let db = database("api-max", 1, 0, 0);
+    let file = std::fs::OpenOptions::new().write(true).open(db.dir().join("db.2cbh")).unwrap();
+    file.set_len((u64::from(u32::MAX) + 1) * 192).unwrap();
+    let r = start(&db, vec![], None);
+    let numbers = |q: &str| -> Vec<u64> {
+        let w = get_reply(r.port, &format!("/v1/databases/{}/games{q}", r.id));
+        assert_eq!(w.status, 200, "{q}: {}", w.body);
+        w.body.split(r#""number":"#).skip(1).map(|s| s.split(',').next().unwrap().parse().unwrap()).collect()
+    };
+    assert_eq!(numbers("?offset=4294967294&limit=1"), [4294967295]);
+    assert_eq!(numbers("?offset=4294967293&limit=5"), [4294967294, 4294967295]);
+    assert_eq!(numbers("?sort=number-desc&limit=2"), [4294967295, 4294967294]);
+    // A list of so many records starts a build of the heads file (#106),
+    // which would read every one of them, for hours, and a dropped bridge
+    // waits for its background work. A change of the database stops the
+    // build at its next block.
+    file.set_modified(std::time::UNIX_EPOCH + Duration::from_secs(1_000_000_000)).unwrap();
+}
+
+/// Refusals made before a request is routed carry CORS headers for an allowed
+/// origin, so the page can read them. The head over 16 KiB is one byte over
+/// it, with no end: the bridge refuses it once it has read its last byte. Of
+/// a longer one, bytes that reach the bridge after it refused have its close
+/// reset the connection, and the client reads an error after the answer
+/// instead of its end (seen under load).
+#[test]
+fn refusals_before_routing_are_readable_by_the_page() {
+    let db = database("api-refusals", 1, 0, 0);
+    let bridge = start(&db, vec![], None);
+    let p = bridge.port;
+    let host = format!("Host: 127.0.0.1:{p}");
+    let big = format!("GET /v1/status HTTP/1.1\r\nOrigin: {ORIGIN}\r\n{host}\r\nX-Big: ");
+    let big = format!("{big}{}", "x".repeat(MAX_HEAD + 1 - big.len()));
+    let auth = format!("Authorization: Bearer {TOKEN}");
+    for (r, status) in [
+        (
+            plain(p, &format!("GET /v1/status HTTP/1.1\r\n{host}\r\n{auth}\r\nOrigin: {ORIGIN}\r\nContent-Length: 1")),
+            413,
+        ),
+        (
+            plain(p, &format!("GET /v1/status HTTP/1.1\r\n{host}\r\nOrigin: {ORIGIN}\r\nTransfer-Encoding: chunked")),
+            413,
+        ),
+        (plain(p, &format!("GET /v1/status?q=%zz HTTP/1.1\r\n{host}\r\nOrigin: {ORIGIN}")), 400),
+        (send(p, &big), 431),
+    ] {
+        assert_eq!(r.status, status);
+        assert_eq!(r.header("access-control-allow-origin"), Some(ORIGIN), "{status}");
+        assert_eq!(r.header("access-control-expose-headers"), Some("Retry-After, ETag"), "{status}");
+    }
+    // The origin is checked before a body is looked at.
+    let r = plain(
+        p,
+        &format!("GET /v1/status HTTP/1.1\r\n{host}\r\n{auth}\r\nOrigin: https://evil.example\r\nContent-Length: 1"),
+    );
+    assert_eq!((r.status, r.header("access-control-allow-origin")), (403, None));
+    let r = plain(
+        p,
+        &format!("GET /v1/status HTTP/1.1\r\n{host}\r\nOrigin: https://evil.example\r\nTransfer-Encoding: chunked"),
+    );
+    assert_eq!((r.status, r.header("access-control-allow-origin")), (413, None));
+}
+
+/// The bridge also answers on `[::1]`, where the machine has IPv6 loopback.
+#[test]
+fn the_ipv6_loopback_is_served() {
+    if std::net::TcpListener::bind(("::1", 0)).is_err() {
+        eprintln!("no IPv6 loopback on this machine; nothing to test");
+        return;
+    }
+    let db = database("api-ipv6", 1, 0, 0);
+    let bridge = start(&db, vec![], None);
+    let p = bridge.port;
+    let mut s = TcpStream::connect(("::1", p)).unwrap();
+    s.set_read_timeout(Some(WAIT_LIMIT)).unwrap();
+    let raw = format!(
+        "GET /v1/status HTTP/1.1\r\nHost: [::1]:{p}\r\nAuthorization: Bearer {TOKEN}\r\nConnection: close\r\n\r\n"
+    );
+    s.write_all(raw.as_bytes()).unwrap();
+    let mut out = String::new();
+    s.read_to_string(&mut out).unwrap();
+    assert!(out.starts_with("HTTP/1.1 200 OK"), "{out}");
+}
+
+/// A second instance fails on the port before it touches the token, which the
+/// running bridge still accepts.
+#[test]
+fn a_second_instance_leaves_the_token_alone() {
+    let busy = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let port = busy.local_addr().unwrap().port();
+    let home = std::env::temp_dir().join(format!("bridge-second-{}", std::process::id()));
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(home.join("bridge.toml"), format!("port = {port}\n")).unwrap();
+    std::fs::write(home.join("token"), TOKEN).unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_oschess-bridge"))
+        .arg("--new-token")
+        .env("OSCHESS_BRIDGE_HOME", &home)
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert_eq!(std::fs::read_to_string(home.join("token")).unwrap(), TOKEN);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// A move record over the rendering limit is refused before it is read, and
+/// the server goes on serving.
+#[test]
+fn a_game_too_large_to_render_is_refused() {
+    let mut b = Builder::new();
+    let mut words = vec![MOVES];
+    words.extend(std::iter::repeat_n(cbformat::movetable::NULL_MOVE, bridge::store::MAX_GAME_BYTES / 2 + 1));
+    words.push(END_OF_LINE);
+    let huge = b.moves(1, &words);
+    b.game(huge);
+    let db = b.write("api-huge-game");
+    let r = start(&db, vec![], None);
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 422, "{}", g.body);
+    assert!(g.body.contains(r#""code":"unreadable_game""#) && g.body.contains("limit"), "{}", g.body);
+    assert_eq!(get_reply(r.port, "/v1/status").status, 200);
+}
+
+/// Asks for `/v1/status` until the answer is `status`, every answer before it
+/// being `meanwhile`, for [`WAIT_LIMIT`] at most: the bridge counts the
+/// connections opened or closed just before in its own time, which a loaded
+/// machine makes long.
+fn status_until(port: u16, status: u16, meanwhile: u16) -> Reply {
+    let r = poll(WAIT_LIMIT, || {
+        let r = get_reply(port, "/v1/status");
+        assert!(r.status == status || r.status == meanwhile, "{} {}", r.status, r.body);
+        (r.status == status).then_some(r)
+    });
+    r.unwrap_or_else(|| panic!("still {meanwhile} after {WAIT_LIMIT:?}"))
+}
+
+/// `/v1/status` asked on a connection of its own: its answer, and whether the
+/// test sent the whole request within `busy_read` of its connection. The busy
+/// answer reads a request that long after acceptance at most, for its
+/// `Origin`: of a request a loaded machine held back longer, it may not have
+/// read it, as it should not, and answer without CORS.
+fn status_sent(port: u16, busy_read: Duration) -> (Reply, bool) {
+    let sent = Sent::get(port, "/v1/status");
+    let in_time = sent.took < busy_read;
+    (sent.reply(), in_time)
+}
+
+/// Holds the connection cap with [`server::MAX_CONNECTIONS`] connections that
+/// send nothing, asking for `/v1/status` until the answer is `503`: those
+/// connections and that answer, of a request sent in time for the busy
+/// answer to read it ([`status_sent`]); one sent late is asked again. Until
+/// the bridge has counted them all, a request is served. A loaded kernel can
+/// queue a request ahead of such a connection whose `connect` has returned
+/// (#217): the request takes the last slot, the connection is answered
+/// `busy` and closed, and the cap would never be reached again. Such a
+/// connection is replaced.
+fn hold_the_cap(port: u16, busy_read: Duration) -> (Vec<TcpStream>, Reply) {
+    let mut held: Vec<TcpStream> = (0..server::MAX_CONNECTIONS).map(|_| connect(port).unwrap()).collect();
+    let busy = poll(WAIT_LIMIT, || {
+        let (r, in_time) = status_sent(port, busy_read);
+        if r.status == 503 {
+            return in_time.then_some(r);
+        }
+        assert_eq!(r.status, 200, "{}", r.body);
+        for s in &mut held {
+            if !unanswered(s) {
+                *s = connect(port).unwrap();
+            }
+        }
+        None
+    });
+    let busy = busy.unwrap_or_else(|| panic!("still 200 after {WAIT_LIMIT:?}"));
+    (held, busy)
+}
+
+/// Over the connection cap, the `busy` answer is readable by an allowed page,
+/// and so is a refused `Host`. The busy answer reads a request's `Origin`
+/// within `server::BUSY_READ` of the connection's acceptance, which this test
+/// keeps: a request the test itself was too slow to send is asked again
+/// ([`hold_the_cap`]), where the check failed (#238).
+#[test]
+fn busy_and_misdirected_answers_carry_cors() {
+    let db = database("api-busy", 1, 0, 0);
+    let bridge = start(&db, vec![], None);
+    let p = bridge.port;
+    let r = plain(p, &format!("GET /v1/status HTTP/1.1\r\nHost: 127.0.0.1:1\r\nOrigin: {ORIGIN}"));
+    assert_eq!((r.status, r.header("access-control-allow-origin")), (421, Some(ORIGIN)));
+    // That connection's slot was freed before it closed, so the next ones
+    // are the only ones counted.
+    let (idle, r) = hold_the_cap(p, bridge.busy_read());
+    assert!(r.body.contains(r#""code":"busy""#));
+    assert_eq!(r.header("retry-after"), Some("1"));
+    assert_eq!(r.header("access-control-allow-origin"), Some(ORIGIN));
+    assert_eq!(r.header("access-control-expose-headers"), Some("Retry-After, ETag"));
+    drop(idle);
+}
+
+/// A tiny game whose players and tournament are megabytes of control
+/// characters, each six bytes in JSON: its answer is refused before it is
+/// built, and the server goes on serving.
+#[test]
+fn a_game_whose_answer_would_be_huge_is_refused() {
+    let mut b = Builder::new();
+    let empty = b.moves(1, &[MOVES, END_OF_LINE]);
+    let game = b.game(empty);
+    game[0x28..0x30].copy_from_slice(&0i64.to_le_bytes());
+    let name = "\u{1}".repeat((1 << 20) - 16);
+    b.lid(lid_with(
+        1 << 20,
+        1,
+        &[
+            (0, 0, strings(&[&name, ""])),
+            (1, 0, [strings(&[&name[..1000], &name[..1000]]), 0i32.to_le_bytes().to_vec()].concat()),
+        ],
+    ));
+    let db = b.write("api-huge-answer");
+    let r = start(&db, vec![], None);
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 422, "{}", &g.body[..g.body.len().min(300)]);
+    assert!(g.body.contains("too large") && g.body.contains("limit"), "{}", g.body);
+    assert_eq!(get_reply(r.port, "/v1/status").status, 200);
+}
+
+/// Silent connections queued over the cap do not keep the busy answer of a
+/// request behind them from reading its `Origin`: every deadline runs from
+/// acceptance, so the request's own has not passed when the refusing thread
+/// reaches it, or it gets a last look at what arrived in time. That the
+/// silent ones add nothing to its wait is checked at its rule, without a
+/// clock, by `server::tests::the_busy_wait_runs_from_acceptance`: a bound
+/// here on the time the answer took failed under load (#238). A request the
+/// test itself was too slow to send is asked again, behind as many silent
+/// connections.
+#[test]
+fn silent_queued_connections_do_not_delay_the_busy_answer() {
+    let db = database("api-busy-queue", 1, 0, 0);
+    let bridge = start(&db, vec![], None);
+    let (p, busy_read) = (bridge.port, bridge.busy_read());
+    let (serving, _) = hold_the_cap(p, busy_read);
+    let r = poll(WAIT_LIMIT, || {
+        let silent: Vec<TcpStream> = (0..12).map(|_| connect(p).unwrap()).collect();
+        let (r, in_time) = status_sent(p, busy_read);
+        drop(silent);
+        in_time.then_some(r)
+    });
+    let r = r.unwrap_or_else(|| panic!("no request was sent in time within {WAIT_LIMIT:?}"));
+    assert_eq!(r.status, 503, "{}", r.body);
+    assert_eq!(r.header("access-control-allow-origin"), Some(ORIGIN));
+    drop(serving);
+    // Served again once the bridge has seen the connections close.
+    status_until(p, 200, 503);
+}
+
+/// Game 1: 1.e4 e5 with annotation record `content`; game 2: 1.e4 with an
+/// empty annotation record.
+fn annotated_database(name: &str, content: &[u8]) -> TempDb {
+    let mut b = Builder::new();
+    let moves = b.moves(
+        1,
+        &[
+            MOVES,
+            quiet(Color::White, Piece::Pawn, "e2", "e4"),
+            quiet(Color::Black, Piece::Pawn, "e7", "e5"),
+            END_OF_LINE,
+        ],
+    );
+    let a = b.annotations(content);
+    b.annotated_game(moves, a);
+    b.game(moves);
+    b.write(name)
+}
+
+#[test]
+fn annotated_games_are_served_with_their_annotations() {
+    let content = annotations(&[
+        (-1, vec![text(false, language::ENGLISH, "A classic")]),
+        (
+            0,
+            vec![
+                symbols(1, 0, 0),
+                squares(&[(2, "e4")]),
+                arrows(&[(3, "g1", "f3")]),
+                text(false, language::ENGLISH, "Best by test"),
+                text(false, language::GERMAN, "Bestens"),
+            ],
+        ),
+        (1, vec![text(true, language::ENGLISH, "Then"), text(true, language::GERMAN, "Dann")]),
+    ]);
+    let db = annotated_database("api-annotated", &content);
+    let r = start(&db, vec![], None);
+    let game = |query: &str| get_reply(r.port, &format!("/v1/databases/{}/games/1{query}", r.id));
+    let g = game("");
+    assert_eq!(g.status, 200, "{}", g.body);
+    assert!(
+        g.body.contains(r#"{A classic} 1. e4 $1 {[%csl Ge4][%cal Yg1f3] Best by test} {Then} 1... e5 1-0\n""#),
+        "{}",
+        g.body
+    );
+    assert!(has_members(&g.body, r#""annotations":"complete""#), "{}", g.body);
+    assert!(!g.body.contains("unreadableAnnotation"));
+    // The first preferred language the game has; a language ChessBase does not
+    // store is passed over.
+    for query in ["?lang=de", "?lang=uk,de,en", "?lang=uk%2Cde"] {
+        let g = game(query);
+        assert!(g.body.contains("Bestens} {Dann} 1... e5"), "{query}: {}", g.body);
+    }
+    for query in ["?lang=en,de", "?lang=uk", "?lang="] {
+        assert!(game(query).body.contains("Best by test} {Then}"), "{query}");
+    }
+    // A game with an empty annotation record, and a database without `.2cba`.
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/2", r.id));
+    assert!(has_members(&g.body, r#""annotations":"none""#) && !g.body.contains("unreadableAnnotation"), "{}", g.body);
+    let plain = database("api-no-annotations", 1, 0, 0);
+    let r = start(&plain, vec![], None);
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert!(has_members(&g.body, r#""annotations":"none""#) && !g.body.contains("unreadableAnnotation"), "{}", g.body);
+}
+
+#[test]
+fn an_unknown_annotation_layout_is_reported() {
+    // Type 1a has no known layout: the text after it cannot be found.
+    let content = annotations(&[
+        (0, vec![text(false, language::ENGLISH, "kept"), vec![0x1a, 0, 1, 2, 3], text(false, 0, "lost")]),
+        (1, vec![text(false, language::ENGLISH, "lost too")]),
+    ]);
+    let db = annotated_database("api-unknown-annotation", &content);
+    let r = start(&db, vec![], None);
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 200, "{}", g.body);
+    assert!(g.body.contains(r#"1. e4 {kept} 1... e5 1-0"#), "{}", g.body);
+    assert!(!g.body.contains("lost"), "{}", g.body);
+    assert!(has_members(&g.body, r#""annotations":"incomplete","unreadableAnnotation":26"#), "{}", g.body);
+}
+
+#[test]
+fn an_oversized_annotation_record_is_refused() {
+    let long = "x".repeat(bridge::store::MAX_GAME_BYTES);
+    let db = annotated_database("api-huge-annotation", &annotations(&[(0, vec![text(false, 0, &long)])]));
+    let r = start(&db, vec![], None);
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 422, "{}", &g.body[..g.body.len().min(300)]);
+    assert!(
+        g.body.contains(r#""code":"unreadable_game""#)
+            && g.body.contains("annotation record")
+            && g.body.contains("limit"),
+        "{}",
+        g.body
+    );
+    // The other game of that database is served.
+    assert_eq!(get_reply(r.port, &format!("/v1/databases/{}/games/2", r.id)).status, 200);
+}
+
+/// The full form (#42): every language as its own comment, and every
+/// annotation the reading form leaves out as a command; `annotations` takes
+/// `reading`, the default, or `full`.
+#[test]
+fn the_full_form_keeps_every_language_and_annotation() {
+    let mut evaluations = 0x26u16.to_le_bytes().to_vec();
+    evaluations.extend([&[1u8][..], &6i32.to_le_bytes(), &1u16.to_le_bytes(), &[20, 0, 12, 0]].concat());
+    let content = annotations(&[
+        (-1, vec![evaluations]),
+        (0, vec![text(false, language::ENGLISH, "centre"), text(false, language::GERMAN, "Zentrum")]),
+    ]);
+    let db = annotated_database("api-full-form", &content);
+    let r = start(&db, vec![], None);
+    let game = |q: &str| get_reply(r.port, &format!("/v1/databases/{}/games/1{q}", r.id));
+    let full = game("?annotations=full");
+    assert_eq!(full.status, 200, "{}", full.body);
+    assert!(full.body.contains("{[%lang en] centre} {[%lang de] Zentrum}"), "{}", full.body);
+    assert!(full.body.contains("{[%cbraw type=26;data=AQYAAAABABQADAA]} 1. e4"), "{}", full.body);
+    for q in ["", "?annotations=reading"] {
+        let g = game(q);
+        assert!(
+            g.body.contains("1. e4 {centre}") && !g.body.contains("[%lang") && !g.body.contains("[%cb"),
+            "{q}: {}",
+            g.body
+        );
+    }
+    let bad = game("?annotations=all");
+    assert!(bad.status == 400 && bad.body.contains(r#""parameter":"annotations""#), "{}", bad.body);
+}
+
+/// The full form is held to the answer limit the reading form is.
+#[test]
+fn a_full_form_over_the_answer_limit_is_refused() {
+    // 400,000 pawn-structure annotations: 1.2 MB stored, under the record
+    // limit, and about 11 MB as commands.
+    let pawns: Vec<Vec<u8>> = (0..400_000).map(|_| vec![0x14, 0, 5]).collect();
+    let db = annotated_database("api-full-limit", &annotations(&[(0, pawns)]));
+    let r = start(&db, vec![], None);
+    let game = |q: &str| get_reply(r.port, &format!("/v1/databases/{}/games/1{q}", r.id));
+    assert_eq!(game("").status, 200);
+    let full = game("?annotations=full");
+    assert_eq!(full.status, 422, "{}", &full.body[..full.body.len().min(300)]);
+    assert!(full.body.contains(r#""code":"unreadable_game""#) && full.body.contains("limit"), "{}", full.body);
+}
+
+/// A save that rewrites the annotation record during the read is detected
+/// like one that rewrites the moves: the read is retried.
+#[test]
+fn a_change_to_the_annotations_during_the_read_is_retried() {
+    let comment = |t: &str| annotations(&[(0, vec![text(false, language::ENGLISH, t)])]);
+    let db = annotated_database("api-annotation-retry", &comment("before"));
+    let cba = db.dir().join("db.2cba");
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let hook = move || {
+        if seen.fetch_add(1, Ordering::SeqCst) == 0 {
+            // The first annotation record sits right after the 12-byte header.
+            let frame = cbformat::fixture::framed(cbformat::v2::ANNOTATION_TAG, &comment("latest"));
+            write_at(&cba, 12, &frame);
+        }
+    };
+    let r = start(&db, vec![], Some(Box::new(hook)));
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 200, "{}", g.body);
+    assert!(g.body.contains("1. e4 {latest}"), "the retry serves the saved annotations: {}", g.body);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+}
+
+/// An annotation past the last move is served after the main line's last
+/// move; one in a game without moves is a damaged record.
+#[test]
+fn an_annotation_past_the_end_is_served_and_one_on_no_move_is_an_unreadable_game() {
+    let content = annotations(&[(2, vec![text(false, language::ENGLISH, "past the end")])]);
+    let db = annotated_database("api-annotation-past-end", &content);
+    let r = start(&db, vec![], None);
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 200, "{}", g.body);
+    assert!(g.body.contains("1. e4 e5 {past the end}"), "{}", g.body);
+    assert!(
+        has_members(&g.body, r#""annotations":"complete""#) && !g.body.contains("unreadableAnnotation"),
+        "{}",
+        g.body
+    );
+
+    let mut b = Builder::new();
+    let none = b.moves(1, &[MOVES, END_OF_LINE]);
+    let a = b.annotations(&annotations(&[(0, vec![text(false, language::ENGLISH, "on no move")])]));
+    b.annotated_game(none, a);
+    let db = b.write("api-annotation-no-move");
+    let r = start(&db, vec![], None);
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 422, "{}", g.body);
+    assert!(g.body.contains(r#""code":"unreadable_game""#) && g.body.contains("position 0"), "{}", g.body);
+}
+
+#[test]
+fn search_sort_and_unsupported_qualifiers() {
+    let db = database("api-search", 6, 3, 0);
+    let r = start(&db, vec![], None);
+    let list = |q: &str| get_reply(r.port, &format!("/v1/databases/{}/games{q}", r.id));
+    let numbers = |reply: &Reply| -> Vec<u32> {
+        reply.body.split(r#""number":"#).skip(1).map(|s| s.split(',').next().unwrap().parse().unwrap()).collect()
+    };
+    // Record 3 is a guiding text: a qualifier keeps it out, a bare word does not.
+    let w = list("?q=player:morphy&limit=2&offset=1");
+    assert_eq!(w.status, 200, "{}", w.body);
+    assert!(has_members(&w.body, r#""total":5,"offset":1,"sort":"number-asc""#), "{}", w.body);
+    assert_eq!(numbers(&w), [2, 4]);
+    assert_eq!(numbers(&list("?q=result:1-0+sort:number-desc")), [6, 5, 4, 2, 1]);
+    let by_param = list("?q=result:1-0+sort:number-desc&sort=number");
+    assert!(by_param.body.contains(r#""sort":"number-asc""#), "the URL's sort wins: {}", by_param.body);
+    assert_eq!(numbers(&list("?sort=moves")).len(), 6);
+    let e = list("?q=tag:endgame");
+    assert_eq!(e.status, 400);
+    assert!(
+        e.body.contains(r#""code":"unsupported_qualifier""#) && e.body.contains(r#""qualifier":"tag""#),
+        "{}",
+        e.body
+    );
+    let s = get_reply(r.port, &format!("/v1/databases/{}/suggest?field=player&prefix=mor", r.id));
+    assert_eq!(s.status, 200, "{}", s.body);
+    assert!(
+        has_members(
+            &s.body,
+            r#""field":"player","suggestions":[{"value":"Morphy, Paul","label":"Morphy, Paul","games":5}]"#
+        ),
+        "{}",
+        s.body
+    );
+    for (q, parameter) in [
+        ("?field=colour&prefix=m", "field"),
+        ("?field=player&prefix=+", "prefix"),
+        ("?field=event&prefix=p&limit=21", "limit"),
+    ] {
+        let e = get_reply(r.port, &format!("/v1/databases/{}/suggest{q}", r.id));
+        assert!(e.status == 400 && e.body.contains(&format!(r#""parameter":"{parameter}""#)), "{q}: {}", e.body);
+    }
+}
+
+/// An event's name is matched from its start: a comma in it does not begin a
+/// first name, as it does for people. Twenty events seen more often, whose
+/// names end in ", Paris", do not push «Paris Open» out of a `Paris` prefix.
+#[test]
+fn event_suggestions_match_the_start_of_the_name() {
+    let mut b = Builder::new();
+    let e4 = b.moves(1, &[MOVES, quiet(Color::White, Piece::Pawn, "e2", "e4"), END_OF_LINE]);
+    let mut entities = Vec::new();
+    for t in 0..21usize {
+        let title = if t == 20 { "Paris Open".to_string() } else { format!("Other event {t:02}, Paris") };
+        let mut record = strings(&["", &title]);
+        record.extend(0i32.to_le_bytes());
+        entities.push((1, t, record));
+        for _ in 0..if t == 20 { 1 } else { 2 } {
+            b.game(e4)[0x28..0x30].copy_from_slice(&(t as i64).to_le_bytes());
+        }
+    }
+    b.lid(lid_with(64, 21, &entities));
+    let db = b.write("api-event-prefix");
+    let r = start(&db, vec![], None);
+    let s = get_reply(r.port, &format!("/v1/databases/{}/suggest?field=event&prefix=Paris&limit=20", r.id));
+    assert_eq!(s.status, 200, "{}", s.body);
+    assert!(has_object(&s.body, r#""value":"Paris Open","label":"Paris Open","games":1"#), "{}", s.body);
+    assert!(!s.body.contains("Other event"), "{}", s.body);
+}
+
+/// A person's first name comes from its own field: a last name with a comma in
+/// it, `Smith, Jr.` with first name `Alex`, is offered for `Alex`, not for
+/// `Jr.`, as a player and as an annotator.
+#[test]
+fn first_names_come_from_their_own_field() {
+    let mut b = Builder::new();
+    let e4 = b.moves(1, &[MOVES, quiet(Color::White, Piece::Pawn, "e2", "e4"), END_OF_LINE]);
+    let rec = b.game(e4);
+    rec[0x18..0x20].copy_from_slice(&1i64.to_le_bytes());
+    rec[0x30..0x38].copy_from_slice(&1i64.to_le_bytes());
+    b.lid(lid_with(64, 2, &[(0, 1, strings(&["Smith, Jr.", "Alex"]))]));
+    let db = b.write("api-first-name-field");
+    let r = start(&db, vec![], None);
+    for field in ["player", "annotator"] {
+        let s = get_reply(r.port, &format!("/v1/databases/{}/suggest?field={field}&prefix=Alex", r.id));
+        assert_eq!(s.status, 200, "{}", s.body);
+        assert!(s.body.contains(r#""value":"Smith, Jr., Alex""#), "{field}: {}", s.body);
+        let s = get_reply(r.port, &format!("/v1/databases/{}/suggest?field={field}&prefix=Jr.", r.id));
+        assert!(s.body.contains(r#""suggestions":[]"#), "{field}: {}", s.body);
+    }
+}
+
+/// Entities that show the same name are one suggestion, and a first name of
+/// any of them counts: an unused `Smith, Alex` with no first name does not hide
+/// the `Smith` + `Alex` a game refers to, whichever comes first.
+#[test]
+fn a_first_name_counts_for_every_entity_of_a_shown_name() {
+    for (unused, used) in [(0usize, 1usize), (1, 0)] {
+        let mut b = Builder::new();
+        let e4 = b.moves(1, &[MOVES, quiet(Color::White, Piece::Pawn, "e2", "e4"), END_OF_LINE]);
+        let rec = b.game(e4);
+        rec[0x18..0x20].copy_from_slice(&(used as i64).to_le_bytes());
+        rec[0x30..0x38].copy_from_slice(&(used as i64).to_le_bytes());
+        b.lid(lid_with(64, 2, &[(0, unused, strings(&["Smith, Alex", ""])), (0, used, strings(&["Smith", "Alex"]))]));
+        let db = b.write(&format!("api-first-name-group-{unused}"));
+        let r = start(&db, vec![], None);
+        for field in ["player", "annotator"] {
+            let s = get_reply(r.port, &format!("/v1/databases/{}/suggest?field={field}&prefix=Alex", r.id));
+            assert_eq!(s.status, 200, "{}", s.body);
+            assert!(
+                has_object(&s.body, r#""value":"Smith, Alex","label":"Smith, Alex","games":1"#),
+                "{field}, unused {unused}: {}",
+                s.body
+            );
+        }
+    }
+}
+
+/// A game whose variations nest as deep as the reader allows is served on a
+/// connection thread, whose stack is `bridge::THREAD_STACK`: the move tree and
+/// its PGN keep their depth on the heap.
+#[test]
+fn the_deepest_variations_are_served_on_a_connection_thread() {
+    use cbformat::replay::MAX_VARIATION_DEPTH;
+    let mut b = Builder::new();
+    // Each group opens one more level of nesting.
+    let mut words = vec![MOVES];
+    for _ in 0..MAX_VARIATION_DEPTH {
+        words.extend([NULL_MOVE, ALTERNATIVE, END_OF_LINE, NULL_MOVE]);
+    }
+    words.push(END_OF_LINE);
+    let at = b.moves(1, &words);
+    b.game(at);
+    let db = b.write("api-deep-variations");
+    let r = start(&db, vec![], None);
+    let g = get_reply(r.port, &format!("/v1/databases/{}/games/1", r.id));
+    assert_eq!(g.status, 200, "{}", g.body);
+    assert_eq!(g.body.matches('(').count(), MAX_VARIATION_DEPTH, "{}", &g.body[..200.min(g.body.len())]);
+}
+
+#[test]
+fn a_changed_database_is_searched_afresh() {
+    let db = database("api-search-fresh", 2, 0, 0);
+    let r = start(&db, vec![], None);
+    let total = |reply: Reply| member(&reply.body, "total").to_string();
+    let path = format!("/v1/databases/{}/games?q=player:morphy+sort:white", r.id);
+    assert_eq!(total(get_reply(r.port, &path)), "2");
+    let bigger = database("api-search-fresh-bigger", 5, 0, 0);
+    for f in ["db.2cbh", "db.2cbg", "db.2lid"] {
+        std::fs::copy(bigger.dir().join(f), db.dir().join(f)).unwrap();
+    }
+    assert_eq!(total(get_reply(r.port, &path)), "5", "the kept result and sort order belong to the old generation");
+}
+
+/// Percent-encodes everything but unreserved characters, for a query value.
+fn encode(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+/// A suggestion's `value` is the complete name, usable verbatim in a quoted
+/// qualifier, and its `label` is clipped for display: two names that share
+/// their first 215 characters are two values, each finding its own game. A
+/// name longer than a query value can hold is not offered.
+#[test]
+fn suggestions_carry_the_complete_value_and_a_clipped_label() {
+    let prefix = "é".repeat(210);
+    let (a, b, long) = (format!("{prefix}TailA"), format!("{prefix}TailB"), format!("{prefix}{}", "x".repeat(60)));
+    let mut builder = Builder::new();
+    let e4 = builder.moves(1, &[MOVES, quiet(Color::White, Piece::Pawn, "e2", "e4"), END_OF_LINE]);
+    for id in 0..3i64 {
+        let g = builder.game(e4);
+        g[0x18..0x20].copy_from_slice(&id.to_le_bytes());
+        g[0x20..0x28].copy_from_slice(&id.to_le_bytes());
+    }
+    let players: Vec<(usize, usize, Vec<u8>)> =
+        [&a, &b, &long].iter().enumerate().map(|(id, name)| (0, id, strings(&[name, ""]))).collect();
+    builder.lid(lid_with(1024, 3, &players));
+    let db = builder.write("api-suggest-long");
+    let r = start(&db, vec![], None);
+    let s = get_reply(r.port, &format!("/v1/databases/{}/suggest?field=player&prefix={}", r.id, encode("éé")));
+    assert_eq!(s.status, 200, "{}", s.body);
+    let label: String = prefix.chars().take(200).collect::<String>() + "…";
+    for name in [&a, &b] {
+        let item = format!(r#""value":"{name}","label":"{label}","games":1"#);
+        assert!(has_object(&s.body, &item), "{name}: {}", s.body);
+        let q = encode(&format!("player:\"{name}\""));
+        let w = get_reply(r.port, &format!("/v1/databases/{}/games?q={q}", r.id));
+        assert!(has_members(&w.body, r#""total":1"#), "{}", w.body);
+    }
+    assert!(!s.body.contains("xxx"), "a name of 270 characters is not offered: {}", s.body);
+}

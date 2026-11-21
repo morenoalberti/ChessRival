@@ -16,7 +16,16 @@ import http.server
 import json
 import os
 import socket
+import subprocess
+import queue
+import re
+import atexit
+import time
 import threading
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.request import Request, urlopen
+from urllib.parse import urlencode
 import copias_local
 import fotos_fide
 from urllib.parse import parse_qs, urlsplit
@@ -25,12 +34,15 @@ PUERTO = int(os.environ.get("PORT") or 8765)
 CARPETA = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(CARPETA, ".mega.json")
 EXTENSIONES = ("cbh", "cbg", "cbp", "cbt")
+EXTENSIONES_2CBH = ("2cbh", "2cbg", "2lid")
 EXTENSIONES_LIBRO = ("ctg", "ctb", "cto")
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 ORIGENES = {f"http://localhost:{PUERTO}", f"http://127.0.0.1:{PUERTO}", f"http://[::1]:{PUERTO}"}
 HOSTS_LOCALES = {"localhost", "127.0.0.1", "[::1]"}
 TROZO = 1 << 20
 _cuadro = threading.Lock()                    # un solo cuadro «Elegir archivo» a la vez
+_bridge_lock = threading.RLock()
+_bridge = {"proceso": None, "token": None, "ruta": None}
 
 
 # ---------- La MegaDatabase elegida ----------
@@ -49,15 +61,17 @@ def guardar_config(datos):
 
 
 def archivos_de(ruta_cbh):
-    """{extensión: ruta real} de los cuatro archivos de la base (sin importar mayúsculas), y los que faltan."""
+    """{extensión: ruta real} de los archivos requeridos por la base, y los que faltan."""
     carpeta, nombre = os.path.split(ruta_cbh)
+    extension = os.path.splitext(nombre)[1].lower().lstrip(".")
+    familia = EXTENSIONES_2CBH if extension == "2cbh" else EXTENSIONES
     base = os.path.splitext(nombre)[0].lower()
     try:
         existentes = {n.lower(): n for n in os.listdir(carpeta)}
     except OSError:
         existentes = {}
     rutas, faltan = {}, []
-    for ext in EXTENSIONES:
+    for ext in familia:
         real = existentes.get(f"{base}.{ext}")
         if real:
             rutas[ext] = os.path.join(carpeta, real)
@@ -72,9 +86,13 @@ def estado_mega():
         return {"disponible": True, "configurada": False}
     rutas, faltan = archivos_de(ruta)
     nombre = os.path.splitext(os.path.basename(ruta))[0]
+    formato = "2cbh" if ruta.lower().endswith(".2cbh") else "cbh"
     if faltan:
-        return {"disponible": True, "configurada": True, "nombre": nombre, "ruta": ruta, "error": "La base está incompleta. No encuentro: " + ", ".join(faltan)}
-    return {"disponible": True, "configurada": True, "nombre": nombre, "ruta": ruta, "tamanos": {e: os.path.getsize(p) for e, p in rutas.items()}}
+        return {"disponible": True, "configurada": True, "nombre": nombre, "ruta": ruta, "formato": formato, "error": "La base está incompleta. No encuentro: " + ", ".join(faltan)}
+    estado = {"disponible": True, "configurada": True, "nombre": nombre, "ruta": ruta, "formato": formato, "tamanos": {e: os.path.getsize(p) for e, p in rutas.items()}}
+    if formato == "2cbh":
+        estado["totalPartidas"] = max(0, os.path.getsize(rutas["2cbh"]) // 208 - 1)
+    return estado
 
 
 def archivos_libro(ruta_ctg):
@@ -151,21 +169,158 @@ def elegir_con_cuadro():
         try:
             inicial = os.path.dirname(leer_config().get("ruta", "")) or None
             ruta = filedialog.askopenfilename(
-                parent=raiz, title="Elige la MegaDatabase de ChessBase (archivo .cbh)", initialdir=inicial,
-                filetypes=[("Base de ChessBase (*.cbh)", "*.cbh"), ("Todos los archivos", "*.*")])
+                parent=raiz, title="Elige la MegaDatabase de ChessBase", initialdir=inicial,
+                filetypes=[("Bases ChessBase clásicas y 2027", "*.cbh *.2cbh"), ("ChessBase clásico (*.cbh)", "*.cbh"), ("ChessBase 2 (*.2cbh)", "*.2cbh"), ("Todos los archivos", "*.*")])
         finally:
             raiz.destroy()
     return os.path.normpath(ruta) if ruta else ""
 
 
 def validar_y_guardar(ruta):
-    if not ruta.lower().endswith(".cbh") or not os.path.isfile(ruta):
-        return {"error": "Selecciona el archivo .cbh de la base."}
+    if not ruta.lower().endswith((".cbh", ".2cbh")) or not os.path.isfile(ruta):
+        return {"error": "Selecciona el archivo .cbh o .2cbh de la base."}
     _, faltan = archivos_de(ruta)
     if faltan:
         return {"error": "La base está incompleta. No encuentro: " + ", ".join(faltan)}
     guardar_config({**leer_config(), "ruta": ruta})
     return estado_mega()
+
+
+def _cerrar_bridge():
+    with _bridge_lock:
+        proceso = _bridge.get("proceso")
+        _bridge.update(proceso=None, token=None, ruta=None)
+    if proceso and proceso.poll() is None:
+        proceso.terminate()
+        try:
+            proceso.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proceso.kill()
+
+
+atexit.register(_cerrar_bridge)
+
+
+def _asegurar_bridge(ruta):
+    """Inicia el lector local 2CBH y devuelve su token. La base se abre en solo lectura."""
+    with _bridge_lock:
+        proceso = _bridge.get("proceso")
+        if proceso and proceso.poll() is None and _bridge.get("ruta") == ruta and _bridge.get("token"):
+            return _bridge["token"]
+        _cerrar_bridge()
+        exe = os.path.join(CARPETA, "tools", "chessbase-2cbh", "cbtool.exe")
+        if not os.path.isfile(exe):
+            raise RuntimeError("Falta el lector ChessBase 2. Restaura tools/chessbase-2cbh/cbtool.exe.")
+        localappdata = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+        datos = os.path.join(localappdata, "ChessRival", "cb-bridge-data")
+        appdata, localappdata = os.path.join(datos, "roaming"), os.path.join(datos, "local")
+        os.makedirs(appdata, exist_ok=True)
+        os.makedirs(localappdata, exist_ok=True)
+        entorno = os.environ.copy()
+        entorno.update(APPDATA=appdata, LOCALAPPDATA=localappdata)
+        creacion = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        proceso = subprocess.Popen(
+            [exe, "bridge", "--database", ruta, "--show-token"],
+            cwd=CARPETA, env=entorno, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace", creationflags=creacion)
+        mensajes = queue.Queue()
+        def leer_salida():
+            for linea in proceso.stdout:
+                mensajes.put(linea.rstrip())
+        threading.Thread(target=leer_salida, daemon=True).start()
+        token, lineas, limite = None, [], time.monotonic() + 60
+        while time.monotonic() < limite and proceso.poll() is None:
+            try:
+                linea = mensajes.get(timeout=0.25)
+            except queue.Empty:
+                continue
+            lineas.append(linea)
+            m = re.search(r"#cb-bridge=([A-Za-z0-9_-]+)", linea)
+            if m:
+                token = m.group(1)
+                break
+        if not token:
+            proceso.terminate()
+            detalle = " ".join(lineas[-4:])
+            raise RuntimeError("No se pudo iniciar el lector local de la MegaBase 2027. " + (detalle or "Comprueba que el puerto 39581 esté libre."))
+        _bridge.update(proceso=proceso, token=token, ruta=ruta)
+        return token
+
+
+def _bridge_json(token, ruta, parametros=None):
+    url = "http://127.0.0.1:39581" + ruta
+    if parametros:
+        url += "?" + urlencode(parametros)
+    req = Request(url, headers={"Authorization": "Bearer " + token})
+    with urlopen(req, timeout=180) as respuesta:
+        return json.loads(respuesta.read().decode("utf-8"))
+
+
+def _normalizar_nombre(nombre):
+    texto = unicodedata.normalize("NFKD", nombre.casefold())
+    return "".join(c for c in texto if not unicodedata.combining(c)).replace(".", " ").strip()
+
+
+def buscar_2cbh(jugador, elo):
+    ruta = leer_config().get("ruta", "")
+    if not ruta.lower().endswith(".2cbh"):
+        raise ValueError("La MegaBase seleccionada no es una base ChessBase 2 (.2cbh).")
+    token = _asegurar_bridge(ruta)
+    nombre = str(jugador or "").strip()
+    if not nombre:
+        raise ValueError("No se recibió el nombre del jugador.")
+    bases = _bridge_json(token, "/v1/databases").get("databases", [])
+    nombre_base = os.path.splitext(os.path.basename(ruta))[0].casefold()
+    candidatas_base = [b for b in bases if b.get("format") == "2cbh" and b.get("state") == "ready" and b.get("name", "").casefold() == nombre_base]
+    if not candidatas_base:
+        raise RuntimeError("El lector aún no ha terminado de abrir la MegaBase 2027. Vuelve a intentarlo en unos segundos.")
+    base = max(candidatas_base, key=lambda b: b.get("records", 0))
+    query = 'player:"' + nombre.replace('"', '') + '"'
+    offset, total, coincidencias, cantidad = 0, None, [], 0
+    while total is None or offset < total:
+        pagina = _bridge_json(token, f"/v1/databases/{base['id']}/games", {
+            "offset": str(offset), "limit": "500", "sort": "date-desc", "q": query})
+        filas = pagina.get("rows", [])
+        total = pagina.get("total", 0)
+        if not filas:
+            break
+        for fila in filas:
+            if fila.get("kind") != "game":
+                continue
+            blanco, negro = fila.get("white", ""), fila.get("black", "")
+            nb, nn = _normalizar_nombre(blanco), _normalizar_nombre(negro)
+            objetivo = _normalizar_nombre(nombre)
+            if objetivo not in (nb, nn):
+                continue
+            color = "B" if objetivo == nb else "N"
+            elo_partida = fila.get("whiteElo" if color == "B" else "blackElo", 0)
+            try:
+                elo_actual = int(elo or 0)
+            except (ValueError, TypeError):
+                elo_actual = 0
+            if elo_actual and elo_partida and abs(elo_actual - elo_partida) > 250:
+                continue
+            cantidad += 1
+            if len(coincidencias) < 300:
+                coincidencias.append((fila["number"], color))
+        offset += len(filas)
+    def leer_pgn(item):
+        numero, color = item
+        datos = _bridge_json(token, f"/v1/databases/{base['id']}/games/{numero}")
+        return {"numero": numero, "pgn": datos["pgn"], "color": color}
+    partidas, no_legibles = [], 0
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futuros = [pool.submit(leer_pgn, item) for item in coincidencias]
+        for futuro in as_completed(futuros):
+            try:
+                partidas.append(futuro.result())
+            except Exception:
+                no_legibles += 1
+    # Los números de registro siguen el orden de fecha de la consulta; las tareas
+    # concurrentes terminan desordenadas, así que conservamos ese orden explícito.
+    partidas.sort(key=lambda p: next((i for i, (n, _) in enumerate(coincidencias) if p["numero"] == n), 0))
+    return {"candidatas": cantidad, "noLegibles": no_legibles,
+            "partidas": [{"pgn": p["pgn"], "color": p["color"]} for p in partidas[:300]]}
 
 
 # ---------- Servidor ----------
@@ -300,11 +455,24 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
                 return self._json({"sinInterfaz": True})
             if elegida == "":
                 return self._json({"cancelado": True})
-            return self._json(validar_y_guardar(elegida))
+            nuevo = validar_y_guardar(elegida)
+            if not nuevo.get("error"):
+                _cerrar_bridge()
+            return self._json(nuevo)
         if ruta == "/local/mega/ruta":
-            return self._json(validar_y_guardar(str(cuerpo.get("ruta", "")).strip().strip('"')))
+            nuevo = validar_y_guardar(str(cuerpo.get("ruta", "")).strip().strip('"'))
+            if not nuevo.get("error"):
+                _cerrar_bridge()
+            return self._json(nuevo)
+        if ruta == "/local/mega/buscar":
+            try:
+                resultado = buscar_2cbh(cuerpo.get("nombre", ""), cuerpo.get("elo", 0))
+                return self._json(resultado)
+            except (OSError, ValueError, RuntimeError, KeyError, TimeoutError) as ex:
+                return self._json({"error": str(ex)}, 400)
         if ruta == "/local/mega/olvidar":
             guardar_config({k: v for k, v in leer_config().items() if k != "ruta"})
+            _cerrar_bridge()
             return self._json(estado_mega())
         if ruta == "/local/libro/elegir":
             elegida = elegir_libro_con_cuadro()
