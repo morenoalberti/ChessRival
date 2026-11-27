@@ -16,6 +16,7 @@ import http.server
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import queue
 import re
@@ -28,6 +29,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import urlencode
 import copias_local
 import fotos_fide
+import mega_sqlite
 from urllib.parse import parse_qs, urlsplit
 
 PUERTO = int(os.environ.get("PORT") or 8765)
@@ -35,6 +37,7 @@ CARPETA = os.path.dirname(os.path.abspath(__file__))
 CONFIG = os.path.join(CARPETA, ".mega.json")
 EXTENSIONES = ("cbh", "cbg", "cbp", "cbt")
 EXTENSIONES_2CBH = ("2cbh", "2cbg", "2lid")
+PRIVADA = os.path.join(CARPETA, "BaseDatos")      # las bases propias no se sirven como archivos de la web
 EXTENSIONES_LIBRO = ("ctg", "ctb", "cto")
 LOOPBACK = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 ORIGENES = {f"http://localhost:{PUERTO}", f"http://127.0.0.1:{PUERTO}", f"http://[::1]:{PUERTO}"}
@@ -64,6 +67,8 @@ def archivos_de(ruta_cbh):
     """{extensión: ruta real} de los archivos requeridos por la base, y los que faltan."""
     carpeta, nombre = os.path.split(ruta_cbh)
     extension = os.path.splitext(nombre)[1].lower().lstrip(".")
+    if extension == "sqlite":                    # la base convertida es un solo archivo
+        return ({extension: ruta_cbh}, []) if os.path.isfile(ruta_cbh) else ({}, [nombre])
     familia = EXTENSIONES_2CBH if extension == "2cbh" else EXTENSIONES
     base = os.path.splitext(nombre)[0].lower()
     try:
@@ -86,12 +91,17 @@ def estado_mega():
         return {"disponible": True, "configurada": False}
     rutas, faltan = archivos_de(ruta)
     nombre = os.path.splitext(os.path.basename(ruta))[0]
-    formato = "2cbh" if ruta.lower().endswith(".2cbh") else "cbh"
+    formato = os.path.splitext(ruta)[1].lower().lstrip(".")
     if faltan:
         return {"disponible": True, "configurada": True, "nombre": nombre, "ruta": ruta, "formato": formato, "error": "La base está incompleta. No encuentro: " + ", ".join(faltan)}
     estado = {"disponible": True, "configurada": True, "nombre": nombre, "ruta": ruta, "formato": formato, "tamanos": {e: os.path.getsize(p) for e, p in rutas.items()}}
     if formato == "2cbh":
         estado["totalPartidas"] = max(0, os.path.getsize(rutas["2cbh"]) // 208 - 1)
+    elif formato == "sqlite":
+        try:
+            estado["totalPartidas"] = mega_sqlite.total_partidas(ruta)
+        except ValueError as ex:
+            estado["error"] = str(ex)
     return estado
 
 
@@ -170,18 +180,23 @@ def elegir_con_cuadro():
             inicial = os.path.dirname(leer_config().get("ruta", "")) or None
             ruta = filedialog.askopenfilename(
                 parent=raiz, title="Elige la MegaDatabase de ChessBase", initialdir=inicial,
-                filetypes=[("Bases ChessBase clásicas y 2027", "*.cbh *.2cbh"), ("ChessBase clásico (*.cbh)", "*.cbh"), ("ChessBase 2 (*.2cbh)", "*.2cbh"), ("Todos los archivos", "*.*")])
+                filetypes=[("Bases ChessBase y SQLite", "*.cbh *.2cbh *.sqlite"), ("SQLite de ChessRival (*.sqlite)", "*.sqlite"), ("ChessBase clásico (*.cbh)", "*.cbh"), ("ChessBase 2 (*.2cbh)", "*.2cbh"), ("Todos los archivos", "*.*")])
         finally:
             raiz.destroy()
     return os.path.normpath(ruta) if ruta else ""
 
 
 def validar_y_guardar(ruta):
-    if not ruta.lower().endswith((".cbh", ".2cbh")) or not os.path.isfile(ruta):
-        return {"error": "Selecciona el archivo .cbh o .2cbh de la base."}
+    if not ruta.lower().endswith((".cbh", ".2cbh", ".sqlite")) or not os.path.isfile(ruta):
+        return {"error": "Selecciona el archivo .cbh, .2cbh o .sqlite de la base."}
     _, faltan = archivos_de(ruta)
     if faltan:
         return {"error": "La base está incompleta. No encuentro: " + ", ".join(faltan)}
+    if ruta.lower().endswith(".sqlite"):
+        try:
+            mega_sqlite.total_partidas(ruta)
+        except ValueError as ex:
+            return {"error": str(ex)}
     guardar_config({**leer_config(), "ruta": ruta})
     return estado_mega()
 
@@ -347,6 +362,14 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
+    def send_head(self):
+        destino = os.path.normcase(os.path.realpath(self.translate_path(self.path)))
+        privada = os.path.normcase(os.path.realpath(PRIVADA))
+        if destino == privada or destino.startswith(privada + os.sep):
+            self.send_error(404)
+            return None
+        return super().send_head()
+
     # Las rutas /local/… solo existen en el propio equipo y solo para páginas de este mismo origen.
     def _permitido(self):
         if not self._anfitrion_local():
@@ -466,9 +489,14 @@ class SinCache(http.server.SimpleHTTPRequestHandler):
             return self._json(nuevo)
         if ruta == "/local/mega/buscar":
             try:
+                base = leer_config().get("ruta", "")
+                if base.lower().endswith(".sqlite"):
+                    if not os.path.isfile(base):
+                        raise ValueError("No encuentro la base SQLite elegida.")
+                    return self._json(mega_sqlite.buscar(base, cuerpo.get("nombre", ""), cuerpo.get("elo", 0), cuerpo.get("fide")))
                 resultado = buscar_2cbh(cuerpo.get("nombre", ""), cuerpo.get("elo", 0))
                 return self._json(resultado)
-            except (OSError, ValueError, RuntimeError, KeyError, TimeoutError) as ex:
+            except (OSError, ValueError, RuntimeError, KeyError, TimeoutError, sqlite3.Error) as ex:
                 return self._json({"error": str(ex)}, 400)
         if ruta == "/local/mega/olvidar":
             guardar_config({k: v for k, v in leer_config().items() if k != "ruta"})

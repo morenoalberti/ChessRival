@@ -2,11 +2,12 @@
 // de un jugador. Hay dos formas de leerla:
 //  · Con el servidor local (servidor.py, el normal con iniciar.bat): el servidor abre el cuadro «Elegir archivo .cbh» de Windows, recuerda la ruta
 //    y entrega a la página los cuatro archivos de la base por trozos, sin ningún aviso del navegador (igual que la versión de escritorio).
+//    La base convertida a SQLite (tools/mega_a_sqlite.py) y el .2cbh los busca el propio servidor.
 //  · Sin él (la web publicada): el selector de carpetas del navegador; los permisos (FileSystemHandle) se guardan y el navegador los pide confirmar.
 import { leerAjuste, guardarAjuste } from './db.js';
 import { ChessBaseDatabase, ErrorBase } from './chessbase.js';
 import { claveJugador, guardarPartidas, refrescarTarjetasDe } from './db-partidas.js';
-import { cargarLibroAperturas } from './aperturas.js';
+import { cargarLibroAperturas, clasificarApertura } from './aperturas.js';
 import { detectarRitmo, leerPgn } from './pgn.js';
 import { elegirCarpetaDe } from './elegir-archivos.js';
 
@@ -46,6 +47,9 @@ function handlesLocales(info) {
   }));
 }
 
+/** Las bases que busca el propio servidor local (el .2cbh y la convertida a SQLite): la página recibe las partidas ya en PGN. */
+const leidaPorServidor = (formato) => formato === '2cbh' || formato === 'sqlite';
+
 /** ¿Hay servidor local con soporte para la MegaDatabase? Devuelve su estado, o null (web publicada). */
 async function infoLocal() {
   try { const i = await llamarLocal('/local/mega'); return i?.disponible ? i : null; } catch { return null; }
@@ -54,9 +58,9 @@ async function infoLocal() {
 async function abrirLocal(info) {
   if (!info.configurada) { estado.base = null; estado.error = null; estado.pendiente = false; estado.formato = ''; return; }
   if (info.error) { estado.base = null; estado.error = info.error; estado.pendiente = false; estado.formato = info.formato || ''; return; }
-  if (info.formato === '2cbh') {
-    estado.base = { nombre: info.nombre, totalPartidas: info.totalPartidas || 0, formato: '2cbh' };
-    estado.nombre = info.nombre; estado.formato = '2cbh'; estado.error = null; estado.pendiente = false;
+  if (leidaPorServidor(info.formato)) {
+    estado.base = { nombre: info.nombre, totalPartidas: info.totalPartidas || 0, formato: info.formato };
+    estado.nombre = info.nombre; estado.formato = info.formato; estado.error = null; estado.pendiente = false;
     await guardarAjuste('mega_nombre', estado.nombre);
     return;
   }
@@ -131,7 +135,7 @@ const enCola = (tarea) => { const t = cola.then(tarea); cola = t.catch(() => {})
 /** Cuántas partidas de este jugador hay en la base (por nombre y ELO), sin importar nada. Lee el índice completo: tarda unos segundos. */
 export function contar(jugador, progreso, señal) {
   if (!estado.base) return Promise.resolve(null);
-  if (estado.base.formato === '2cbh') return buscar(jugador, progreso, señal).then(r => r?.candidatas ?? null);
+  if (leidaPorServidor(estado.base.formato)) return buscar(jugador, progreso, señal).then(r => r?.candidatas ?? null);
   return enCola(async () => (await estado.base.buscar([{ nombre: jugador.name, elo: jugador.rating }], 0, progreso, señal))[0].candidatas);
 }
 
@@ -139,10 +143,11 @@ export function contar(jugador, progreso, señal) {
 export function buscar(jugador, progreso, señal) {
   const base = estado.base;
   if (!base) return Promise.resolve(null);
-  if (base.formato === '2cbh') return enCola(async () => {
+  if (leidaPorServidor(base.formato)) return enCola(async () => {
     if (señal?.aborted) throw new DOMException('Búsqueda cancelada', 'AbortError');
-    progreso('Buscando partidas en la MegaBase 2027…');
-    const r = await llamarLocal('/local/mega/buscar', { nombre: jugador.name, elo: jugador.rating }, señal);
+    progreso(base.formato === '2cbh' ? 'Buscando partidas en la MegaBase 2027…' : 'Buscando partidas en la MegaDatabase…');
+    await cargarLibroAperturas();
+    const r = await llamarLocal('/local/mega/buscar', { nombre: jugador.name, elo: jugador.rating, fide: jugador.fideId }, señal);
     if (r.error) throw new ErrorBase(r.error);
     const partidas = [];
     let noLegibles = r.noLegibles || 0;
@@ -170,7 +175,7 @@ export function buscar(jugador, progreso, señal) {
 export async function importarEncontradas(jugador, encontradas) {
   const clave = claveJugador(jugador);
   if (!encontradas || encontradas.jugadorClave !== clave) throw new Error('La búsqueda no corresponde a este jugador.');
-  const items = encontradas.partidas.map(({ partida, color }) => ({ partida, color, eco: partida.cab('ECO'), apertura: partida.cab('Opening'), ritmo: detectarRitmo(partida) }));
+  const items = encontradas.partidas.map(({ partida, color }) => ({ partida, color, ...clasificarApertura(partida), ritmo: detectarRitmo(partida) }));
   const g = await guardarPartidas(clave, items, 'MegaDatabase');
   await guardarAjuste(`mega_buscado:${clave}`, new Date().toISOString());
   await refrescarTarjetasDe(clave);

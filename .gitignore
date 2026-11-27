@@ -6,3 +6,6 @@ worker/.wrangler/
 .mega.json
 .copias-destino.json
 __pycache__/
+
+# Bases de ajedrez propias (con licencia: nunca se suben)
+BaseDatos/
